@@ -1,0 +1,1580 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Competition Control</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font: 14px/1.5 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --paper: #f4f5f7; --surface: #fff; --ink: #19212c; --muted: #687384;
+      --line: #e1e5eb; --raised: #f7f8fa; --nav: #17212d; --nav-hover: #263545; --accent: #3267d5;
+      --accent-soft: #edf3ff; --green: #19875b; --warning: #a44b12;
+      --shadow: 0 6px 18px rgb(22 34 51 / 7%);
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--paper); color: var(--ink); }
+    button, input, select, textarea { font: inherit; }
+    button { border: 0; border-radius: 2px; background: var(--accent); color: white; padding: .65rem .9rem; font-weight: 650; cursor: pointer; }
+    button:hover { filter: brightness(.94); }
+    button:disabled { opacity: .48; cursor: not-allowed; }
+    button.secondary { background: var(--surface); color: var(--ink); border: 1px solid var(--line); }
+    button.danger { background: #b64040; }
+    a { color: var(--accent); }
+    input, select, textarea { width: 100%; min-height: 39px; border: 1px solid var(--line); border-radius: 2px; background: var(--surface); color: var(--ink); padding: .5rem .65rem; }
+    textarea { min-height: 80px; resize: vertical; }
+    input:focus, select:focus, textarea:focus { outline: 2px solid #acc4ff; border-color: var(--accent); }
+    label { display: grid; gap: .35rem; min-width: 0; color: var(--muted); font-weight: 580; }
+    h1, h2, h3, p { margin-top: 0; }
+    h1 { font-size: 1.65rem; letter-spacing: -.035em; margin-bottom: .2rem; }
+    h2 { font-size: 1.05rem; margin-bottom: 1rem; }
+    .shell { height: 100vh; min-height: 0; display: grid; grid-template-columns: 248px minmax(0, 1fr); overflow: hidden; }
+    aside { position: sticky; top: 0; height: 100vh; overflow-y: auto; background: var(--nav); color: #f1f4f8; padding: 1.25rem .85rem; display: flex; flex-direction: column; gap: 1.3rem; }
+    .brand { padding: 0 .65rem; font-size: 1.05rem; font-weight: 750; letter-spacing: -.025em; }
+    .brand img { max-width: 100%; max-height: 48px; object-fit: contain; display: block; margin-bottom: .65rem; }
+    .nav-label { padding: 0 .65rem; color: #8795a5; font-size: .68rem; font-weight: 750; letter-spacing: .1em; text-transform: uppercase; margin: .3rem 0 .4rem; }
+    nav { display: grid; gap: .2rem; }
+    nav button { text-align: left; background: transparent; color: #c7d0da; font-weight: 570; padding: .62rem .7rem; border-radius: 2px; }
+    nav button:hover, nav button.active { background: var(--nav-hover); color: white; filter: none; }
+    nav button.active { box-shadow: inset 3px 0 #6f9aff; }
+    .aside-bottom { margin-top: auto; border-top: 1px solid #354251; padding: 1rem .65rem 0; color: #aeb9c6; font-size: .82rem; }
+    .aside-bottom button { width: 100%; margin-top: .8rem; }
+    main { min-width: 0; min-height: 0; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+    .topbar { min-height: 70px; display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .8rem clamp(1rem, 3vw, 2.5rem); background: var(--surface); border-bottom: 1px solid var(--line); }
+    .topbar strong { font-size: 1.05rem; letter-spacing: -.02em; }
+    .topbar label { width: min(390px, 50vw); font-size: .72rem; }
+    .topbar select { min-height: 36px; }
+    .main-content { width: 100%; max-width: 1500px; margin: 0 auto; padding: 1.8rem clamp(1rem, 3vw, 2.5rem) 3rem; flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+    .page-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1.4rem; }
+    .page-head p { color: var(--muted); margin: .25rem 0 0; }
+    .grid { display: grid; gap: 1rem; }
+    .grid.cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .grid.cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .grid.cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .card { background: var(--surface); border: 1px solid var(--line); border-top: 2px solid var(--nav); border-radius: 8px; padding: 1.15rem; box-shadow: var(--shadow); min-width: 0; }
+    .card h2:last-child { margin-bottom: 0; }
+    .metric-card { position: relative; overflow: hidden; }
+    .metric-card::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 4px; background: var(--accent); }
+    .metric-card:nth-child(2)::before { background: var(--green); }
+    .metric-card:nth-child(3)::before { background: #9a6bda; }
+    .metric-card:nth-child(4)::before { background: var(--warning); }
+    .metric { font-size: clamp(1.65rem, 3vw, 2.15rem); font-weight: 780; letter-spacing: -.05em; }
+    .metric-label { color: var(--muted); font-size: .82rem; }
+    .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .85rem; }
+    .form-grid.cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .form-grid .wide { grid-column: 1 / -1; }
+    .actions { display: flex; flex-wrap: wrap; gap: .55rem; align-items: center; }
+    .section-title { display: flex; justify-content: space-between; align-items: center; gap: .75rem; }
+    .section-title h2 { margin: 0 0 1rem; }
+    .toggle-control { display: flex; grid-template-columns: auto 1fr; align-items: center; gap: .55rem; }
+    .toggle-control input { width: 18px; min-height: 18px; }
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; margin-top: .5rem; white-space: nowrap; }
+    th { color: var(--muted); font-size: .7rem; font-weight: 750; letter-spacing: .055em; text-align: left; text-transform: uppercase; background: var(--raised); }
+    th, td { padding: .72rem .65rem; border-bottom: 1px solid var(--line); vertical-align: middle; }
+    tbody tr:last-child td { border-bottom: 0; }
+    .badge { display: inline-flex; border-radius: 2px; padding: .16rem .5rem; background: #edf0f4; color: #4f5b6a; font-size: .72rem; font-weight: 700; text-transform: capitalize; }
+    .badge.good { background: #e5f5ec; color: #167549; }
+    .badge.warn { background: #fff0e2; color: #9b4a0c; }
+    .match-clock { display: inline-block; margin-top: .2rem; font: 700 .9rem/1.3 ui-monospace, SFMono-Regular, Consolas, monospace; font-variant-numeric: tabular-nums; }
+    .vacant { color: #a43b30; font-weight: 750; }
+    .pos-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .4rem; }
+    .pos { border-left: 5px solid; padding: .5rem; background: var(--raised); white-space: normal; }
+    .live-position-list { display: flex; flex-wrap: wrap; gap: .35rem; min-width: 180px; }
+    .live-position { display: inline-flex; align-items: center; gap: .35rem; padding: .24rem .42rem; border: 1px solid var(--line); background: var(--raised); font: 700 .75rem/1.2 ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .live-position-dot { width: .65rem; height: .65rem; border-radius: 50%; flex: 0 0 .65rem; }
+    .live-position-number { color: var(--muted); font-size: .65rem; }
+    .colour-control { display: grid; grid-template-columns: 1fr 42px; align-items: center; gap: .5rem; }
+    input[type=color] { padding: 3px; min-height: 34px; height: 34px; }
+    .subtle { color: var(--muted); }
+    .empty { text-align: center; color: var(--muted); padding: 2rem 1rem; }
+    .overview-intro { display: flex; align-items: end; justify-content: space-between; gap: 1rem; margin-bottom: 1.5rem; }
+    .overview-intro h1 { margin-bottom: .3rem; }
+    .overview-intro p { margin: 0; color: var(--muted); }
+    .overview-section { margin-top: 1.25rem; }
+    .overview-section .card { height: 100%; }
+    .overview-section h2 { display: flex; align-items: center; gap: .5rem; }
+    .overview-section h2::before { content: ""; width: .45rem; height: .45rem; border-radius: 50%; background: var(--accent); }
+    .status { position: fixed; bottom: 1rem; right: 1rem; max-width: min(480px, calc(100vw - 2rem)); z-index: 10; background: #17212d; color: white; padding: .75rem 1rem; border-radius: 7px; box-shadow: 0 8px 30px #16223333; }
+    .status.error { background: #a83333; }
+    .hidden { display: none !important; }
+    .theme-choices { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: .7rem; }
+    .theme-option { border: 1px solid var(--line); border-radius: 0; padding: .7rem; cursor: pointer; background: var(--surface); color: var(--ink); }
+    .theme-option.selected { border: 2px solid var(--accent); }
+    .swatches { display: flex; gap: 4px; margin-bottom: .5rem; }
+    .swatches i { height: 24px; flex: 1; border-radius: 3px; }
+    .preview-logo { max-width: 180px; max-height: 80px; object-fit: contain; display: block; margin-top: .8rem; }
+    .inline-form { display: flex; flex-wrap: wrap; align-items: end; gap: .7rem; }
+    .inline-form label { flex: 1 1 150px; }
+    .bracket-group { margin-bottom: 1.2rem; }
+    .bracket-group h3 { font-size: .9rem; text-transform: capitalize; }
+    .arena-square { width: min(100%, 560px); aspect-ratio: 1; margin: 1.25rem auto; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 3px; background: var(--ink); border: 3px solid var(--ink); }
+    .arena-cell { min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: clamp(.4rem, 2vw, 1.2rem); border: 5px solid; }
+    .arena-cell[data-spot="1"], .arena-cell[data-spot="2"] { grid-row: 1; }
+    .arena-cell[data-spot="0"], .arena-cell[data-spot="3"] { grid-row: 2; }
+    .arena-cell[data-spot="1"], .arena-cell[data-spot="0"] { grid-column: 1; }
+    .arena-cell[data-spot="2"], .arena-cell[data-spot="3"] { grid-column: 2; }
+    .schedule-position-code { font: 900 1.1rem/1 ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .display-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .55rem 1rem; }
+    .display-options .toggle-control { align-items: flex-start; }
+    .staging-config { margin-top: 1rem; border: 1px solid var(--line); background: var(--raised); }
+    body.cue-red { background: #a21f24 !important; color: #fff !important; transition: background-color .15s linear; }
+    body.cue-green { background: #167847 !important; color: #fff !important; transition: background-color .15s linear; }
+    .arena-cell { position: relative; }
+    .arena-spot { position: absolute; top: .55rem; left: .65rem; font: 850 clamp(1.5rem, 5vw, 3rem)/1 ui-monospace, SFMono-Regular, Consolas, monospace; opacity: .3; }
+    .arena-code { position: relative; z-index: 1; margin: .35rem 0; font: 800 clamp(1.4rem, 5vw, 3rem)/1 ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .arena-team { position: relative; z-index: 1; }
+    .arena-team { font-weight: 650; }
+    .live-timer { font: 800 clamp(3rem, 12vw, 8rem)/1 ui-monospace, SFMono-Regular, Consolas, monospace; text-align: center; font-variant-numeric: tabular-nums; letter-spacing: -.06em; }
+    .match-actions { display: flex; flex-wrap: wrap; gap: .35rem; }
+    .match-actions button { padding: .42rem .6rem; font-size: .78rem; }
+    .setup { max-width: 560px; margin: 8vh auto; }
+    dialog { width: min(650px, calc(100vw - 2rem)); border: 1px solid var(--line); border-radius: 0; padding: 0; box-shadow: 0 18px 60px #101b2a40; }
+    dialog::backdrop { background: #0b1422a8; }
+    dialog form { padding: 1.25rem; }
+    @media(max-width:900px) {
+      .shell { grid-template-columns: 210px minmax(0, 1fr); }
+      .grid.cols-3 { grid-template-columns: repeat(2,minmax(0,1fr)); }
+      .grid.cols-4 { grid-template-columns: repeat(2,minmax(0,1fr)); }
+    }
+    @media(max-width:680px) {
+      .shell { display: flex; flex-direction: column; height: 100vh; }
+      aside { position: relative; z-index: 2; height: auto; max-height: 116px; padding: .55rem .7rem .65rem; gap: .45rem; overflow: hidden; box-shadow: 0 2px 12px rgb(22 34 51 / 12%); }
+      .brand { padding: .15rem .25rem; font-size: .95rem; }
+      .brand img { display: none; }
+      .nav-label, .aside-bottom { display: none; }
+      nav { display: flex; gap: .35rem; overflow-x: auto; padding: .05rem 0 .2rem; scrollbar-width: none; }
+      nav::-webkit-scrollbar { display: none; }
+      nav button { flex: 0 0 auto; text-align: center; padding: .48rem .7rem; font-size: .76rem; border: 1px solid transparent; }
+      nav button.active { border-color: #6f9aff; }
+      nav button.active { box-shadow: inset 0 -3px #6f9aff; }
+      .topbar { min-height: 58px; align-items: stretch; flex-direction: column; gap: .35rem; padding: .55rem .8rem .65rem; }
+      .topbar label { width: 100%; display: flex; align-items: center; gap: .5rem; font-size: .68rem; }
+      .topbar select { min-height: 34px; flex: 1; min-width: 0; }
+      main { height: 0; flex: 1; }
+      .main-content { padding: .9rem .75rem 2rem; }
+      .grid.cols-2, .grid.cols-3, .form-grid, .form-grid.cols-3 { grid-template-columns: 1fr; }
+      .grid.cols-4 { grid-template-columns: repeat(2,minmax(0,1fr)); gap: .65rem; }
+      .card { padding: .9rem; border-radius: 7px; }
+      .metric { font-size: 1.55rem; }
+      .metric-label { font-size: .72rem; line-height: 1.25; }
+      .form-grid .wide { grid-column: auto; }
+      .theme-choices { grid-template-columns: 1fr; }
+      .page-head { align-items: flex-start; margin-bottom: 1rem; }
+      .page-head h1 { font-size: 1.4rem; }
+      .overview-intro { display: block; margin-bottom: 1rem; }
+      .overview-section { margin-top: .85rem; }
+      .section-title { align-items: flex-start; }
+      .section-title .secondary { white-space: nowrap; }
+      table { font-size: .82rem; }
+      th, td { padding: .58rem .48rem; }
+      .table-wrap { margin-inline: -.15rem; }
+      .actions button { flex: 1 1 auto; }
+      dialog form { padding: 1rem; }
+    }
+  </style>
+</head>
+<body>
+  <div id="login" class="card setup hidden">
+    <h1>Competition Control</h1>
+    <p class="subtle">Sign in to manage the competition.</p>
+    <a id="login-link" href="/auth/login"><button>Sign in</button></a>
+  </div>
+  <div id="app" class="shell hidden">
+    <aside>
+      <div id="brand" class="brand">Competition Control</div>
+      <div>
+        <div class="nav-label">Management</div>
+        <nav id="nav">
+          <button data-page="competitions">Competitions</button>
+          <button class="active" data-page="overview">Overview</button>
+          <button data-page="teams">Teams</button>
+          <button data-page="challenges">Challenges</button>
+          <button data-page="schedule">Schedule</button>
+          <button data-page="matches">Live control</button>
+          <button data-page="league">League table</button>
+          <button data-page="arena">Arena</button>
+          <button data-page="displays">Public displays</button>
+          <button data-page="settings">Settings</button>
+          <button data-page="activity">Activity</button>
+        </nav>
+      </div>
+      <div class="aside-bottom"><span id="user-email"></span><button id="logout" class="secondary">Sign out</button></div>
+    </aside>
+    <main>
+      <div class="topbar">
+        <div><strong id="top-title">Overview</strong></div>
+        <label id="competition-switcher-label">Selected competition<select id="competition"></select></label>
+      </div>
+      <div class="main-content"><div id="view"></div></div>
+    </main>
+  </div>
+  <div id="toast" class="status hidden" role="status" aria-live="polite"></div>
+  <dialog id="score-dialog">
+    <form id="score-form">
+      <h2 id="score-title">Match score</h2>
+      <div id="score-fields"></div>
+      <label id="score-reason-label" class="hidden">Correction reason<input id="score-reason" maxlength="500"></label>
+      <div class="actions" style="justify-content:flex-end;margin-top:1rem">
+        <button type="button" class="secondary" data-close="score-dialog">Cancel</button>
+        <button>Save scores</button>
+      </div>
+    </form>
+  </dialog>
+  <dialog id="display-config-dialog">
+    <form id="display-config-form">
+      <h2>Configure public display</h2>
+      <label>Admin title<input name="title" maxlength="120" required></label>
+      <fieldset style="margin-top:1rem">
+        <legend>Board layout</legend>
+        <div class="display-options">
+          <label class="toggle-control" data-option-except="corner"><input type="checkbox" name="showTitle"> Show title and competition heading</label>
+          <label class="toggle-control" data-option-types="schedule,arena,timer,sr-arena,sr-producer,sr-staging"><input type="checkbox" name="showArena"> Show arena name</label>
+          <label class="toggle-control" data-option-types="arena,sr-arena"><input type="checkbox" name="fillCorners"> Fill corner squares with assigned colours</label>
+          <label class="toggle-control" data-option-types="arena,sr-arena"><input type="checkbox" name="showTeamNames"> Show team names</label>
+          <label class="toggle-control" data-option-types="arena,sr-arena"><input type="checkbox" name="showPositionNumbers"> Show position numbers</label>
+          <label class="toggle-control" data-option-for="corner"><input type="checkbox" name="fillCornerDisplay"> Use the corner colour as the full-screen background</label>
+          <label class="toggle-control" data-option-for="corner"><input type="checkbox" name="showCornerPositionNumber"> Show the corner number in the background</label>
+          <label class="toggle-control" data-option-for="corner"><input type="checkbox" name="showCornerTeamName"> Show team name below the code</label>
+          <label class="toggle-control" data-option-except="corner"><input type="checkbox" name="darkTheme"> Use dark theme for this display</label>
+          <label class="toggle-control" data-option-types="schedule,sr-staging"><input type="checkbox" name="hideCompletedEvents"> Hide completed events from schedule display</label>
+          <label class="toggle-control" data-option-types="schedule,sr-staging"><input type="checkbox" name="hideCompletedMatches"> Hide completed matches from schedule display</label>
+          <label class="toggle-control" data-option-types="schedule,sr-staging"><input type="checkbox" name="enableTeamFilter"> Show team filter dropdown</label>
+          <label class="toggle-control" data-option-types="schedule,sr-staging"><input type="checkbox" name="relativeTime"> Replace time with time until / since match</label>
+          <label class="toggle-control" data-option-types="schedule,sr-staging"><input type="checkbox" name="hideScheduleArena"> Hide arena column</label>
+          <label data-option-for="corner">Corner position<select name="cornerPosition"><option value="0">Position 0 · bottom-left</option><option value="1">Position 1 · top-left</option><option value="2">Position 2 · top-right</option><option value="3">Position 3 · bottom-right</option></select></label>
+          <label class="toggle-control" data-option-types="arena,timer,corner,sr-arena,sr-producer"><input type="checkbox" name="showStartCue"> Show synchronized red 3-2-1 and green GO cue</label>
+          <label class="toggle-control" data-option-types="arena,timer,corner,sr-arena,sr-producer"><input type="checkbox" name="flashCountdownNumbers"> Flash alternate countdown numbers</label>
+          <label data-option-types="arena,timer,corner,sr-arena,sr-producer">Countdown background<input type="color" name="countdownBackgroundColor" value="#a21f24"></label>
+          <label data-option-types="arena,timer,corner,sr-arena,sr-producer">Alternate flash background<input type="color" name="countdownFlashColor" value="#ffffff"></label>
+          <label data-option-types="arena,timer,corner,sr-arena,sr-producer">Show GO for<select name="cueDurationSeconds"><option value="1">1 second</option><option value="2">2 seconds</option><option value="3">3 seconds</option><option value="4">4 seconds</option><option value="5">5 seconds</option></select></label>
+          <label data-option-types="arena,timer,corner,sr-arena,sr-producer">GO screen background<input type="color" name="goBackgroundColor" value="#167847"></label>
+          <label class="toggle-control" data-option-types="arena,timer,corner,sr-arena,sr-producer"><input type="checkbox" name="showEndCue"> Show END when the match timer ends</label>
+          <label class="toggle-control" data-option-types="timer,sr-producer"><input type="checkbox" name="showPreviousResults"> Show previous match scores at the bottom</label>
+          <label data-option-types="arena,timer,corner,sr-arena,sr-producer">Show END for<select name="endCueDurationSeconds"><option value="1">1 second</option><option value="2">2 seconds</option><option value="3">3 seconds</option><option value="4">4 seconds</option><option value="5">5 seconds</option><option value="6">6 seconds</option><option value="7">7 seconds</option><option value="8">8 seconds</option><option value="9">9 seconds</option><option value="10">10 seconds</option></select></label>
+          <label class="toggle-control" data-option-types="arena,timer,corner,sr-arena,sr-producer"><input type="checkbox" name="showEndCountdown"> Show a countdown during the final seconds</label>
+          <label data-option-types="arena,timer,corner,sr-arena,sr-producer">Final countdown starts at<input type="number" name="endCountdownSeconds" min="1" max="60" value="10"></label>
+          <label data-option-types="arena,timer,corner,sr-arena,sr-producer">END screen background<input type="color" name="endBackgroundColor" value="#b3131b"></label>
+          <label data-option-types="sr-arena,sr-producer,sr-shepherding,sr-staging">SR arena filter (blank for all)<input name="srArenaName" maxlength="120"></label>
+          <label data-option-for="sr-outside">SR competition website URL<input name="srExternalUrl" maxlength="500"></label>
+          <label data-option-for="sr-outside">SR maximum leaderboard teams<input name="srMaxTeams" type="number" min="1" max="32"></label>
+          <label data-option-for="sr-outside">SR maximum knockout rounds<input name="srMaxKnockoutRounds" type="number" min="1" max="12"></label>
+          <label data-option-for="sr-outside">SR page rotation interval (seconds)<input name="srRotationSeconds" type="number" min="5" max="120"></label>
+          <label data-option-for="sr-staging">SR staging corner order (0-3, clockwise)<input name="srStagingCornerOrder" maxlength="15"></label>
+          <label class="toggle-control" data-option-for="sr-outside"><input type="checkbox" name="srHideLeaderboard"> Hide leaderboard page</label>
+          <label class="toggle-control" data-option-for="sr-outside"><input type="checkbox" name="srHideSchedule"> Hide schedule page</label>
+          <label class="toggle-control" data-option-for="sr-outside"><input type="checkbox" name="srHideKnockout"> Hide knockout page</label>
+        </div>
+      </fieldset>
+      <fieldset class="wide staging-config" data-option-for="sr-shepherding,sr-staging">
+        <legend>Shepherding &amp; staging control panel</legend>
+        <p class="subtle">Choose how much recent match history remains visible and when staging closes after the previous match starts. These staging times are calculated from the preceding match’s actual start, or its scheduled start until it begins. Corner colours come from Arena position colour settings.</p>
+        <div class="display-options">
+          <label data-option-for="sr-shepherding">Past matches to keep visible<input name="srShepherdingPastMatches" type="number" min="0" max="5" value="1"></label>
+          <label>Close staging after previous match starts (minutes)<input name="srStagingCloseOffsetMinutes" type="number" min="0" max="30" value="5"></label>
+        </div>
+      </fieldset>
+      <div class="actions" style="justify-content:flex-end;margin-top:1rem">
+        <button type="button" class="secondary" data-close="display-config-dialog">Cancel</button>
+        <button>Save display settings</button>
+      </div>
+    </form>
+  </dialog>
+  <dialog id="match-delete-dialog">
+    <form id="match-delete-form">
+      <h2>Delete match</h2>
+      <p>Deleting match <strong id="delete-match-number"></strong> permanently removes its scores and correction history. The audit record is retained.</p>
+      <label>Type the match number to confirm<input name="confirmation" inputmode="numeric" autocomplete="off" required></label>
+      <div class="actions" style="justify-content:flex-end;margin-top:1rem">
+        <button type="button" class="secondary" data-close="match-delete-dialog">Cancel</button><button class="danger">Delete match</button>
+      </div>
+    </form>
+  </dialog>
+  <dialog id="delay-dialog">
+    <form id="delay-form">
+      <h2>Add match delay</h2>
+      <div class="form-grid">
+        <label>Delay in minutes<input name="minutes" type="number" min="1" max="1440" value="5" required></label>
+        <label>Reason<input name="reason" maxlength="500" required></label>
+      </div>
+      <div class="actions" style="justify-content:flex-end;margin-top:1rem">
+        <button type="button" class="secondary" data-close="delay-dialog">Cancel</button><button>Apply delay</button>
+      </div>
+    </form>
+  </dialog>
+  <dialog id="undelay-dialog">
+    <form id="undelay-form">
+      <h2>Reduce match delay</h2>
+      <p id="undelay-current" class="subtle"></p>
+      <div class="form-grid">
+        <label>Reduce by minutes<input name="minutes" type="number" min="1" max="1440" value="5" required></label>
+        <label>Reason<input name="reason" maxlength="500" value="Delay reduced by admin" required></label>
+      </div>
+      <div class="actions" style="justify-content:space-between;margin-top:1rem">
+        <button type="button" class="danger" data-action="restore-scheduled-time">Restore original scheduled time</button>
+        <span><button type="button" class="secondary" data-close="undelay-dialog">Cancel</button> <button>Reduce delay</button></span>
+      </div>
+    </form>
+  </dialog>
+  <dialog id="schedule-dialog">
+    <form id="schedule-edit-form">
+      <h2>Edit scheduled match</h2>
+      <div class="form-grid cols-3">
+        <label>Arena<input name="arenaName" maxlength="80" required></label>
+        <label>Scheduled start<input name="scheduledStart" type="datetime-local" required></label>
+        <label>Position 0<select name="team1"></select></label>
+        <label>Position 1<select name="team2"></select></label>
+        <label>Position 2<select name="team3"></select></label>
+        <label>Position 3<select name="team4"></select></label>
+        <label class="wide">Underfilled reason<input name="underfilledReason" maxlength="500"></label>
+      </div>
+      <div class="actions" style="justify-content:flex-end;margin-top:1rem">
+        <button type="button" class="secondary" data-close="schedule-dialog">Cancel</button><button>Save schedule</button>
+      </div>
+    </form>
+  </dialog>
+  <dialog id="playoff-schedule-dialog">
+    <form id="playoff-schedule-form">
+      <h2>Edit playoff heat schedule</h2>
+      <p class="subtle">Change the heat time, arena, or planned gap before it; competitors still fill dynamically from earlier results.</p>
+      <div class="form-grid">
+        <label>Arena<input name="arenaName" maxlength="80" required></label>
+        <label>Scheduled start<input name="scheduledStart" type="datetime-local" required></label>
+        <label>Planned gap before this heat (minutes)<input name="plannedGapMinutes" type="number" min="0" max="1440" required></label>
+      </div>
+      <div class="actions" style="justify-content:flex-end;margin-top:1rem">
+        <button type="button" class="secondary" data-close="playoff-schedule-dialog">Cancel</button><button>Save heat schedule</button>
+      </div>
+    </form>
+  </dialog>
+  <dialog id="competition-delete-dialog">
+    <form id="competition-delete-form">
+      <h2>Delete competition</h2>
+      <p>This permanently deletes the competition, teams, schedules, scores, challenge awards, playoff brackets, settings and public displays. Type <strong id="delete-competition-slug"></strong> to confirm.</p>
+      <label>Competition slug<input name="confirmation" autocomplete="off" required></label>
+      <div class="actions" style="justify-content:flex-end;margin-top:1rem">
+        <button type="button" class="secondary" data-close="competition-delete-dialog">Cancel</button>
+        <button class="danger">Delete competition</button>
+      </div>
+    </form>
+  </dialog>
+<script>
+const $ = (id) => document.getElementById(id);
+let page = 'overview';
+let competitions = [];
+let teams = [];
+let matches = [];
+let scheduleEvents = [];
+let playoffData = { bracket: null, matches: [], teams: [] };
+let autoRunEnabled = false;
+let timer;
+let liveSignature = '';
+let competitionSignature = '';
+let viewDirty = false;
+let polling = false;
+let renderRevision = 0;
+let serverClockOffset = 0;
+let serverClockBestRoundTrip = Infinity;
+const MATCH_COUNTDOWN_TOTAL_MS = 5000;
+let displayRecords = [];
+let positionColours = ['#d1495b','#00798c','#edae49','#30638e'];
+const titles = { competitions:'Competitions', overview:'Overview', teams:'Teams', challenges:'Challenges', schedule:'Schedule', matches:'Live control', league:'League table', arena:'Arena', displays:'Public displays', settings:'Settings', activity:'Activity' };
+const h = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const slug = () => $('competition').value;
+function formatCompetitionDateTime(value) {
+  const date=new Date(value);
+  if(!Number.isFinite(date.getTime()))throw new RangeError('Schedule time must be a valid date');
+  const timeZone=compOption()?.timezone||'UTC';
+  return new Intl.DateTimeFormat('en-GB',{
+    timeZone,year:'numeric',month:'short',day:'2-digit',
+    hour:'2-digit',minute:'2-digit',hourCycle:'h23',timeZoneName:'short'
+  }).format(date);
+}
+function notify(message, error=false) {
+  const toast=$('toast');
+  toast.replaceChildren(document.createTextNode(message));
+  if(error){
+    toast.setAttribute('role','alert');
+    toast.setAttribute('aria-live','assertive');
+    const dismiss=document.createElement('button');
+    dismiss.type='button';
+    dismiss.className='secondary';
+    dismiss.textContent='Dismiss';
+    dismiss.style.marginLeft='.75rem';
+    dismiss.addEventListener('click',()=>toast.classList.add('hidden'),{once:true});
+    toast.append(dismiss);
+  }else{
+    toast.setAttribute('role','status');
+    toast.setAttribute('aria-live','polite');
+  }
+  $('toast').classList.toggle('error', error);
+  $('toast').classList.remove('hidden');
+  clearTimeout(timer);
+  if(!error)timer = setTimeout(() => $('toast').classList.add('hidden'), 4200);
+}
+async function api(path, options={}) {
+  const started=performance.now();
+  const headers={...(options.headers||{})};
+  if(options.body!==undefined&&options.body!==''&&!Object.keys(headers).some(name=>name.toLowerCase()==='content-type')){
+    headers['content-type']='application/json';
+  }
+  const response = await fetch(path, { ...options, headers });
+  const finished=performance.now();
+  const serverTime=response.headers.get('x-server-time');
+  if(serverTime){
+    const parsed=Date.parse(serverTime);
+    if(Number.isFinite(parsed)){
+      const roundTrip=finished-started;
+      const measuredOffset=parsed-(performance.timeOrigin+(started+finished)/2);
+      if(roundTrip<serverClockBestRoundTrip){
+        serverClockBestRoundTrip=roundTrip;
+        serverClockOffset=measuredOffset;
+      }else{
+        serverClockOffset+=Math.max(-10,Math.min(10,measuredOffset-serverClockOffset))*.1;
+      }
+    }
+  }
+  const data = response.status === 204 ? null : await response.json().catch(() => null);
+  if (!response.ok) {
+    const error = new Error(data?.error || `Request failed (${response.status})`);
+    error.status = response.status;
+    throw error;
+  }
+  return data;
+}
+function showError(error) { notify(error.message || 'Request failed', true); }
+function heading(title, subtitle='') {
+  return `<div class="page-head"><div><h1>${h(title)}</h1>${subtitle ? `<p>${h(subtitle)}</p>` : ''}</div></div>`;
+}
+function table(headers, rows, empty='No records') {
+  return rows.length
+    ? `<div class="table-wrap"><table><thead><tr>${headers.map(x=>`<th>${h(x)}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table></div>`
+    : `<div class="empty">${h(empty)}</div>`;
+}
+function setPage(next) {
+  page = next;
+  viewDirty = false;
+  document.querySelectorAll('#nav button').forEach((button) => button.classList.toggle('active', button.dataset.page === page));
+  $('top-title').textContent = titles[page];
+  render().catch(showError);
+}
+function compOption() { return competitions.find((c) => c.slug === slug()); }
+async function loadCore() {
+  competitions = await api('/api/admin/competitions');
+  $('competition').innerHTML = competitions.map(c => `<option value="${h(c.slug)}">${h(c.name)} · ${h(c.status)}</option>`).join('');
+  competitionSignature=JSON.stringify(competitions.map(c=>[c.id,c.name,c.slug,c.status,c.team_count,c.match_count,c.challenge_count,c.challenge_completion_count,c.event_count]));
+  if (competitions.length) {
+    const remembered = localStorage.getItem('competitionSlug');
+    $('competition').value = competitions.some(c => c.slug === remembered) ? remembered : competitions[0].slug;
+  }
+  await loadData();
+  liveSignature = '';
+}
+async function loadData() {
+  if (!slug()) { teams=[]; matches=[]; scheduleEvents=[]; await render(); return; }
+  const encoded = encodeURIComponent(slug());
+  [teams, matches, scheduleEvents] = await Promise.all([
+    api(`/api/admin/competitions/${encoded}/teams`),
+    api(`/api/admin/competitions/${encoded}/matches`),
+    api(`/api/admin/competitions/${encoded}/events`)
+  ]);
+  await applyBranding();
+  await render();
+  viewDirty = false;
+}
+async function applyBranding() {
+  if (!slug()) return;
+  const result = await api(`/api/admin/competitions/${encodeURIComponent(slug())}/settings`);
+  document.body.dataset.theme = result.settings?.theme || 'paper';
+  autoRunEnabled = Boolean(result.settings?.auto_run_enabled);
+  if(Array.isArray(result.settings?.corner_colours)&&result.settings.corner_colours.length===4&&result.settings.corner_colours.every(colour=>/^#[0-9a-f]{6}$/i.test(colour))){
+    positionColours=[...result.settings.corner_colours];
+  }
+  const themes = {
+    paper:['#f4f5f7','#fff','#19212c','#3267d5','#e1e5eb','#f7f8fa','#687384'],
+    field:['#eef4ee','#fff','#18332b','#21805c','#d5e1d7','#e7efe8','#61746d'],
+    night:['#101820','#1b2732','#edf3f4','#72a6ff','#45525c','#26323d','#a6b4c2']
+  };
+  const colors = themes[document.body.dataset.theme] || themes.paper;
+  ['--paper','--surface','--ink','--accent','--line','--raised','--muted'].forEach((name,index)=>document.documentElement.style.setProperty(name,colors[index]));
+  $('brand').innerHTML = result.settings?.logo_data_url ? `<img src="${h(result.settings.logo_data_url)}" alt="">Competition Control` : 'Competition Control';
+}
+function teamRows() {
+  return teams.map(t => `<tr><td><strong>${h(t.code)}</strong></td><td><input data-team-name="${h(t.id)}" value="${h(t.name)}" maxlength="160"></td><td><span class="badge ${t.active?'good':'warn'}">${t.active?'Active':'Inactive'}</span></td><td><div class="actions"><button class="secondary" data-action="save-team" data-id="${h(t.id)}">Save</button><button class="secondary" data-action="toggle-team" data-id="${h(t.id)}" data-active="${t.active}">${t.active?'Deactivate':'Activate'}</button><button class="danger" data-action="delete-team" data-id="${h(t.id)}">Delete</button></div></td></tr>`);
+}
+function teamsPage() {
+  return `${heading('Teams', 'Register and maintain the competition roster.')}
+    <div class="grid cols-2">
+      <section class="card"><h2>Add team</h2><form id="team-form" class="form-grid">
+        <label>Three-letter code<input name="code" maxlength="3" pattern="[A-Za-z]{3}" required></label>
+        <label>Team name<input name="name" maxlength="160" required></label><div class="wide"><button>Add team</button></div>
+      </form></section>
+      <section class="card"><div class="metric">${teams.filter(t=>t.active).length}</div><div class="metric-label">Active teams</div></section>
+    </div>
+    <section class="card" style="margin-top:1rem"><h2>Team roster</h2><p class="subtle">Teams with match, score, challenge or playoff history cannot be deleted; deactivate them to retain the record.</p>${table(['Code','Team name','Status','Actions'],teamRows(),'Add a team to begin.')}</section>`;
+}
+function competitionsPage() {
+  const rows=competitions.map(c=>`<tr><td><strong>${h(c.name)}</strong><br><span class="subtle">${h(c.slug)}</span></td>
+    <td><span class="badge">${h(c.status)}</span></td>
+    <td>${h(c.team_count)} teams</td><td>${h(c.match_count)} matches</td><td>${h(c.challenge_count)} challenges</td>
+    <td><div class="actions"><button data-action="select-competition" data-slug="${h(c.slug)}">${slug()===c.slug?'Selected':'Open'}</button><button class="danger" data-action="prepare-delete-competition" data-slug="${h(c.slug)}">Delete</button></div></td></tr>`);
+  return `${heading('Competitions','Select an event to manage, or create a new one.')}
+    <div class="grid cols-2">
+      <section class="card"><h2>Create competition</h2><form id="competition-form" class="form-grid">
+        <label>Competition name<input name="name" maxlength="120" required></label>
+        <label>URL slug<input name="slug" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" maxlength="80" required></label>
+        <label>Match duration (seconds)<input name="matchDurationSeconds" type="number" value="120" min="1" max="7200" required></label>
+        <div class="wide"><button>Create competition</button></div>
+      </form></section>
+      <section class="card"><div class="metric">${competitions.length}</div><div class="metric-label">Competition instances</div>${compOption()?`<p style="margin-top:1rem"><strong>Selected:</strong> ${h(compOption().name)}</p>`:'<p class="subtle" style="margin-top:1rem">No competition selected.</p>'}</section>
+    </div>
+    <section class="card" style="margin-top:1rem"><h2>Competition instances</h2>${table(['Competition','Status','Teams','Matches','Challenges',''],rows,'Create a competition to get started.')}</section>`;
+}
+function positionsHtml(match) {
+  return `<div class="arena-square">${(match.positions || []).map(p=>{
+    const spot=Number(p.position)-1;
+    return `<div class="arena-cell" data-spot="${spot}" style="border-color:${h(p.colour)};background-color:color-mix(in srgb, ${h(p.colour)} 18%, var(--surface))">
+      <span class="arena-spot">${spot}</span>${p.teamCode?`<span class="arena-code">${h(p.teamCode)}</span><span class="arena-team">${h(p.teamName)}</span>`:'<span class="arena-code vacant">VACANT</span>'}
+    </div>`;
+  }).join('')}</div>`;
+}
+function compactPositionsHtml(match) {
+  return `<div class="live-position-list">${match.positions.map(position=>{
+    const colour=/^#[0-9a-f]{6}$/i.test(position.colour||'')?position.colour:'#777777';
+    return `<span class="live-position" title="Position ${Number(position.position)-1}: ${h(position.teamCode||'Vacant')}"><span class="live-position-number">${Number(position.position)-1}</span><span class="live-position-dot" style="background:${h(colour)}"></span><span>${h(position.teamCode||'—')}</span></span>`;
+  }).join('')}</div>`;
+}
+function formatDelay(seconds) {
+  const wholeSeconds=Math.max(0,Math.floor(Number(seconds)||0));
+  const minutes=Math.floor(wholeSeconds/60);
+  const remainingSeconds=wholeSeconds%60;
+  if(minutes&&remainingSeconds)return `${minutes} min ${remainingSeconds} sec`;
+  if(minutes)return `${minutes} min`;
+  return `${remainingSeconds} sec`;
+}
+function matchRows(source=matches, actions=false, edit=false) {
+  return source.map(m => {
+    const playoffTag=m.isPlayoff?`<br><span class="badge warn">PLAYOFF · ${h(m.bracket_side)} round ${h(m.round_number)}</span>`:'';
+    const playoffCanScore=m.isPlayoff&&['awaiting_score','complete'].includes(m.state);
+    const controls=m.isPlayoff
+      ?actions?`<td><div class="match-actions">${m.state==='ready'?`<button data-action="${m.countdown_started_at?'playoff-cancel-start':'playoff-start'}" data-id="${h(m.id)}">${m.countdown_started_at?'Cancel countdown':'Start now'}</button>`:''}${m.state==='running'?`<button class="secondary" data-action="playoff-pause" data-id="${h(m.id)}">Pause</button><button data-action="playoff-finish" data-id="${h(m.id)}">Finish</button><button class="danger" data-action="playoff-reset-timer" data-id="${h(m.id)}">Reset timer</button>`:''}${m.state==='paused'?`<button class="secondary" data-action="playoff-resume" data-id="${h(m.id)}">Resume</button><button data-action="playoff-finish" data-id="${h(m.id)}">Finish</button><button class="danger" data-action="playoff-reset-timer" data-id="${h(m.id)}">Reset timer</button>`:''}${m.state==='awaiting_score'?`<button class="danger" data-action="playoff-reset-timer" data-id="${h(m.id)}">Reset timer</button>`:''}${playoffCanScore
+        ?`<button class="secondary" data-action="playoff-score" data-id="${h(m.id)}">${m.has_scores?'Correct score':'Enter score'}</button>`
+        :m.state==='pending'?'<span class="subtle">Waiting for prior results</span>':''}</div></td>`:''
+      :edit?`<td><div class="match-actions">${['scheduled','ready','delayed'].includes(m.state)?`<button class="secondary" data-action="edit-schedule" data-id="${h(m.id)}">Edit</button>`:''}${!['running','paused'].includes(m.state)?`<button class="danger" data-action="delete-match" data-id="${h(m.id)}">Delete</button>`:''}</div></td>`
+      :actions?`<td><div class="match-actions">${['scheduled','ready','delayed'].includes(m.state)?`<button data-action="${m.countdown_started_at?'cancel-start':'start'}" data-id="${h(m.id)}">${m.countdown_started_at?'Cancel countdown':'Start'}</button>`:''}${m.state==='running'?`<button class="secondary" data-action="pause" data-id="${h(m.id)}">Pause</button><button data-action="finish" data-id="${h(m.id)}">Finish</button><button class="danger" data-action="reset-match" data-id="${h(m.id)}">Reset timer</button>`:''}${m.state==='paused'?`<button class="secondary" data-action="resume" data-id="${h(m.id)}">Resume</button><button class="danger" data-action="reset-match" data-id="${h(m.id)}">Reset timer</button>`:''}${m.state==='awaiting_score'?`<button class="secondary" data-action="score" data-id="${h(m.id)}">${m.has_scores?'Correct score':'Enter score'}</button><button class="danger" data-action="reset-match" data-id="${h(m.id)}">Reset timer</button>`:''}${['scheduled','ready','delayed'].includes(m.state)&&!m.countdown_started_at?`<button class="secondary" data-action="delay" data-id="${h(m.id)}">Add delay</button>${Number(m.delay_seconds)>0?`<button class="secondary" data-action="undelay" data-id="${h(m.id)}">Reduce delay</button>`:''}`:''}${m.state==='complete'?`<button class="secondary" data-action="score" data-id="${h(m.id)}">${m.has_scores?'Correct score':'Enter score'}</button>`:''}</div></td>`:'';
+    const fill=m.isPlayoff
+      ?`<span class="badge ${m.state==='pending'?'warn':'good'}">${h(m.team_count)}/${h(m.entrant_count)} teams assigned</span>`
+      :`${m.underfilled?`<span class="badge warn">UNDERFILLED ${h(m.team_count)}/4</span>`:'<span class="badge good">4 teams</span>'}${Number(m.delay_seconds)>0?` <span class="badge warn">Delayed by ${h(formatDelay(m.delay_seconds))}</span>`:''}`;
+    return `<tr><td><strong>#${h(m.match_number)}</strong>${playoffTag}<br><span class="subtle">${h(m.arena_name)}</span></td>
+      <td>${h(formatCompetitionDateTime(m.effective_start))}<br><span class="badge">${h(m.state.replaceAll('_',' '))}</span>${m.has_scores?` <span class="badge good">Score entered</span>`:''}${m.countdown_started_at?` <span class="badge warn" data-countdown="${h(new Date(m.countdown_started_at).getTime())}"></span>`:''}${m.actual_start?`<br><span class="match-clock" data-clock data-state="${h(m.state)}" data-start="${h(new Date(m.actual_start).getTime())}" data-paused="${h(m.paused_at?new Date(m.paused_at).getTime():'')}" data-paused-seconds="${h(m.paused_seconds)}" data-duration="${h(m.duration_seconds)}"></span>`:''}</td>
+      <td>${compactPositionsHtml(m)}</td><td>${fill}</td>${edit&&!m.isPlayoff?controls:''}${actions?controls:''}</tr>`;
+  });
+}
+function teamOptions(selected='') {
+  return `<option value="">VACANT</option>${teams.filter(t=>t.active).map(t=>`<option value="${h(t.code)}" ${selected===t.code?'selected':''}>${h(t.code)} — ${h(t.name)}</option>`).join('')}`;
+}
+function schedulePosition(match,spot) {
+  const position=match.positions.find(item=>Number(item.position)===spot+1);
+  const colour=/^#[0-9a-f]{6}$/i.test(position?.colour||'')?position.colour:'#777777';
+  return `<td><strong class="schedule-position-code" style="color:${h(colour)}">${h(position?.teamCode||'VACANT')}</strong></td>`;
+}
+function scheduleMatchRow(match) {
+  if(match.isPlayoff){
+    const scores=Array.isArray(match.scores)?match.scores:[];
+    const entrantCount=Number(match.entrant_count||match.team_count);
+    const result=match.state==='complete'
+      ?`<span class="badge good">Ranked ${scores.map(score=>h(score.teamCode)).join(' · ')}</span> <button class="secondary" data-action="playoff-score" data-id="${h(match.id)}">Correct score</button>`
+      :match.timer_state==='awaiting_score'?`<button data-action="playoff-score" data-id="${h(match.id)}">Enter scores</button>`
+        :match.status==='ready'?'<span class="badge">Start in Live Control to enter scores</span>':'<span class="badge">Waiting for previous results</span>';
+    return `<tr><td><strong>#${h(match.match_number)}</strong><br><span class="badge warn">PLAYOFF · ${h(match.bracket_side)} ${h(match.round_number)}</span></td>
+      <td>${h(formatCompetitionDateTime(match.effective_start))}<br><span class="badge">${h(match.state)}</span></td>
+      <td>${h(match.arena_name)}</td>${[0,1,2,3].map(spot=>schedulePosition(match,spot)).join('')}
+      <td>${entrantCount<4?`<span class="badge warn">${entrantCount}/4 teams · smaller heat</span>`:'<span class="badge good">4 teams</span>'}</td><td><div class="match-actions">${match.state!=='complete'?`<button class="secondary" data-action="edit-playoff-schedule" data-id="${h(match.id)}">Edit schedule</button>`:''}${result}</div></td></tr>`;
+  }
+  return `<tr><td><strong>#${h(match.match_number)}</strong><br><span class="badge">${h(match.state.replaceAll('_',' '))}</span></td>
+    <td>${h(formatCompetitionDateTime(match.effective_start))}${match.countdown_started_at?`<br><span class="badge warn" data-countdown="${h(new Date(match.countdown_started_at).getTime())}"></span>`:''}</td>
+    <td>${h(match.arena_name)}</td>${[0,1,2,3].map(spot=>schedulePosition(match,spot)).join('')}
+    <td>${match.underfilled?`<span class="badge warn">UNDERFILLED ${h(match.team_count)}/4</span>`:'<span class="badge good">4 teams</span>'}</td>
+    <td><div class="match-actions">${['scheduled','ready','delayed'].includes(match.state)?`<button class="secondary" data-action="edit-schedule" data-id="${h(match.id)}">Edit</button>`:''}${!['running','paused'].includes(match.state)&&!match.countdown_started_at?`<button class="danger" data-action="delete-match" data-id="${h(match.id)}">Delete</button>`:''}</div></td></tr>`;
+}
+function positionEditor(index) {
+  return `<label>Position ${index-1}<select name="team${index}">${teamOptions()}</select></label>`;
+}
+async function schedulePage() {
+  playoffData=slug()?await api(`/api/admin/competitions/${encodeURIComponent(slug())}/playoffs`):{bracket:null,matches:[],teams:[]};
+  const nextNumber = matches.reduce((n,m)=>Math.max(n,Number(m.match_number)),0)+1;
+  const nextStart = new Date(Date.now()+60000);
+  nextStart.setSeconds(0,0);
+  const activeTeamCount=teams.filter(team=>team.active).length;
+  const fieldSizes=Array.from({length:Math.max(0,activeTeamCount-1)},(_,index)=>index+2);
+  const fieldSize=activeTeamCount;
+  const intervalMinutes=Math.max(1,Math.ceil(Number(compOption()?.match_duration_seconds||120)/60));
+  const playoffStart=new Date(Math.ceil(Math.max(nextStart.getTime(),...matches.map(match=>
+    new Date(match.effective_start).getTime()+Number(match.duration_seconds||120)*1000))/60000)*60000);
+  const eventRows=scheduleEvents.map(event=>{
+    const start=new Date(event.starts_at);
+    return {start:start.getTime(),row:`<tr><td><strong>${h(event.title)}</strong><br><span class="badge">Event</span></td>
+      <td colspan="7">${h(formatCompetitionDateTime(start))} · ${h(event.duration_minutes)} minutes · ${h(event.location||'No location')}${event.description?` · ${h(event.description)}`:''}</td>
+      <td><div class="match-actions"><button class="secondary" data-action="edit-event" data-id="${h(event.id)}">Edit</button><button class="danger" data-action="delete-event" data-id="${h(event.id)}">Remove</button></div></td></tr>`};
+  });
+  const scheduleRows=[...matches.map(match=>({start:new Date(match.effective_start).getTime(),row:scheduleMatchRow(match)})),...eventRows]
+    .sort((a,b)=>a.start-b.start).map(item=>item.row);
+  const seedBracket=playoffData.bracket;
+  const seedSnapshotAvailable=Array.isArray(seedBracket?.seed_standings_snapshot)&&
+    seedBracket.seed_snapshot_at&&seedBracket.seed_match_number!==null&&seedBracket.seed_match_number!==undefined;
+  const seedMatchDescription=!seedSnapshotAvailable
+    ?'Original source snapshot unavailable; match cutoff cannot be verified for this legacy bracket.'
+    :Number(seedBracket.seed_match_number)===0
+      ?'No scored league matches had been recorded when this standings snapshot was captured.'
+      :`Highest-numbered scored league match included: #${h(seedBracket.seed_match_number)}.`;
+  const seedSnapshotDescription=seedSnapshotAvailable
+    ?`Captured ${h(formatCompetitionDateTime(seedBracket.seed_snapshot_at))}. ${seedMatchDescription}`
+    :seedMatchDescription;
+  const seedCheckUrl=`/api/admin/competitions/${encodeURIComponent(slug())}/playoffs/seed-check`;
+  return `${heading('Schedule', 'Generate a balanced schedule or add a match manually.')}
+    <section class="card"><h2>Generate balanced schedule</h2><form id="generate-form" class="form-grid cols-3">
+      <label>Number of matches<input name="matchCount" type="number" min="1" value="${Math.max(1,teams.filter(t=>t.active).length*3)}" required></label>
+      <label>First scheduled start<input name="firstStart" type="datetime-local" value="${toLocalDate(nextStart)}" required></label>
+      <label>Start-to-start interval per arena (minutes)<input name="interval" type="number" min="1" value="3" required></label>
+      <label>Arenas<input name="arenas" value="Arena 1" required></label>
+      <p class="subtle wide">This is the time between scheduled match starts in the same arena. For example, 5 minutes means the next match starts exactly 5 minutes later, regardless of match duration.</p>
+      <div class="wide"><button>Generate schedule</button></div>
+    </form></section>
+    <section class="card" style="margin-top:1rem"><h2>Add single match</h2><form id="manual-match-form">
+      <div class="form-grid cols-3">
+        <label>Match number<input name="matchNumber" type="number" min="1" value="${nextNumber}" required></label>
+        <label>Arena<input name="arenaName" value="Arena 1" required></label>
+        <label>Scheduled start<input name="scheduledStart" type="datetime-local" value="${toLocalDate(nextStart)}" required></label>
+        ${[1,2,3,4].map(positionEditor).join('')}
+        <label class="wide">Reason for underfilled match<input name="underfilledReason" maxlength="500" placeholder="Required when fewer than four teams are assigned"></label>
+      </div><div style="margin-top:1rem"><button>Add match</button></div>
+    </form></section>
+    <section class="card" style="margin-top:1rem"><h2 id="event-form-title">Add a scheduled event</h2><p class="subtle">Matches are shifted in whole-minute increments around event times, including lunch; later matches in the same arena move with them.</p><form id="event-form" class="form-grid cols-3">
+      <label>Event title<input name="title" maxlength="120" placeholder="Lunch or opening talk" required></label>
+      <label>Start time<input name="startsAt" type="datetime-local" value="${toLocalDate(nextStart)}" required></label>
+      <label>Duration (minutes)<input name="durationMinutes" type="number" min="1" max="1440" value="30" required></label>
+      <label>Location<input name="location" maxlength="120"></label>
+      <label class="wide">Description<input name="description" maxlength="1000"></label>
+      <div class="wide"><button id="event-submit">Add event</button><button id="event-cancel" type="button" data-action="cancel-event-edit" class="secondary hidden">Cancel edit</button></div>
+    </form></section>
+    <section class="card" style="margin-top:1rem"><h2>${playoffData.bracket?'Replace scheduled playoffs':'Schedule playoff heats'}</h2>
+      ${seedBracket?`<div role="status" style="margin:.8rem 0 1rem;padding:.8rem 1rem;border-left:5px solid ${seedSnapshotAvailable?'var(--good,#16804a)':'var(--warn,#b66a00)'};background:var(--surface,#f2f5f4)">
+        <strong>${seedBracket.seed_frozen_at?'Frozen playoff seeding snapshot':'Current playoff seeding snapshot'}</strong>
+        <span> · ${seedSnapshotDescription}</span>
+        <a href="${seedCheckUrl}" style="display:inline-block;margin-left:.5rem">Open standings sanity check</a>
+      </div>`:''}
+      <p class="subtle">Choose any field size from 2 up to all active teams; the default includes every active team. Heats use four teams where possible, with 2- or 3-team heats when needed so odd and non-power-of-four fields can progress without dropping anyone. Top two advance in 3- and 4-team heats; in a 2-team heat, the winner advances. The remaining team(s) take a loss, and teams with two losses are out. Later team slots fill automatically from prior heat placings. The final four are ranked 1st–4th; for a field smaller than four, the final heat ranks the entrants available. Ties are settled by league standing. Playoff seeds and entrants update with the latest standings until the first playoff countdown starts, then freeze to protect the bracket. Playoff scores do not affect league points.</p>
+      <p class="subtle">Choose when the first heat starts, the minutes between heat slots, and an optional extra buffer before the final. Heats are shifted around custom events. If a result is entered late, later heats move forward as needed while retaining their planned gaps and the extra final buffer.</p>
+      <form id="playoff-form" data-replace="${playoffData.bracket?'true':'false'}" class="form-grid cols-3">
+        <label>Playoff entrants<select name="fieldSize" ${fieldSizes.length?'':'disabled'}>${fieldSizes.map(size=>`<option value="${size}" ${size===fieldSize?'selected':''}>Top ${size} teams</option>`).join('')}</select></label>
+        <label>First playoff heat<input name="scheduledStart" type="datetime-local" value="${toLocalDate(playoffStart)}" required></label>
+        <label>Arena<input name="arenaName" value="Arena 1" required></label>
+        <label>Minutes between heats<input name="intervalMinutes" type="number" min="${intervalMinutes}" max="1440" value="${intervalMinutes}" required></label>
+        <label>Extra delay before final (minutes)<input name="finalDelayMinutes" type="number" min="0" max="1440" value="0" required></label>
+        <div class="wide"><button ${fieldSizes.length?'':'disabled'}>${playoffData.bracket?'Replace and reschedule':'Generate and schedule playoff heats'}</button></div>
+      </form>
+      ${playoffData.bracket?`<p class="subtle" style="margin-top:1rem">Current bracket: top ${h(playoffData.bracket.field_size)} from standings · ${playoffData.bracket.seed_frozen_at?'seeds frozen when play began':'seeds update from the latest league standings until the first playoff countdown starts'} · ${h(playoffData.bracket.status)}. Replacing archives its progression and scores.</p>`:''}
+    </section>
+    <section class="card" style="margin-top:1rem"><h2>Competition schedule</h2>${table(['Match','Time / status','Arena','Position 0','Position 1','Position 2','Position 3','Fill','Actions'],scheduleRows,'No matches or events scheduled.')}</section>
+    <section class="card danger-card" style="margin-top:1rem"><div class="section-title"><h2>Clear schedule</h2><button class="danger" data-action="clear-schedule">Clear all scheduled content</button></div>
+      <p class="subtle">Permanently deletes ${matches.length} match(es), ${scheduleEvents.length} custom event(s), all generated playoff heats and their scores. Teams, challenges, settings and public displays stay intact. Active, paused, awaiting-score matches or an active countdown must be stopped first.</p>
+      <div style="margin-top:1rem"><button class="danger" data-action="clear-matches">Clear matches only</button>
+      <p class="subtle">Deletes league matches, all playoff heats and saved match scores, but keeps custom timed events such as lunch and breaks. Teams and challenge points stay intact. Active matches or countdowns must be stopped first.</p></div>
+    </section>`;
+}
+function toLocalDate(date) {
+  return new Date(date.getTime()-date.getTimezoneOffset()*60000).toISOString().slice(0,16);
+}
+async function overviewPage() {
+  const comp=compOption();
+  const standingsData=slug()?await leagueData():{standings:[]};
+  const standings=standingsData.standings||[];
+  const upcomingItems=[
+    ...matches.filter(match=>!['complete','cancelled'].includes(match.state)).map(match=>({
+      time:new Date(match.effective_start).getTime(),
+      row:`<tr><td><strong>${match.isPlayoff?'Heat':'Match'} #${h(match.match_number)}</strong>${match.isPlayoff?'<br><span class="badge warn">PLAYOFF</span>':''}</td><td>${h(formatCompetitionDateTime(match.effective_start))}</td><td>${h(match.arena_name)}</td><td>${h(match.positions.filter(position=>position.teamCode).map(position=>position.teamCode).join(' · ')||'Waiting for playoff results')}</td><td>${h(match.state.replaceAll('_',' '))}</td></tr>`
+    })),
+    ...scheduleEvents.map(event=>({
+      time:new Date(event.starts_at).getTime(),
+      row:`<tr><td><strong>${h(event.title)}</strong><br><span class="badge">Event</span></td><td>${h(formatCompetitionDateTime(event.starts_at))}</td><td>${h(event.location||'—')}</td><td>—</td><td>${h(event.duration_minutes)} min</td></tr>`
+    }))
+  ].filter(item=>item.time>=Date.now()).sort((a,b)=>a.time-b.time).slice(0,6).map(item=>item.row);
+  const running=matches.filter(m=>['running','paused','awaiting_score'].includes(m.state));
+  const activeTeams=teams.filter(team=>team.active).length;
+  const scheduledCount=matches.filter(match=>!['complete','cancelled'].includes(match.state)).length;
+  const completedCount=matches.filter(match=>match.state==='complete').length;
+  const miniLeague=standings.slice(0,5).map((team,index)=>`<tr><td>${index+1}</td><td><strong>${h(team.code)}</strong></td><td>${h(team.name)}</td><td><strong>${h(team.league_points)}</strong></td></tr>`);
+  return `${comp
+    ? `<div class="overview-intro"><div><h1>${h(comp.name)}</h1><p>Competition overview and live event status</p></div><div class="actions"><button class="secondary" data-action="go-page" data-page="matches">Open live control</button><button data-action="go-page" data-page="schedule">Manage schedule</button></div></div>`
+    : heading('Overview','Create a competition to get started.')}
+    ${!comp?`<section class="card"><h2>Create competition</h2><form id="competition-form" class="form-grid"><label>Competition name<input name="name" maxlength="120" required></label><label>Public slug<input name="slug" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" required></label><label>Match duration (seconds)<input name="matchDurationSeconds" type="number" value="120" min="1" max="7200" required></label><div class="wide"><button>Create competition</button></div></form></section>`:
+    `<div class="grid cols-4">
+      <section class="card metric-card"><div class="metric">${activeTeams}</div><div class="metric-label">Active teams</div></section>
+      <section class="card metric-card"><div class="metric">${scheduledCount}</div><div class="metric-label">Upcoming / active matches</div></section>
+      <section class="card metric-card"><div class="metric">${completedCount}</div><div class="metric-label">Completed matches</div></section>
+      <section class="card metric-card"><div class="metric">${scheduleEvents.length}</div><div class="metric-label">Scheduled events</div></section>
+    </div>
+    <div class="grid cols-2 overview-section">
+      <section class="card"><h2>Live matches</h2>${running.length?table(['Match','Arena','Teams','Status'],running.map(m=>`<tr><td>#${h(m.match_number)}</td><td>${h(m.arena_name)}</td><td>${h(m.positions.filter(p=>p.teamCode).map(p=>p.teamCode).join(' · '))}</td><td><span class="badge">${h(m.state.replaceAll('_',' '))}</span></td></tr>`)):'<div class="empty">No matches in progress.</div>'}</section>
+      <section class="card"><div class="section-title"><h2>League leaders</h2><button class="secondary" data-action="go-page" data-page="league">Full table</button></div>${table(['Rank','Code','Team','Points'],miniLeague,'No league standings yet.')}</section>
+    </div>
+    <section class="card overview-section"><div class="section-title"><h2>Upcoming schedule</h2><button class="secondary" data-action="go-page" data-page="schedule">Manage schedule</button></div>${table(['Item','Time','Arena / location','Teams','Status / duration'],upcomingItems,'No upcoming matches or events.')}</section>
+    <section class="card" style="margin-top:1rem"><div class="section-title"><h2>Competition status</h2>${comp.status==='draft'?`<button data-action="publish">Publish competition</button>`:`<span class="badge good">${h(comp.status)}</span>`}</div><p class="subtle">Public displays become available after publishing.</p></section>`}`;
+}
+async function leagueData() {
+  return slug()?api(`/api/admin/competitions/${encodeURIComponent(slug())}/league`):{standings:[]};
+}
+async function leaguePage() {
+  const data=await leagueData();
+  const rows=data.standings.map((t,i)=>`<tr><td>${i+1}</td><td><strong>${h(t.code)}</strong></td><td>${h(t.name)}</td><td>${h(t.match_points)}</td><td>${h(t.challenge_points)}</td><td><strong>${h(t.league_points)}</strong></td><td>${h(t.scored_matches)}</td></tr>`);
+  return `${heading('League table','Match points are totalled across all entered scores.')}
+    <section class="card"><div class="section-title"><h2>Standings</h2><a href="/public/v1/${encodeURIComponent(slug())}/league" target="_blank">Public JSON</a></div>${table(['Rank','Code','Team','Match points','Challenge points','Total points','Scored matches'],rows)}</section>`;
+}
+async function challengesPage() {
+  const challenges=slug()?await api(`/api/admin/competitions/${encodeURIComponent(slug())}/challenges`):[];
+  const cards=challenges.map(challenge=>{
+    const completed=new Map((challenge.teams||[]).map(team=>[team.code,team]));
+    const teamList=teams.filter(team=>team.active).map(team=>{
+      const completion=completed.get(team.code);
+      return `<tr><td><strong>${h(team.code)}</strong> · ${h(team.name)}</td><td>${completion?`<span class="badge good">Completed</span> <button class="secondary" data-action="undo-challenge" data-challenge="${h(challenge.id)}" data-team="${h(team.code)}">Undo</button>`:`<button data-action="complete-challenge" data-challenge="${h(challenge.id)}" data-team="${h(team.code)}">Award ${h(challenge.points)} points</button>`}</td></tr>`;
+    });
+    return `<section class="card challenge-card"><div class="section-title"><h2>${h(challenge.name)}</h2><strong>${h(challenge.points)} pts</strong></div>${challenge.description?`<p>${h(challenge.description)}</p>`:''}<p class="subtle">Each team can complete this challenge once.</p>${table(['Team','Completion'],teamList,'Add active teams to award challenge points.')}</section>`;
+  }).join('');
+  return `${heading('Challenges','Create competition-specific challenges and award points when teams complete them.')}
+    <section class="card"><h2>Create challenge</h2><form id="challenge-form" class="form-grid">
+      <label>Challenge name<input name="name" maxlength="120" required></label>
+      <label>League points<input name="points" type="number" min="0" max="1000000" step="any" required></label>
+      <label class="wide">Description<textarea name="description" maxlength="1000"></textarea></label>
+      <div class="wide"><button>Create challenge</button></div>
+    </form></section>
+    <div class="grid" style="margin-top:1rem">${cards||'<section class="card empty">No challenges in this competition.</section>'}</div>`;
+}
+function arenaPage() {
+  const current=matches.find(m=>['running','paused','awaiting_score'].includes(m.state))||matches.find(m=>['scheduled','ready','delayed'].includes(m.state));
+  const matchesOptions=matches.map(m=>`<option value="${h(m.id)}" ${current?.id===m.id?'selected':''}>${h(m.match_number)} · ${h(m.arena_name)} · ${h(m.state)}</option>`).join('');
+  return `${heading('Arena','Position assignments and corner colours for each match.')}
+    <section class="card"><h2>Arena position colours</h2><p class="subtle">These four colours apply to every match in this competition, including matches already on the schedule, and identify each corner on the SR Shepherding board.</p>
+      <form id="arena-colours-form" class="form-grid cols-3">${positionColours.map((colour,index)=>`<label>Position ${index}<input type="color" name="cornerColour${index}" value="${h(colour)}"></label>`).join('')}
+        <div class="wide"><button>Save competition colours</button></div>
+      </form>
+    </section>
+    <section class="card"><label>Match<select id="arena-match">${matchesOptions}</select></label>
+      ${current?`<div id="arena-position-view">${positionsHtml(current)}</div>${current.underfilled?`<p class="badge warn" style="margin-top:1rem">UNDERFILLED MATCH · ${h(current.team_count)}/4 positions</p>`:''}<p class="subtle">Position 0 starts at bottom-left; positions continue clockwise: 1 top-left, 2 top-right, 3 bottom-right.</p>`:'<div class="empty">No matches scheduled.</div>'}</section>`;
+}
+async function displaysPage() {
+  const displays=slug()?await api(`/api/admin/competitions/${encodeURIComponent(slug())}/displays`):[];
+  displayRecords=displays;
+  const types=[
+    ['league','League table'],['schedule','Schedule'],['results','Match points history'],
+    ['arena','Arena diagram'],['timer','Match timer'],['corner','Corner display'],
+    ['sr-arena','SR — Arena'],['sr-outside','SR — Outside'],['sr-producer','SR — Producer'],
+    ['sr-shepherding','SR — Shepherding'],['sr-staging','SR — Staging']
+  ];
+  const typeLabels=new Map(types);
+  const rows=displays.map(d=>{
+    const url=`${location.origin}/display/${encodeURIComponent(d.slug)}`;
+    const type=d.display_type;
+    return `<tr><td><strong>${h(d.title)}</strong><br><span class="subtle">${h(typeLabels.get(type)||type)}</span></td><td><code>${h(d.slug)}</code></td><td><a href="${h(url)}" target="_blank">${h(url)}</a><br><button class="secondary" data-action="copy" data-copy="${h(url)}">Copy URL</button></td><td><span class="badge ${d.enabled?'good':'warn'}">${d.enabled?'Enabled':'Disabled'}</span></td>    <td><div class="actions"><button class="secondary" data-action="configure-display" data-id="${h(d.id)}">Configure</button><button class="secondary" data-action="toggle-display" data-id="${h(d.id)}" data-enabled="${d.enabled}">${d.enabled?'Disable':'Enable'}</button><button class="secondary" data-action="copy" data-copy='<iframe src="${h(url)}" title="${h(d.title)}" width="100%" height="600" loading="lazy"></iframe>'>Copy embed</button><button class="danger" data-action="delete-display" data-id="${h(d.id)}">Delete</button></div></td></tr>`;
+  });
+  return `${heading('Public displays','Create shareable pages and embeddable competition outputs.')}
+    <section class="card"><h2>Create display</h2><form id="display-form" class="form-grid cols-3">
+      <label>Title<input name="title" maxlength="120" required></label><label>URL slug<input name="slug" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" maxlength="80" required></label>
+      <label>Display type<select name="type">${types.map(([v,n])=>`<option value="${v}">${n}</option>`).join('')}</select></label>
+      <fieldset class="wide"><legend>Board options</legend><div class="display-options">
+        <label class="toggle-control" data-option-except="corner"><input type="checkbox" name="showTitle" checked> Show title and competition heading</label>
+        <label class="toggle-control" data-option-types="schedule,arena,timer,sr-arena,sr-producer,sr-staging"><input type="checkbox" name="showArena" checked> Show arena name</label>
+        <label class="toggle-control" data-option-types="arena,sr-arena"><input type="checkbox" name="fillCorners"> Fill corner squares with assigned colours</label>
+        <label class="toggle-control" data-option-types="arena,sr-arena"><input type="checkbox" name="showTeamNames" checked> Show team names</label>
+        <label class="toggle-control" data-option-types="arena,sr-arena"><input type="checkbox" name="showPositionNumbers" checked> Show position numbers</label>
+        <label class="toggle-control" data-option-for="corner"><input type="checkbox" name="fillCornerDisplay" checked> Use the corner colour as the full-screen background</label>
+        <label class="toggle-control" data-option-for="corner"><input type="checkbox" name="showCornerPositionNumber" checked> Show the corner number in the background</label>
+        <label class="toggle-control" data-option-for="corner"><input type="checkbox" name="showCornerTeamName" checked> Show team name below the code</label>
+        <label class="toggle-control" data-option-except="corner"><input type="checkbox" name="darkTheme"> Use dark theme for this display</label>
+        <label class="toggle-control" data-option-types="schedule,sr-staging"><input type="checkbox" name="hideCompletedEvents"> Hide completed events from schedule display</label>
+        <label class="toggle-control" data-option-types="schedule,sr-staging"><input type="checkbox" name="hideCompletedMatches"> Hide completed matches from schedule display</label>
+        <label class="toggle-control" data-option-types="schedule,sr-staging"><input type="checkbox" name="enableTeamFilter"> Show team filter dropdown</label>
+        <label class="toggle-control" data-option-types="schedule,sr-staging"><input type="checkbox" name="relativeTime"> Replace time with time until / since match</label>
+        <label class="toggle-control" data-option-types="schedule,sr-staging"><input type="checkbox" name="hideScheduleArena"> Hide arena column</label>
+        <label data-option-for="corner">Corner position<select name="cornerPosition"><option value="0">Position 0 · bottom-left</option><option value="1">Position 1 · top-left</option><option value="2">Position 2 · top-right</option><option value="3">Position 3 · bottom-right</option></select></label>
+        <label class="toggle-control" data-option-types="arena,timer,corner,sr-arena,sr-producer"><input type="checkbox" name="showStartCue"> Show synchronized red 3-2-1 and green GO cue</label>
+        <label class="toggle-control" data-option-types="arena,timer,corner,sr-arena,sr-producer"><input type="checkbox" name="flashCountdownNumbers"> Flash alternate countdown numbers</label>
+        <label data-option-types="arena,timer,corner,sr-arena,sr-producer">Countdown background<input type="color" name="countdownBackgroundColor" value="#a21f24"></label>
+        <label data-option-types="arena,timer,corner,sr-arena,sr-producer">Alternate flash background<input type="color" name="countdownFlashColor" value="#ffffff"></label>
+        <label data-option-types="arena,timer,corner,sr-arena,sr-producer">Show GO for<select name="cueDurationSeconds"><option value="1">1 second</option><option value="2" selected>2 seconds</option><option value="3">3 seconds</option><option value="4">4 seconds</option><option value="5">5 seconds</select></label>
+        <label data-option-types="arena,timer,corner,sr-arena,sr-producer">GO screen background<input type="color" name="goBackgroundColor" value="#167847"></label>
+        <label class="toggle-control" data-option-types="arena,timer,corner,sr-arena,sr-producer"><input type="checkbox" name="showEndCue"> Show END when the match timer ends</label>
+        <label class="toggle-control" data-option-types="timer,sr-producer"><input type="checkbox" name="showPreviousResults"> Show previous match scores at the bottom</label>
+        <label data-option-types="arena,timer,corner,sr-arena,sr-producer">Show END for<select name="endCueDurationSeconds"><option value="1">1 second</option><option value="2">2 seconds</option><option value="3" selected>3 seconds</option><option value="4">4 seconds</option><option value="5">5 seconds</option><option value="6">6 seconds</option><option value="7">7 seconds</option><option value="8">8 seconds</option><option value="9">9 seconds</option><option value="10">10 seconds</option></select></label>
+        <label class="toggle-control" data-option-types="arena,timer,corner,sr-arena,sr-producer"><input type="checkbox" name="showEndCountdown"> Show countdown during final seconds</label>
+        <label data-option-types="arena,timer,corner,sr-arena,sr-producer">Final countdown starts at<input type="number" name="endCountdownSeconds" min="1" max="60" value="10"></label>
+        <label data-option-types="arena,timer,corner,sr-arena,sr-producer">END screen background<input type="color" name="endBackgroundColor" value="#b3131b"></label>
+        <label data-option-types="sr-arena,sr-producer,sr-shepherding,sr-staging">SR arena filter (blank for all)<input name="srArenaName" maxlength="120"></label>
+        <label data-option-for="sr-outside">SR competition website URL<input name="srExternalUrl" maxlength="500"></label>
+        <label data-option-for="sr-outside">SR maximum leaderboard teams<input name="srMaxTeams" type="number" min="1" max="32" value="6"></label>
+        <label data-option-for="sr-outside">SR maximum knockout rounds<input name="srMaxKnockoutRounds" type="number" min="1" max="12" value="5"></label>
+        <label data-option-for="sr-outside">SR page rotation interval (seconds)<input name="srRotationSeconds" type="number" min="5" max="120" value="15"></label>
+        <label data-option-for="sr-staging">SR staging corner order (0-3, clockwise)<input name="srStagingCornerOrder" value="0,3,2,1" maxlength="15"></label>
+        <label class="toggle-control" data-option-for="sr-outside"><input type="checkbox" name="srHideLeaderboard"> Hide leaderboard page</label>
+        <label class="toggle-control" data-option-for="sr-outside"><input type="checkbox" name="srHideSchedule"> Hide schedule page</label>
+        <label class="toggle-control" data-option-for="sr-outside"><input type="checkbox" name="srHideKnockout"> Hide knockout page</label>
+      </div><p class="subtle" style="margin:.75rem 0 0">Corner displays show the team code prominently, with optional team name and corner-colour background. Their synchronized clock labels whether it starts in or time is left. Timer, Arena and Corner screens show a synchronized two-second GET READY, then 3-2-1-GO; the background and optional alternating number flash are configurable.</p></fieldset>
+      <fieldset class="wide staging-config" data-option-for="sr-shepherding,sr-staging">
+        <legend>Shepherding &amp; staging control panel</legend>
+        <p class="subtle">Choose how much recent match history remains visible and when staging closes after the previous match starts. These staging times are calculated from the preceding match’s actual start, or its scheduled start until it begins. Corner colours come from Arena position colour settings.</p>
+        <div class="display-options">
+          <label data-option-for="sr-shepherding">Past matches to keep visible<input name="srShepherdingPastMatches" type="number" min="0" max="5" value="1"></label>
+          <label>Close staging after previous match starts (minutes)<input name="srStagingCloseOffsetMinutes" type="number" min="0" max="30" value="5"></label>
+        </div>
+      </fieldset>
+      <div class="wide"><button>Create public display</button></div>
+    </form></section>
+    <section class="card" style="margin-top:1rem"><h2>Configured displays</h2>${table(['Display','Slug','Public URL','Status','Actions'],rows,'No public displays yet.')}</section>`;
+}
+async function settingsPage() {
+  if (!slug()) return `${heading('Settings')}<div class="card empty">Create or select a competition first.</div>`;
+  const {competition,settings}=await api(`/api/admin/competitions/${encodeURIComponent(slug())}/settings`);
+  const theme=settings?.theme||'paper';
+  const logo=settings?.logo_data_url||'';
+  const themes=[
+    ['paper','Paper',['#f4f5f7','#fff','#19212c','#3267d5']],
+    ['field','Field',['#eef4ee','#fff','#18332b','#21805c']],
+    ['night','Night',['#101820','#1b2732','#edf3f4','#72a6ff']]
+  ];
+  return `${heading('Settings','Competition timezone, branding and display appearance.')}
+    <section class="card" style="margin-bottom:1rem"><h2>Schedule timezone</h2><label>Competition timezone (IANA)<input form="settings-form" name="timezone" value="${h(competition.timezone||'UTC')}" maxlength="100" placeholder="Europe/London" required></label><p class="subtle">All scheduled match and event times are displayed in this timezone. Use an IANA name such as Europe/London.</p></section>
+    <section class="card"><h2>Theme</h2><form id="settings-form">
+      <div class="theme-choices">${themes.map(([key,name,swatches])=>`<label class="theme-option ${theme===key?'selected':''}"><div class="swatches">${swatches.map(c=>`<i style="background:${c}"></i>`).join('')}</div><span><input type="radio" name="theme" value="${key}" ${theme===key?'checked':''} style="width:auto;min-height:0;margin-right:.35rem">${name}</span></label>`).join('')}</div>
+      <h2 style="margin-top:1.5rem">Competition logo</h2><label>Upload PNG, JPEG or WebP (maximum 1 MB)<input id="logo-file" type="file" accept="image/png,image/jpeg,image/webp"></label>
+      <input id="logo-data" type="hidden" value="${h(logo)}">${logo?`<img id="logo-preview" class="preview-logo" src="${h(logo)}" alt="Competition logo preview">`:'<img id="logo-preview" class="preview-logo hidden" alt="Competition logo preview">'}
+      <div class="actions" style="margin-top:1rem"><button>Save settings</button><button type="button" class="secondary" id="remove-logo">Remove logo</button></div>
+    </form></section>`;
+}
+async function activityPage() {
+  const events=await api('/api/admin/audit');
+  return `${heading('Activity','Recent administrative and system events.')}
+    <section class="card">${table(['Time','Actor','Action','Details'],events.slice(0,100).map(e=>`<tr><td>${h(new Date(e.created_at).toLocaleString())}</td><td>${h(e.actor_email)}</td><td>${h(e.action)}</td><td>${h(JSON.stringify(e.details))}</td></tr>`),'No activity recorded.')}</section>`;
+}
+async function matchesPage() {
+  if(!slug())return `${heading('Live control','Select a competition to manage match operations.')}<div class="card empty">Create or select a competition to continue.</div>`;
+  const timerDisplays=await api(`/api/admin/competitions/${encodeURIComponent(slug())}/displays`);
+  const timerDisplay=timerDisplays.find(display=>display.display_type==='timer'&&display.enabled);
+  const now=Date.now();
+  const active=matches.filter(match=>['running','paused','awaiting_score'].includes(match.state)||Boolean(match.countdown_started_at)||
+    (match.isPlayoff&&match.state==='ready'&&new Date(match.effective_start).getTime()<=now))
+    .sort((left,right)=>new Date(left.effective_start)-new Date(right.effective_start));
+  const future=matches.filter(match=>!['running','paused','awaiting_score','complete','cancelled'].includes(match.state)&&!match.countdown_started_at&&
+    !(match.isPlayoff&&match.state==='ready'&&new Date(match.effective_start).getTime()<=now))
+    .sort((left,right)=>new Date(left.effective_start)-new Date(right.effective_start));
+  const past=matches.filter(match=>['complete','cancelled'].includes(match.state))
+    .sort((left,right)=>new Date(right.actual_end||right.effective_start)-new Date(left.actual_end||left.effective_start));
+  return `${heading('Live control','Start, pause, delay, finish, and score matches.')}
+    <section class="card"><div class="section-title"><h2>Automatic starts</h2><label class="toggle-control"><input id="auto-run-toggle" type="checkbox" ${autoRunEnabled?'checked':''}> Enable competition auto-run</label></div>
+      <p class="subtle">When enabled, every scheduled match starts automatically at its effective start time. When disabled, matches wait for an operator to start them. The synchronized 3-2-1 countdown is shown on connected timer and arena displays.</p>
+      ${timerDisplay?`<a href="/display/${encodeURIComponent(timerDisplay.slug)}" target="_blank" rel="noopener">Open live arena timer</a>`:`<p class="subtle">Create and enable a Timer display in Public displays to publish the live arena clock.</p>`}
+    </section>
+    <section class="card"><h2>Active</h2>${table(['Match','Time / status','Arena positions','Fill','Controls'],matchRows(active,true),'No active matches.')}</section>
+    <section class="card" style="margin-top:1rem"><div class="section-title"><h2>Future matches</h2><button class="secondary" data-action="undelay-all" ${future.some(match=>new Date(match.effective_start)>new Date(match.scheduled_start))?'':'disabled'}>Undelay all future matches</button></div>
+      <p class="subtle">Restores unstarted league matches and active playoff heats to their original future start times. Matches with a countdown, active arena conflict, schedule conflict, event conflict, or original start in the past are left unchanged.</p>
+      ${table(['Match','Time / status','Arena positions','Fill','Controls'],matchRows(future,true),'No future matches.')}</section>
+    <section class="card" style="margin-top:1rem"><h2>Past matches</h2>${table(['Match','Time / status','Arena positions','Fill','Controls'],matchRows(past,true),'No past matches.')}</section>`;
+}
+async function render() {
+  const pages={competitions:competitionsPage,overview:overviewPage,teams:teamsPage,challenges:challengesPage,schedule:schedulePage,matches:matchesPage,league:leaguePage,arena:arenaPage,displays:displaysPage,settings:settingsPage,activity:activityPage};
+  const pageToRender=page;
+  const revision=++renderRevision;
+  const content=await pages[pageToRender]();
+  if(revision!==renderRevision||pageToRender!==page)return;
+  $('view').innerHTML=content;
+  if(pageToRender==='displays')updateDisplayOptionVisibility($('display-form'));
+}
+async function postMatch(action,id,body={}) {
+  const result=await api(`/api/admin/matches/${id}/${action}`,{method:'POST',body:JSON.stringify(body)});
+  await loadData();
+  notify(action==='resume'&&result.shiftedMatchIds?.length
+    ?`Match resumed. ${result.shiftedMatchIds.length} later match(es) delayed to prevent an overlap.`
+    :'Match updated.');
+}
+async function startMatchCountdown(button,id) {
+  button.disabled=true;
+  try{
+    await api(`/api/admin/matches/${id}/start`,{method:'POST',body:'{}'});
+    await loadData();
+    notify('Synchronized start countdown started.');
+  }catch(error){
+    showError(error);
+    void loadData().catch(showError);
+  }finally{
+    if(button.isConnected)button.disabled=false;
+  }
+}
+function formData(form) { return Object.fromEntries(new FormData(form).entries()); }
+function displayOptionsFromForm(form) {
+  const displayType=form.elements.type?.value||form.dataset.displayType;
+  const isSrOutside=displayType==='sr-outside';
+  const isSrShepherding=displayType==='sr-shepherding';
+  const isSrStaging=displayType==='sr-staging';
+  const srHideOutsidePages=isSrOutside?['leaderboard','schedule','knockout']
+    .filter(page=>form.elements[`srHide${page[0].toUpperCase()}${page.slice(1)}`].checked):[];
+  if(isSrOutside&&srHideOutsidePages.includes('leaderboard')&&srHideOutsidePages.includes('schedule')){
+    throw new Error('Keep either the schedule or leaderboard visible on the SR Outside display.');
+  }
+  const srStagingCornerOrder=displayType==='sr-staging'
+    ?form.elements.srStagingCornerOrder.value.split(',').map(value=>Number(value.trim()))
+    :[0,3,2,1];
+  if(displayType==='sr-staging'&&(srStagingCornerOrder.length!==4||srStagingCornerOrder.some(value=>!Number.isInteger(value)||value<0||value>3)||new Set(srStagingCornerOrder).size!==4)){
+    throw new Error('Staging corner order must contain 0, 1, 2 and 3 exactly once.');
+  }
+  return {
+    showTitle:form.elements.showTitle.checked,
+    showArena:form.elements.showArena.checked,
+    fillCorners:form.elements.fillCorners.checked,
+    showTeamNames:form.elements.showTeamNames.checked,
+    showPositionNumbers:form.elements.showPositionNumbers.checked,
+    fillCornerDisplay:form.elements.fillCornerDisplay.checked,
+    showCornerTeamName:form.elements.showCornerTeamName.checked,
+    showCornerPositionNumber:form.elements.showCornerPositionNumber.checked,
+    showStartCue:form.elements.showStartCue.checked,
+    showEndCue:form.elements.showEndCue.checked,
+    showEndCountdown:form.elements.showEndCountdown.checked,
+    showPreviousResults:form.elements.showPreviousResults.checked,
+    flashCountdownNumbers:form.elements.flashCountdownNumbers.checked,
+    darkTheme:displayType==='corner'?false:form.elements.darkTheme.checked,
+    hideCompletedEvents:form.elements.hideCompletedEvents.checked,
+    hideCompletedMatches:form.elements.hideCompletedMatches.checked,
+    enableTeamFilter:form.elements.enableTeamFilter.checked,
+    relativeTime:form.elements.relativeTime.checked,
+    hideScheduleArena:form.elements.hideScheduleArena.checked,
+    cornerPosition:Number(form.elements.cornerPosition.value),
+    countdownBackgroundColor:form.elements.countdownBackgroundColor.value,
+    countdownFlashColor:form.elements.countdownFlashColor.value,
+    goBackgroundColor:form.elements.goBackgroundColor.value,
+    endBackgroundColor:form.elements.endBackgroundColor.value,
+    endCountdownSeconds:Number(form.elements.endCountdownSeconds.value),
+    cueDurationSeconds:Number(form.elements.cueDurationSeconds.value),
+    endCueDurationSeconds:Number(form.elements.endCueDurationSeconds.value),
+    srArenaName:form.elements.srArenaName.value.trim(),
+    srMaxTeams:isSrOutside?Number(form.elements.srMaxTeams.value):6,
+    srMaxKnockoutRounds:isSrOutside?Number(form.elements.srMaxKnockoutRounds.value):5,
+    srHideOutsidePages,
+    srStagingCornerOrder,
+    srShepherdingPastMatches:isSrShepherding?Number(form.elements.srShepherdingPastMatches.value):1,
+    srStagingCloseOffsetMinutes:isSrShepherding||isSrStaging?Number(form.elements.srStagingCloseOffsetMinutes.value):5,
+    srRotationSeconds:isSrOutside?Number(form.elements.srRotationSeconds.value):15,
+    srExternalUrl:isSrOutside?form.elements.srExternalUrl.value.trim():''
+  };
+}
+function updateDisplayOptionVisibility(form) {
+  const type=form.elements.type?.value||form.dataset.displayType;
+  form.querySelectorAll('[data-option-for]').forEach(label=>{
+    label.classList.toggle('hidden',!label.dataset.optionFor.split(',').includes(type));
+  });
+  form.querySelectorAll('[data-option-except]').forEach(label=>{
+    label.classList.toggle('hidden',label.dataset.optionExcept.split(',').includes(type));
+  });
+  form.querySelectorAll('[data-option-types]').forEach(label=>{
+    label.classList.toggle('hidden',!label.dataset.optionTypes.split(',').includes(type));
+  });
+}
+function updateMatchClocks() {
+  const now=performance.timeOrigin+performance.now()+serverClockOffset;
+  document.querySelectorAll('[data-countdown]').forEach(node=>{
+    const goAt=Number(node.dataset.countdown)+MATCH_COUNTDOWN_TOTAL_MS;
+    const remaining=goAt-now;
+    node.textContent=remaining>0?`Starting in ${Math.ceil(remaining/1000)}`:'GO';
+  });
+  document.querySelectorAll('[data-clock]').forEach(clock=>{
+    const start=Number(clock.dataset.start);
+    const paused=Number(clock.dataset.paused||Date.now());
+    const stopped=clock.dataset.state==='paused';
+    const elapsed=Math.max(0,Math.floor(((stopped?paused:now)-start)/1000)-Number(clock.dataset.pausedSeconds||0));
+    const remaining=Math.max(0,Number(clock.dataset.duration)-elapsed);
+    clock.textContent=`${String(Math.floor(remaining/60)).padStart(2,'0')}:${String(remaining%60).padStart(2,'0')}`;
+  });
+}
+document.addEventListener('click',async(event)=>{
+  const nav=event.target.closest('#nav button');
+  if(nav){setPage(nav.dataset.page);return;}
+  const close=event.target.closest('[data-close]');
+  if(close){$(close.dataset.close).close();return;}
+  const button=event.target.closest('[data-action]');
+  if(!button)return;
+  const {action,id}=button.dataset;
+  try{
+    if(action==='cancel-event-edit'){
+      const form=$('event-form');
+      delete form.dataset.eventId;
+      form.reset();
+      $('event-form-title').textContent='Add a scheduled event';
+      $('event-submit').textContent='Add event';
+      button.classList.add('hidden');
+    }else if(action==='select-competition'){
+      $('competition').value=button.dataset.slug;
+      localStorage.setItem('competitionSlug',slug());
+      await loadData();
+      setPage('overview');
+    }else if(action==='go-page'){
+      if(!titles[button.dataset.page])throw new Error('Dashboard section not found.');
+      setPage(button.dataset.page);
+    }else if(action==='clear-schedule'){
+      if(!slug())throw new Error('Select a competition before clearing its schedule.');
+      const playoffCount=matches.filter(match=>match.isPlayoff).length;
+      const regularCount=matches.length-playoffCount;
+      const summary=`This permanently deletes ${regularCount} visible league match(es), ${playoffCount} visible playoff heat(s), all archived playoff brackets, and ${scheduleEvents.length} event(s), including saved scores. Teams and challenge points are retained.`;
+      if(!confirm(`${summary}\n\nContinue to the second confirmation?`))return;
+      if(prompt('To confirm, type CLEAR SCHEDULE. This cannot be undone.')!=='CLEAR SCHEDULE')return;
+      const result=await api(`/api/admin/competitions/${encodeURIComponent(slug())}/clear-schedule`,{
+        method:'POST',body:JSON.stringify({confirmation:'CLEAR SCHEDULE'})
+      });
+      await loadData();
+      notify(`Schedule cleared · ${result.matches} match(es), ${result.playoff_matches} playoff heat(s), ${result.events} event(s) removed.`);
+    }else if(action==='clear-matches'){
+      if(!slug())throw new Error('Select a competition before clearing its matches.');
+      const playoffCount=matches.filter(match=>match.isPlayoff).length;
+      const regularCount=matches.length-playoffCount;
+      const summary=`This permanently deletes ${regularCount} visible league match(es), ${playoffCount} visible playoff heat(s), all saved match scores, score corrections, and playoff brackets. Custom timed events, teams, and challenge points will be retained.`;
+      if(!confirm(`${summary}\n\nContinue to the second confirmation?`))return;
+      if(prompt('To confirm, type CLEAR MATCHES. This cannot be undone.')!=='CLEAR MATCHES')return;
+      const result=await api(`/api/admin/competitions/${encodeURIComponent(slug())}/clear-matches`,{
+        method:'POST',body:JSON.stringify({confirmation:'CLEAR MATCHES'})
+      });
+      await loadData();
+      notify(`Matches cleared · ${result.matches} league match(es) and ${result.playoff_matches} playoff heat(s) removed. ${scheduleEvents.length} custom event(s) retained.`);
+    }else if(action==='undelay-all'){
+      if(!slug())throw new Error('Select a competition before restoring its match schedule.');
+      if(!confirm('Restore every eligible future unstarted league match and active playoff heat to its original scheduled start? Matches that would conflict with an active match, another match, or an event will be left delayed. Matches whose original start is in the past will not be moved into the past.'))return;
+      const result=await api(`/api/admin/competitions/${encodeURIComponent(slug())}/undelay-all`,{
+        method:'POST',body:'{}'
+      });
+      await loadData();
+      const skipped=result.skipped?.length?` ${result.skipped.length} left delayed due to conflicts.`:'';
+      const past=result.skippedPast?` ${result.skippedPast} overdue match(es) left unchanged.`:'';
+      notify(`Restored ${result.restored} match(es) to their original scheduled times.${skipped}${past}`);
+    }else if(action==='prepare-delete-competition'){
+      const target=competitions.find(item=>item.slug===button.dataset.slug);
+      if(!target)throw new Error('Competition not found');
+      $('competition-delete-form').dataset.slug=target.slug;
+      $('delete-competition-slug').textContent=target.slug;
+      $('competition-delete-form').elements.confirmation.value='';
+      $('competition-delete-dialog').showModal();
+    }else if(action==='save-team'){
+      const name=document.querySelector(`[data-team-name="${CSS.escape(id)}"]`).value;
+      await api(`/api/admin/teams/${id}`,{method:'PATCH',body:JSON.stringify({name})});
+      await loadData();notify('Team saved.');
+    }else if(action==='toggle-team'){
+      await api(`/api/admin/teams/${id}`,{method:'PATCH',body:JSON.stringify({active:button.dataset.active!=='true'})});
+      await loadData();notify('Team status updated.');
+    }else if(action==='delete-team'){
+      const team=teams.find(item=>item.id===id);
+      if(!team||!confirm(`Delete team ${team.code} (${team.name})? Teams with recorded history must be deactivated instead.`))return;
+      await api(`/api/admin/teams/${id}`,{method:'DELETE',body:JSON.stringify({confirmation:team.code})});
+      await loadData();notify(`Team ${team.code} deleted.`);
+    }else if(action==='complete-challenge'){
+      const teamCode=button.dataset.team;
+      const challengeName=button.closest('.challenge-card').querySelector('h2').textContent;
+      if(!confirm(`Confirm that ${teamCode} completed "${challengeName}"? You can undo the award if it was entered incorrectly.`))return;
+      await api(`/api/admin/challenges/${button.dataset.challenge}/completions`,{method:'POST',body:JSON.stringify({teamCode})});
+      await loadData();notify(`Challenge points awarded to ${teamCode}.`);
+    }else if(action==='undo-challenge'){
+      const teamCode=button.dataset.team;
+      button.disabled=true;
+      button.textContent='Removing...';
+      try{
+        await api(`/api/admin/challenges/${button.dataset.challenge}/completions/${encodeURIComponent(teamCode)}`,{method:'DELETE'});
+        await loadData();
+        notify(`Challenge award removed from ${teamCode}.`);
+      }finally{
+        if(button.isConnected){button.disabled=false;button.textContent='Undo';}
+      }
+    }else if(action==='delete-event'){
+      if(!confirm('Remove this scheduled event?'))return;
+      await api(`/api/admin/events/${id}`,{method:'DELETE'});
+      await loadData();notify('Scheduled event removed.');
+    }else if(action==='edit-event'){
+      const scheduledEvent=scheduleEvents.find(item=>item.id===id);
+      if(!scheduledEvent)throw new Error('Scheduled event not found.');
+      const form=$('event-form');
+      form.dataset.eventId=id;
+      form.elements.title.value=scheduledEvent.title;
+      form.elements.description.value=scheduledEvent.description||'';
+      form.elements.location.value=scheduledEvent.location||'';
+      form.elements.startsAt.value=toLocalDate(new Date(scheduledEvent.starts_at));
+      form.elements.durationMinutes.value=scheduledEvent.duration_minutes;
+      $('event-form-title').textContent='Edit scheduled event';
+      $('event-submit').textContent='Save event';
+      $('event-cancel').classList.remove('hidden');
+      form.scrollIntoView({behavior:'smooth',block:'center'});
+    }else if(action==='delete-match'){
+      const match=matches.find(item=>item.id===id);
+      if(!match)throw new Error('Match not found');
+      const form=$('match-delete-form');
+      form.dataset.matchId=match.id;
+      form.elements.confirmation.value='';
+      $('delete-match-number').textContent=String(match.match_number);
+      $('match-delete-dialog').showModal();
+    }else if(action==='edit-schedule'){
+      const match=matches.find(item=>item.id===id);
+      if(!match)throw new Error('Match not found');
+      const form=$('schedule-edit-form');
+      form.dataset.matchId=id;
+      form.elements.arenaName.value=match.arena_name;
+      form.elements.scheduledStart.value=toLocalDate(new Date(match.scheduled_start));
+      form.elements.underfilledReason.value=match.underfilled_reason||'';
+      for(let position=1;position<=4;position++){
+        const assigned=match.positions.find(item=>Number(item.position)===position);
+        form.elements[`team${position}`].innerHTML=teamOptions(assigned?.teamCode||'');
+      }
+      $('schedule-dialog').showModal();
+    }else if(action==='edit-playoff-schedule'){
+      const match=matches.find(item=>item.id===id&&item.isPlayoff);
+      if(!match||match.state==='complete')throw new Error('Only an upcoming playoff heat can be rescheduled.');
+      const form=$('playoff-schedule-form');
+      form.dataset.matchId=id;
+      form.elements.arenaName.value=match.arena_name;
+      form.elements.scheduledStart.value=toLocalDate(new Date(match.effective_start));
+      form.elements.plannedGapMinutes.value=String(Math.ceil(Number(match.planned_gap_seconds||0)/60));
+      $('playoff-schedule-dialog').showModal();
+    }else if(action.startsWith('playoff-')&&action!=='playoff-score'){
+      const control=action.slice('playoff-'.length).replace('cancel-start','cancel-countdown');
+      if(control==='reset-timer'){
+        const match=matches.find(item=>item.id===id&&item.isPlayoff);
+        if(!match||!confirm(`Reset playoff heat #${match.match_number}? Its timer will be cleared and it will be rescheduled to the next full minute. No playoff score may have been entered.`))return;
+      }
+      const result=await api(`/api/admin/playoff-matches/${id}/control/${control}`,{method:'POST',body:'{}'});
+      await loadData();
+      notify(control==='reset-timer'
+        ?`Playoff timer reset${result.shiftedMatchIds?.length?`; ${result.shiftedMatchIds.length} later heat(s) rescheduled`:''}.`
+        :control==='start'
+        ?`Playoff heat started${result.shiftedMatchIds?.length?`; ${result.shiftedMatchIds.length} later heat(s) moved to preserve spacing`:''}.`
+        :control==='cancel-countdown'?'Playoff start countdown cancelled.':'Playoff heat control updated.');
+    }else if(action==='start'){
+      void startMatchCountdown(button,id);
+    }else if(action==='cancel-start'){
+      button.disabled=true;
+      try{
+        await api(`/api/admin/matches/${id}/cancel-countdown`,{method:'POST',body:'{}'});
+        await loadData();
+        notify('Start countdown cancelled.');
+      }finally{
+        if(button.isConnected)button.disabled=false;
+      }
+    }else if(action==='reset-match'){
+      const match=matches.find(item=>item.id===id);
+      if(!match||!confirm(`Reset match #${match.match_number}? Its clock will be cleared. If its existing scheduled start is still ahead, it will stay at that time; otherwise it will be placed at the next full minute. Later matches move only if this match's expected end would overlap them. No saved score may exist.`))return;
+      const result=await api(`/api/admin/matches/${id}/reset`,{method:'POST',body:'{}'});
+      await loadData();
+      const resetMessage=result.preservedExistingSlot
+        ?'Timer reset; kept its existing scheduled start.'
+        :`Timer reset; rescheduled to ${formatCompetitionDateTime(result.effectiveStart)}.`;
+      notify(result.shiftedMatchIds.length
+        ?`${resetMessage} ${result.shiftedMatchIds.length} overlapping later match(es) were delayed.`
+        :`${resetMessage} No later matches needed to move.`);
+    }else if(['finish','pause','resume'].includes(action)){
+      await postMatch(action,id);
+    }else if(action==='delay'){
+      $('delay-form').dataset.matchId=id;$('delay-dialog').showModal();
+    }else if(action==='undelay'){
+      const match=matches.find(item=>item.id===id);
+      if(!match)throw new Error('Match not found');
+      $('undelay-form').dataset.matchId=id;
+      $('undelay-current').textContent=`Current delay: ${formatDelay(match.delay_seconds)} beyond the scheduled start.`;
+      $('undelay-form').elements.minutes.value='5';
+      $('undelay-form').elements.reason.value='Delay reduced by admin';
+      $('undelay-dialog').showModal();
+    }else if(action==='restore-scheduled-time'){
+      const form=$('undelay-form');
+      const match=matches.find(item=>item.id===form.dataset.matchId);
+      if(!match)throw new Error('Match not found');
+      if(!confirm(`Restore match #${match.match_number} to its original scheduled start time?`))return;
+      const result=await api(`/api/admin/matches/${match.id}/undelay`,{
+        method:'POST',
+        body:JSON.stringify({restoreScheduled:true,reason:'Restored to original scheduled time'})
+      });
+      $('undelay-dialog').close();
+      await loadData();
+      notify(result.remainingDelaySeconds
+        ?`Match moved earlier. Remaining delay: ${formatDelay(result.remainingDelaySeconds)}.`
+        :'Match restored to its original scheduled start time.');
+    }else if(action==='score'){
+      const match=matches.find(m=>m.id===id);
+      if(!match)throw new Error('Match not found');
+      $('score-title').textContent=`Match #${match.match_number} · ${match.arena_name}`;
+      const scores=await api(`/api/admin/matches/${id}/scores`);
+      const scoreMap=new Map((Array.isArray(scores)?scores:[]).map(s=>[s.team_code,s]));
+      $('score-fields').innerHTML=match.positions.filter(p=>p.teamCode).map(p=>{
+        const prior=scoreMap.get(p.teamCode);
+        return `<div class="form-grid cols-2" style="padding:.7rem 0;border-bottom:1px solid var(--line)"><strong>${h(p.teamCode)} · ${h(p.teamName)}</strong><label>League points<input data-points="${h(p.teamCode)}" type="number" step="any" value="${h(prior?.league_points??'')}" required></label></div>`;
+      }).join('');
+      $('score-form').dataset.matchId=id;
+      $('score-form').dataset.scoreKind='league';
+      $('score-form').dataset.hasExistingScores=String(scoreMap.size>0);
+      $('score-reason').value='';
+      $('score-reason').required=scoreMap.size>0;
+      $('score-reason-label').classList.toggle('hidden',scoreMap.size===0);
+      $('score-dialog').showModal();
+    }else if(action==='publish'){
+      await api(`/api/admin/competitions/${encodeURIComponent(slug())}/publish`,{method:'POST',body:'{}'});
+      competitions=await api('/api/admin/competitions');$('competition').selectedOptions[0].textContent=`${compOption().name} · ${compOption().status}`;
+      notify('Competition published.');await render();
+    }else if(action==='playoff-score'){
+      const match=matches.find(item=>item.id===id&&item.isPlayoff);
+      if(!match||!['awaiting_score','complete'].includes(match.state))throw new Error('The playoff heat must finish before score entry.');
+      const scores=await api(`/api/admin/playoff-matches/${id}/scores`);
+      const scoreMap=new Map(scores.map(score=>[score.team_code,score]));
+      $('score-title').textContent=`Playoff heat #${match.match_number} · ${match.team_count}-team placing`;
+      $('score-fields').innerHTML=match.positions.filter(position=>position.teamCode).map(position=>{
+        const {teamCode:code,teamName:name}=position;
+        const prior=scoreMap.get(code);
+        return `<div class="form-grid cols-2" style="padding:.7rem 0;border-bottom:1px solid var(--line)"><strong>${h(code)} · ${h(name)}</strong><label>Match points<input data-points="${h(code)}" type="number" step="any" value="${h(prior?.points??'')}" required></label></div>`;
+      }).join('');
+      $('score-form').dataset.matchId=id;
+      $('score-form').dataset.scoreKind='playoff';
+      $('score-form').dataset.hasExistingScores=String(scoreMap.size>0);
+      $('score-reason').value='';
+      $('score-reason').required=scoreMap.size>0;
+      $('score-reason-label').classList.toggle('hidden',scoreMap.size===0);
+      $('score-dialog').showModal();
+    }else if(action==='toggle-display'){
+      await api(`/api/admin/displays/${id}`,{method:'PATCH',body:JSON.stringify({enabled:button.dataset.enabled!=='true'})});
+      await render();notify('Public display updated.');
+    }else if(action==='configure-display'){
+      const display=displayRecords.find(item=>item.id===id);
+      if(!display)throw new Error('Public display not found. Refresh the display list and try again.');
+      const form=$('display-config-form');
+      form.dataset.displayId=id;
+      form.dataset.displayType=display.display_type;
+      form.elements.title.value=display.title;
+      const defaults={showTitle:true,showArena:true,fillCorners:false,showTeamNames:true,showPositionNumbers:true,fillCornerDisplay:true,showCornerTeamName:true,showCornerPositionNumber:true,showStartCue:false,showEndCue:false,showEndCountdown:false,showPreviousResults:false,flashCountdownNumbers:false,darkTheme:false,hideCompletedEvents:false,hideCompletedMatches:false,enableTeamFilter:false,relativeTime:false,hideScheduleArena:false,cornerPosition:0,countdownBackgroundColor:'#a21f24',countdownFlashColor:'#ffffff',goBackgroundColor:'#167847',endBackgroundColor:'#b3131b',endCountdownSeconds:10,cueDurationSeconds:2,endCueDurationSeconds:3,srArenaName:'',srMaxTeams:6,srMaxKnockoutRounds:5,srShepherdingPastMatches:1,srStagingCloseOffsetMinutes:5,srHideOutsidePages:[],srStagingCornerOrder:[0,3,2,1],srRotationSeconds:15,srExternalUrl:''};
+      const options={...defaults,...(display.options||{})};
+      for(const key of ['showTitle','showArena','fillCorners','showTeamNames','showPositionNumbers','fillCornerDisplay','showCornerTeamName','showCornerPositionNumber','showStartCue','showEndCue','showEndCountdown','showPreviousResults','flashCountdownNumbers','darkTheme','hideCompletedEvents','hideCompletedMatches','enableTeamFilter','relativeTime','hideScheduleArena']){
+        form.elements[key].checked=Boolean(options[key]);
+      }
+      for(const page of ['leaderboard','schedule','knockout']){
+        form.elements[`srHide${page[0].toUpperCase()}${page.slice(1)}`].checked=options.srHideOutsidePages.includes(page);
+      }
+      form.elements.cornerPosition.value=String(options.cornerPosition);
+      form.elements.countdownBackgroundColor.value=options.countdownBackgroundColor;
+      form.elements.countdownFlashColor.value=options.countdownFlashColor;
+      form.elements.goBackgroundColor.value=options.goBackgroundColor;
+      form.elements.endBackgroundColor.value=options.endBackgroundColor;
+      form.elements.endCountdownSeconds.value=String(options.endCountdownSeconds);
+      form.elements.cueDurationSeconds.value=String(options.cueDurationSeconds);
+      form.elements.endCueDurationSeconds.value=String(options.endCueDurationSeconds);
+      form.elements.srArenaName.value=options.srArenaName;
+      form.elements.srMaxTeams.value=String(options.srMaxTeams);
+      form.elements.srMaxKnockoutRounds.value=String(options.srMaxKnockoutRounds);
+      form.elements.srRotationSeconds.value=String(options.srRotationSeconds);
+      form.elements.srStagingCornerOrder.value=options.srStagingCornerOrder.join(',');
+      form.elements.srShepherdingPastMatches.value=String(options.srShepherdingPastMatches);
+      form.elements.srStagingCloseOffsetMinutes.value=String(options.srStagingCloseOffsetMinutes);
+      form.elements.srExternalUrl.value=options.srExternalUrl;
+      updateDisplayOptionVisibility(form);
+      $('display-config-dialog').showModal();
+    }else if(action==='delete-display'){
+      if(!confirm('Delete this public display?'))return;
+      await api(`/api/admin/displays/${id}`,{method:'DELETE'});await render();notify('Public display deleted.');
+    }else if(action==='copy'){
+      await navigator.clipboard.writeText(button.dataset.copy);notify('Copied to clipboard.');
+    }
+  }catch(error){showError(error);}
+});
+$('competition').addEventListener('change',async()=>{
+  localStorage.setItem('competitionSlug',slug());
+  liveSignature='';
+  viewDirty=false;
+  try{await loadData();}catch(error){showError(error);}
+});
+$('view').addEventListener('input',(event)=>{
+  if(event.target.closest('form'))viewDirty=true;
+});
+$('view').addEventListener('change',(event)=>{
+  if(event.target.closest('form'))viewDirty=true;
+  if(event.target.name==='type')updateDisplayOptionVisibility(event.target.form);
+});
+$('view').addEventListener('submit',async(event)=>{
+  event.preventDefault();
+  await handleFormSubmit(event);
+});
+document.addEventListener('submit',async(event)=>{
+  const form=event.target;
+  if(!(form instanceof HTMLFormElement)||form.closest('#view'))return;
+  event.preventDefault();
+  await handleFormSubmit(event);
+});
+async function handleFormSubmit(event){
+  const form=event.target;
+  if(!(form instanceof HTMLFormElement))return;
+  event.preventDefault();
+  try{
+    const values=formData(form);
+    if(form.id==='competition-form'){
+      const result=await api('/api/admin/competitions',{method:'POST',body:JSON.stringify({...values,matchDurationSeconds:Number(values.matchDurationSeconds)})});
+      competitions=await api('/api/admin/competitions');
+      $('competition').innerHTML=competitions.map(c=>`<option value="${h(c.slug)}">${h(c.name)} · ${h(c.status)}</option>`).join('');
+      competitionSignature=JSON.stringify(competitions.map(c=>[c.id,c.name,c.slug,c.status,c.team_count,c.match_count,c.challenge_count,c.challenge_completion_count,c.event_count]));
+      $('competition').value=result.slug;localStorage.setItem('competitionSlug',result.slug);await loadData();setPage('overview');notify('Competition created.');
+    }else if(form.id==='challenge-form'){
+      await api(`/api/admin/competitions/${encodeURIComponent(slug())}/challenges`,{method:'POST',body:JSON.stringify({name:values.name,description:values.description,points:Number(values.points)})});
+      await loadData();notify('Challenge created.');
+    }else if(form.id==='team-form'){
+      await api(`/api/admin/competitions/${encodeURIComponent(slug())}/teams`,{method:'POST',body:JSON.stringify({code:values.code,name:values.name})});
+      await loadData();notify('Team added.');
+    }else if(form.id==='generate-form'){
+      const start=new Date(values.firstStart);
+      const result=await api(`/api/admin/competitions/${encodeURIComponent(slug())}/generate-schedule`,{method:'POST',body:JSON.stringify({
+        matchCount:Number(values.matchCount),firstStart:start.toISOString(),intervalSeconds:Number(values.interval)*60,
+        arenas:values.arenas.split(',').map(x=>x.trim()).filter(Boolean),
+        positions:[1,2,3,4].map((n)=>({label:`Position ${n-1}`}))
+      })});
+      await loadData();notify(`Schedule generated · ${result.appearancesPerTeam} appearances per team · ${values.interval}-minute start-to-start interval${result.shiftedMatchIds?.length?` · ${result.shiftedMatchIds.length} match(es) shifted around events`:''}.`);
+    }else if(form.id==='manual-match-form'){
+      const positions=[1,2,3,4].map(number=>({number,label:`Position ${number-1}`,teamCode:values[`team${number}`]||undefined}));
+      const result=await api(`/api/admin/competitions/${encodeURIComponent(slug())}/matches`,{method:'POST',body:JSON.stringify({
+        matchNumber:Number(values.matchNumber),arenaName:values.arenaName,scheduledStart:new Date(values.scheduledStart).toISOString(),
+        positions,underfilledReason:values.underfilledReason||undefined
+      })});
+      await loadData();notify(`Match added to schedule${result.shiftedMatchIds?.length?`; ${result.shiftedMatchIds.length} match(es) shifted around events`:'.'}`);
+    }else if(form.id==='event-form'){
+      const eventBody={
+        title:values.title,description:values.description||'',location:values.location||'',
+        startsAt:new Date(values.startsAt).toISOString(),durationMinutes:Number(values.durationMinutes)
+      };
+      const editing=Boolean(form.dataset.eventId);
+      const result=await api(editing?`/api/admin/events/${form.dataset.eventId}`:`/api/admin/competitions/${encodeURIComponent(slug())}/events`,{
+        method:editing?'PATCH':'POST',body:JSON.stringify(eventBody)
+      });
+      delete form.dataset.eventId;
+      form.reset();
+      $('event-form-title').textContent='Add a scheduled event';
+      $('event-submit').textContent='Add event';
+      $('event-cancel').classList.add('hidden');
+      await loadData();
+      const moved=result.shiftedMatchIds?.length||0;
+      notify(`${editing?'Event updated':'Scheduled event added'}${moved?`; ${moved} match(es) shifted to avoid event times`:'.'}`);
+    }else if(form.id==='schedule-edit-form'){
+      const positions=[1,2,3,4].map(number=>({
+        number,label:`Position ${number-1}`,
+        teamCode:values[`team${number}`]||undefined
+      }));
+      const updated=await api(`/api/admin/matches/${form.dataset.matchId}/schedule`,{method:'PATCH',body:JSON.stringify({
+        arenaName:values.arenaName,scheduledStart:new Date(values.scheduledStart).toISOString(),
+        positions,underfilledReason:values.underfilledReason||undefined
+      })});
+      $('schedule-dialog').close();await loadData();notify(updated.shiftedMatchIds?.length?`Schedule saved; ${updated.shiftedMatchIds.length} later match(es) moved.`:'Schedule saved.');
+    }else if(form.id==='playoff-schedule-form'){
+      const result=await api(`/api/admin/playoff-matches/${form.dataset.matchId}/schedule`,{method:'PATCH',body:JSON.stringify({
+        arenaName:values.arenaName,
+        scheduledStart:new Date(values.scheduledStart).toISOString(),
+        plannedGapMinutes:Number(values.plannedGapMinutes)
+      })});
+      $('playoff-schedule-dialog').close();
+      await loadData();
+      notify(result.shiftedMatchIds?.length
+        ?`Playoff heat rescheduled for ${formatCompetitionDateTime(result.scheduledStart)}; ${result.shiftedMatchIds.length} later match(es) moved to avoid conflicts.`
+        :`Playoff heat schedule saved for ${formatCompetitionDateTime(result.scheduledStart)}.`);
+    }else if(form.id==='playoff-form'){
+      const intervalInput=form.elements.intervalMinutes;
+      const scheduledStartInput=form.elements.scheduledStart;
+      const intervalMinutes=Math.max(1,Number(intervalInput.value)||Math.ceil(Number(compOption()?.match_duration_seconds||120)/60));
+      const requestedStart=scheduledStartInput.value
+        ?new Date(scheduledStartInput.value)
+        :new Date(Math.ceil(Math.max(Date.now()+60000,...matches.map(match=>
+          new Date(match.effective_start).getTime()+Number(match.duration_seconds||120)*1000))/60000)*60000);
+      if(!Number.isFinite(requestedStart.getTime()))throw new Error('Choose a valid first playoff heat time.');
+      const result=await api(`/api/admin/competitions/${encodeURIComponent(slug())}/playoffs`,{method:'POST',body:JSON.stringify({
+        fieldSize:Number(values.fieldSize),replaceExisting:form.dataset.replace==='true',
+        scheduledStart:requestedStart.toISOString(),
+        intervalMinutes,finalDelayMinutes:Number(values.finalDelayMinutes),arenaName:values.arenaName
+      })});
+      await loadData();
+      const moved=result.shiftedMatchIds?.length||0;
+      notify(`Four-robot playoff heats scheduled${moved?`; ${moved} conflicting match(es) moved`:''}.`);
+    }else if(form.id==='display-form'){
+      const result=await api(`/api/admin/competitions/${encodeURIComponent(slug())}/displays`,{method:'POST',body:JSON.stringify({slug:values.slug,title:values.title,type:values.type,options:displayOptionsFromForm(form)})});
+      await render();notify(`Display created: ${location.origin}${result.htmlUrl}`);
+    }else if(form.id==='display-config-form'){
+      await api(`/api/admin/displays/${form.dataset.displayId}`,{method:'PATCH',body:JSON.stringify({title:values.title,options:displayOptionsFromForm(form)})});
+      $('display-config-dialog').close();
+      displayRecords=[];
+      await render();notify('Public display settings saved.');
+    }else if(form.id==='settings-form'){
+      const theme=new FormData(form).get('theme');
+      await api(`/api/admin/competitions/${encodeURIComponent(slug())}/settings`,{method:'PUT',body:JSON.stringify({theme,timezone:values.timezone,logoDataUrl:$('logo-data').value||null})});
+      const selected=compOption();
+      if(selected)selected.timezone=values.timezone;
+      await applyBranding();await render();notify('Settings saved.');
+    }else if(form.id==='arena-colours-form'){
+      const cornerColours=[0,1,2,3].map(position=>values[`cornerColour${position}`]);
+      const result=await api(`/api/admin/competitions/${encodeURIComponent(slug())}/arena-settings`,{method:'PUT',body:JSON.stringify({cornerColours})});
+      positionColours=result.cornerColours;
+      await loadData();
+      notify('Competition arena colours saved and applied to all matches.');
+    }else if(form.id==='score-form'){
+      const matchId=form.dataset.matchId;
+      const reason=form.dataset.hasExistingScores==='true'?$('score-reason').value:undefined;
+      let playoffScheduleChanges=0;
+      if(form.dataset.scoreKind==='playoff'){
+        const scores=[...form.querySelectorAll('[data-points]')].map(input=>({
+          teamCode:input.dataset.points,points:Number(input.value)
+        }));
+        const result=await api(`/api/admin/playoff-matches/${matchId}/scores`,{method:'POST',body:JSON.stringify({scores,reason})});
+        playoffScheduleChanges=new Set([...(result.rescheduledHeatIds||[]),...(result.eventShiftedIds||[])]).size;
+      }else{
+        const scores=[...form.querySelectorAll('[data-points]')].map(input=>({
+          teamCode:input.dataset.points,leaguePoints:Number(input.value)
+        }));
+        await api(`/api/admin/matches/${matchId}/scores`,{method:'POST',body:JSON.stringify({scores,reason})});
+      }
+      $('score-dialog').close();
+      try{
+        await loadData();
+        notify(form.dataset.scoreKind==='playoff'
+          ?`Playoff scores saved.${playoffScheduleChanges?` ${playoffScheduleChanges} later heat(s) rescheduled.`:''}`
+          :'Scores saved.');
+      }catch(refreshError){
+        notify(`Scores were saved, but the dashboard could not refresh: ${refreshError.message||'refresh failed'}`,true);
+      }
+    }else if(form.id==='delay-form'){
+      const matchId=form.dataset.matchId;
+      await api(`/api/admin/matches/${matchId}/delay`,{method:'POST',body:JSON.stringify({delaySeconds:Number(values.minutes)*60,reason:values.reason})});
+      $('delay-dialog').close();await loadData();notify('Delay applied.');
+    }else if(form.id==='undelay-form'){
+      const result=await api(`/api/admin/matches/${form.dataset.matchId}/undelay`,{
+        method:'POST',
+        body:JSON.stringify({
+          delaySeconds:Number(values.minutes)*60,
+          restoreScheduled:false,
+          reason:values.reason
+        })
+      });
+      $('undelay-dialog').close();
+      await loadData();
+      notify(result.remainingDelaySeconds
+        ?`Delay reduced by ${formatDelay(result.reductionSeconds)}. Remaining delay: ${formatDelay(result.remainingDelaySeconds)}.`
+        :'Match restored to its original scheduled start time.');
+    }else if(form.id==='competition-delete-form'){
+      const targetSlug=form.dataset.slug;
+      await api(`/api/admin/competitions/${encodeURIComponent(targetSlug)}`,{method:'DELETE',body:JSON.stringify({confirmation:values.confirmation})});
+      $('competition-delete-dialog').close();
+      competitions=await api('/api/admin/competitions');
+      const current=slug()===targetSlug;
+      if(current){localStorage.removeItem('competitionSlug');}
+      $('competition').innerHTML=competitions.map(c=>`<option value="${h(c.slug)}">${h(c.name)} · ${h(c.status)}</option>`).join('');
+      competitionSignature=JSON.stringify(competitions.map(c=>[c.id,c.name,c.slug,c.status,c.team_count,c.match_count,c.challenge_count,c.challenge_completion_count,c.event_count]));
+      if(current&&competitions.length){$('competition').value=competitions[0].slug;localStorage.setItem('competitionSlug',competitions[0].slug);}
+      await loadData();
+      if(current||!slug())setPage('competitions');
+      notify('Competition and its event data deleted.');
+    }else if(form.id==='match-delete-form'){
+      const match=matches.find(item=>item.id===form.dataset.matchId);
+      if(!match)throw new Error('Match not found');
+      await api(`/api/admin/matches/${match.id}`,{method:'DELETE',body:JSON.stringify({confirmation:values.confirmation})});
+      $('match-delete-dialog').close();
+      await loadData();
+      notify(`Match #${match.match_number} and its scores deleted.`);
+    }
+  }catch(error){showError(error);}
+}
+$('view').addEventListener('change',async(event)=>{
+  if(event.target.id==='arena-match'){
+    const match=matches.find(m=>m.id===event.target.value);
+    if(match){$('arena-position-view').innerHTML=positionsHtml(match);}
+  }
+  if(event.target.id==='auto-run-toggle'){
+    const requested=event.target.checked;
+    event.target.disabled=true;
+    try{
+      const result=await api(`/api/admin/competitions/${encodeURIComponent(slug())}/auto-run`,{method:'PUT',body:JSON.stringify({enabled:requested})});
+      autoRunEnabled=result.enabled;
+      await loadData();
+      notify(`Competition auto-run ${result.enabled?'enabled':'disabled'}.`);
+    }catch(error){
+      event.target.checked=autoRunEnabled;
+      showError(error);
+    }finally{
+      if(event.target.isConnected)event.target.disabled=false;
+    }
+  }
+  if(event.target.id==='logo-file'){
+    const file=event.target.files[0];
+    if(!file)return;
+    if(!['image/png','image/jpeg','image/webp'].includes(file.type)||file.size>1024*1024){notify('Choose a PNG, JPEG or WebP image under 1 MB.',true);event.target.value='';return;}
+    const reader=new FileReader();reader.onload=()=>{$('logo-data').value=String(reader.result);$('logo-preview').src=String(reader.result);$('logo-preview').classList.remove('hidden');};reader.onerror=()=>notify('Could not read that logo file.',true);reader.readAsDataURL(file);
+  }
+});
+$('view').addEventListener('click',(event)=>{
+  if(event.target.id==='remove-logo'){$('logo-data').value='';$('logo-preview').src='';$('logo-preview').classList.add('hidden');}
+});
+$('logout').addEventListener('click',async()=>{try{await api('/auth/logout',{method:'POST',body:'{}'});}finally{location.reload();}});
+async function init(){
+  try{
+    const user=await api('/api/admin/me');
+    $('user-email').textContent=user.email;
+    $('app').classList.remove('hidden');
+    await loadCore();
+  }catch(error){
+    $('login').classList.remove('hidden');
+    try{
+      const auth=await api('/auth/status');
+      if(!auth.oidcConfigured){$('login-link').removeAttribute('href');$('login-link').textContent='Sign-in setup required';}
+    }catch{}
+  }
+}
+init();
+setInterval(updateMatchClocks,250);
+async function refreshLive() {
+  if(polling||$('app').classList.contains('hidden'))return;
+  polling=true;
+  try{
+    const nextCompetitions=await api('/api/admin/competitions');
+    const nextSlug=slug();
+    let nextTeams=[];
+    let nextMatches=[];
+    let nextLeague={standings:[]};
+    let pageData=null;
+    let nextEvents=scheduleEvents;
+    if(nextSlug){
+      const encoded=encodeURIComponent(nextSlug);
+      [nextTeams,nextMatches,nextLeague]=await Promise.all([
+        api(`/api/admin/competitions/${encoded}/teams`),
+        api(`/api/admin/competitions/${encoded}/matches`),
+        api(`/api/admin/competitions/${encoded}/league`)
+      ]);
+      if(page==='schedule')nextEvents=await api(`/api/admin/competitions/${encoded}/events`);
+      if(page==='challenges')pageData=await api(`/api/admin/competitions/${encoded}/challenges`);
+      if(page==='displays')pageData=await api(`/api/admin/competitions/${encoded}/displays`);
+      if(page==='matches'){
+        pageData=await api(`/api/admin/competitions/${encoded}/auto-run`);
+        autoRunEnabled=pageData.enabled;
+      }
+      if(page==='activity')pageData=await api('/api/admin/audit');
+    }
+    const signature=JSON.stringify([nextCompetitions,nextTeams,nextMatches,nextLeague,pageData,nextEvents]);
+    const changed=signature!==liveSignature;
+    competitions=nextCompetitions;
+    teams=nextTeams;
+    matches=nextMatches;
+    scheduleEvents=nextEvents;
+    const previousSlug=slug();
+    const nextCompetitionSignature=JSON.stringify(competitions.map(c=>[c.id,c.name,c.slug,c.status,c.team_count,c.match_count,c.challenge_count,c.challenge_completion_count,c.event_count]));
+    if(nextCompetitionSignature!==competitionSignature){
+      $('competition').innerHTML=competitions.map(c=>`<option value="${h(c.slug)}">${h(c.name)} · ${h(c.status)}</option>`).join('');
+      if(competitions.some(c=>c.slug===previousSlug))$('competition').value=previousSlug;
+      else if(competitions.length){$('competition').value=competitions[0].slug;localStorage.setItem('competitionSlug',competitions[0].slug);}
+      else $('competition').value='';
+      competitionSignature=nextCompetitionSignature;
+    }
+    if(changed&&!viewDirty&&!document.querySelector('dialog[open]')){
+      await applyBranding();
+      await render();
+      liveSignature=signature;
+    }else if(!changed){
+      liveSignature=signature;
+    }
+  }catch(error){showError(error);}
+  finally{polling=false;}
+}
+setInterval(()=>{void refreshLive();},3000);
+</script>
+</body>
+</html>

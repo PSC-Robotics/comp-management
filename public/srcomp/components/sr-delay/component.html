@@ -1,0 +1,93 @@
+<link rel="import" href="../../bower_components/polymer/polymer.html" />
+
+<polymer-element name="sr-delay" attributes="comp">
+    <template>
+        <style>
+            h1 {
+                margin: inherit;
+                color: inherit;
+                font-size: inherit;
+            }
+            .new {
+                animation: blinker 1s linear infinite;
+            }
+            @keyframes blinker {
+                50% {
+                    color: red;
+                }
+            }
+            #delay {
+                font-size: 0.6em;
+                vertical-align: middle;
+            }
+        </style>
+
+        <h1 class="{{ delayClass }}"><span id="delay">Delay: </span>{{ value }}</h1>
+    </template>
+
+    <script>
+        var reload = function() {
+            this.comp.api.getCurrentDelay(this.updateDelay.bind(this));
+            this.comp.stream.addEventListener('current-delay', function(e) {
+                this.updateDelay(e.detail);
+            }.bind(this));
+        };
+        Polymer({
+            comp: null,
+            compChanged: reload,
+            value: 'none',
+            delayClass: '',
+            updateDelay: function(total_seconds) {
+                value = this.formatDelay(total_seconds);
+
+                if (value == this.value) {
+                    return;
+                }
+
+                this.value = value;
+                this.delayClass = 'new';
+
+                setTimeout(function() {
+                    this.delayClass = '';
+                }.bind(this), 5 * 1000);
+            },
+            formatDelay: function(total_seconds) {
+                // Build a delay string for the user.
+                // Each portion of it only appears if it has anything to show,
+                // leading to output of the forms: none, 1m 30s, 30s or 1m.
+
+                if (total_seconds == 0) {
+                    return 'none';
+                }
+
+                var value;
+                // Handle negative delays (unlikely but possible)
+                if (total_seconds < 0) {
+                    value = '-';
+                    total_seconds = -total_seconds;
+                } else {
+                    value = '';
+                }
+                // The number of minutes
+                var minutes = Math.floor(total_seconds / 60);
+                if (minutes > 0) {
+                    value += minutes + 'm ';
+                }
+                // The number of seconds after the whole mintues have been removed
+                var seconds = total_seconds % 60;
+                if (seconds > 0) {
+                    value += seconds + 's';
+                }
+
+                return value;
+            },
+            padTimeComponent: function(value) {
+                if (value <= 9) {
+                    return '0' + value;
+                } else {
+                    return '' + value;
+                }
+            },
+        });
+    </script>
+</polymer-element>

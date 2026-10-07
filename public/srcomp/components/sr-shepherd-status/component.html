@@ -1,0 +1,111 @@
+<link rel="import" href="../../bower_components/polymer/polymer.html" />
+
+<polymer-element name="sr-shepherd-status" attributes="comp arena">
+    <template>
+        <style>
+            h1 {
+                margin: inherit;
+                color: inherit;
+                font-size: inherit;
+                vertical-align: middle;
+            }
+        </style>
+
+        <h1>{{ value }}</h1>
+    </template>
+
+    <script>
+        Polymer({
+            comp: null,
+            arena: null,
+            compChanged: function() {
+                var updateMatchList = function (matches) {
+                    this.matchList = this.arena
+                        ? matches.filter(function(match) { return match.arena == this.arena; }.bind(this))
+                        : matches;
+                }.bind(this);
+                this.comp.api.getShepherdingMatches(updateMatchList);
+                this.comp.stream.addEventListener('current-shepherding-matches', function(e) {
+                    updateMatchList(e.detail);
+                });
+            },
+            value: '',
+            // Can't call this "matches" since that causes issues in firefox
+            matchList: [],
+            ready: function() {
+                setInterval(this.matchListChanged.bind(this), 2000);
+            },
+            _getKeys: function(obj) {
+                var keys = [];
+                for (var key in obj) {
+                    keys.push(key);
+                }
+                return keys;
+            },
+            _grouped: function(map) {
+                var result = {};
+                for (var key in map) {
+                    var value = map[key];
+                    if (!(value in result)) {
+                        result[value] = [key];
+                    } else {
+                        result[value].push(key);
+                    }
+                }
+                return result;
+            },
+            _describe: function(words) {
+                if (!words || words.length == 0) {
+                    return '';
+                }
+
+                if (words.length == 1) {
+                    return words[0];
+                } else {
+                    var last = words.pop();
+                    var description = words.join(', ') + " and " + last;
+                    return description;
+                }
+            },
+            matchListChanged: function() {
+                this.value = '';
+                if (!this.matchList || this.matchList.length == 0) {
+                    return;
+                }
+
+                // TODO: make this a configuration thing
+                var DISPLAY_SECONDS = 60;
+
+                var clockOffsetMs = this.comp && this.comp.displayConfig &&
+                    this.comp.displayConfig.displayOptions &&
+                    this.comp.displayConfig.displayOptions.clockOffsetMs || 0;
+                var now = new Date(Date.now() + clockOffsetMs);
+                var is_current = function(time_string) {
+                    var start = new Date(time_string);
+                    var end = new Date(time_string);
+                    end.setSeconds(end.getSeconds() + DISPLAY_SECONDS);
+                    return start <= now && now <= end;
+                };
+
+                var messages = {};
+                for (var i=0; i<this.matchList.length; i++) {
+                    // Look at all the things we think should signal something
+                    // determine whether it should be shown and show it
+
+                    var match = this.matchList[i];
+                    var staging = match.times.staging;
+
+                    var shepherding_groups = this._grouped(staging.signal_shepherds);
+                    for (var time in shepherding_groups) {
+                        if (is_current(time)) {
+                            var areas = shepherding_groups[time];
+                            messages["Fetch " + this._describe(areas) + " for Match " + match.num] = null;
+                        }
+                    }
+                }
+
+                this.value = this._getKeys(messages).join(', ');
+            },
+        });
+    </script>
+</polymer-element>

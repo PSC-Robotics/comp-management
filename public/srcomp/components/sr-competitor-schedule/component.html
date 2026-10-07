@@ -1,0 +1,207 @@
+<link rel="import" href="../../bower_components/polymer/polymer.html" />
+<link rel="import" href="../moment/component.html">
+
+<polymer-element name="sr-competitor-schedule" attributes="comp">
+    <template>
+        <style>
+            :host {
+                display: block;
+                font-size: 2em;
+                text-align: center;
+            }
+
+            td, th {
+                padding: 0.25em 0.5em;
+            }
+
+            tr.old {
+                opacity: 0.5;
+                font-size: 1.2em;
+            }
+
+            tr.current {
+                font-weight: bold;
+                font-size: 1.5em;
+            }
+
+            tr.next {
+                opacity: 0.8;
+                font-size: 1.3em;
+            }
+        </style>
+
+        <table>
+            <tr>
+                <th></th>
+                <th></th>
+                <template repeat="{{ arena in arenasList }}">
+                    <th></th>
+                    <th colspan="{{ cornersList.length }}" style="background-color: {{ arenas[arena].colour | arenaColour }}">{{ arenas[arena].display_name }}</th>
+                </template>
+            </tr>
+
+            <template repeat="{{ match in schedule }}">
+                <tr class="{{ match | formatMatchClass }}">
+                    <td>{{ match.displayName }}</td>
+                    <td><time datetime="{{ match.scheduleStart }}"></time></td>
+                    <template repeat="{{ arena in arenasList }}">
+                        <td style="width: 0.1em;"></td>
+                        <template repeat="{{ corner in cornersList }}">
+                            <td style="background-color: {{ arenas[arena].colour | arenaColour }}">
+                                <span style="color: {{ corners[corner].colour }}">
+                                    {{ match.arenas[arena].teams[corner] || '—' }}
+                                </span>
+                            </td>
+                        </template>
+                    </template>
+                </tr>
+            </template>
+        </table>
+    </template>
+
+    <script src="../../node_modules/moment/moment.js"></script>
+
+    <script>
+        Polymer({
+            comp: null,
+            arenas: undefined,
+            arenasList: undefined,
+            corners: undefined,
+            cornersList: undefined,
+            back: 1,
+            forward: 6,
+            schedule: {},
+            ready: function() {
+                setInterval(this._updateDisplayedTimes.bind(this), 5000);
+            },
+            _updateDisplayedTimes: function() {
+                var dates = this.shadowRoot.querySelectorAll('time');
+                dates.array().forEach(function(elem) {
+                    var epoch = moment(elem.getAttribute('datetime'));
+                    elem.textContent = epoch.fromNow();
+                });
+            },
+            arenaColour: function(val) {
+                if (val) {
+                    var r = parseInt(val.substr(1, 2), 16);
+                    var g = parseInt(val.substr(3, 2), 16);
+                    var b = parseInt(val.substr(5, 2), 16);
+                    return 'rgba(' + r + ', ' + g + ', ' + b + ', 0.1)';
+                }
+            },
+            backChanged: function() {
+                this.updateSchedule();
+            },
+            forwardChanged: function() {
+                this.updateSchedule();
+            },
+            compChanged: function() {
+                this.comp.api.getArenas(function(arenas) {
+                    this.arenas = arenas;
+                    this.arenasList = Object.keys(arenas);
+                    this.updateSchedule();
+                }.bind(this));
+
+                this.comp.api.getCorners(function(corners) {
+                    this.corners = corners;
+                    this.cornersList = Object.keys(corners);
+                    this.updateSchedule();
+                }.bind(this));
+
+                this.comp.stream.addEventListener('match', function(e) {
+                    this.updateSchedule();
+                }.bind(this));
+
+                this.comp.stream.addEventListener('knockouts', function() {
+                    this.updateSchedule();
+                }.bind(this));
+            },
+            updateSchedule: function() {
+                if (this.arenasList == null || this.arenas == null
+                    || this.cornersList == null || this.corners == null) {
+                    return;  // wait until they're set
+                }
+
+                console.log('Updating schedule…');
+
+                var receiveMatchList = function(matches) {
+                    var schedule = {};
+                    var startTimes = {};
+                    var endTimes = {};
+                    var scheduleStartTimes = {};
+                    var gameEndTimes = {};
+                    var stagingStartTimes = {};
+                    var stagingEndTimes = {};
+                    var displayNames = {};
+
+                    matches.forEach(function(match) {
+                        if (!schedule[match.num]) {
+                            schedule[match.num] = {};
+                        }
+
+                        displayNames[match.num] = match.display_name;
+                        schedule[match.num][match.arena] = match;
+                        startTimes[match.num] = match.times.slot.start;
+                        endTimes[match.num] = match.times.slot.end;
+                        scheduleStartTimes[match.num] = match.times.slot.start;
+                        gameEndTimes[match.num] = match.times.game.end;
+                        stagingStartTimes[match.num] = match.times.staging.opens;
+                        stagingEndTimes[match.num] = match.times.staging.closes;
+                    }.bind(this));
+
+                    var formattedSchedule = [];
+                    for (var matchNumber in schedule) {
+                        formattedSchedule.push({num: matchNumber,
+                                                displayName: displayNames[matchNumber],
+                                                arenas: schedule[matchNumber],
+                                                start: startTimes[matchNumber],
+                                                end: endTimes[matchNumber],
+                                                scheduleStart: scheduleStartTimes[matchNumber],
+                                                gameEnd: gameEndTimes[matchNumber],
+                                                stagingStart: stagingStartTimes[matchNumber],
+                                                stagingEnd: stagingEndTimes[matchNumber]})
+                    }
+
+                    formattedSchedule.sort(function(left, right) {
+                        return Date.parse(left.start) - Date.parse(right.start) ||
+                            Number(left.num) - Number(right.num);
+                    });
+
+                    // shrink the schedule to the matches around the current match
+                    var now = new Date();
+                    var currentIndex = 0;
+                    formattedSchedule.forEach(function(match, ix) {
+                        if (new Date(match.start) < now) {
+                            currentIndex = ix;
+                        }
+                    });
+                    var firstMatchIx = currentIndex - this.back;
+                    if (firstMatchIx < 0) {
+                        firstMatchIx = 0;
+                    }
+                    var lastMatchIx = currentIndex + this.forward + 1;
+                    if (lastMatchIx > formattedSchedule.length) {
+                        lastMatchIx = formattedSchedule.length;
+                    }
+
+                    this.schedule = formattedSchedule.slice(firstMatchIx, lastMatchIx);
+                    this.async(this._updateDisplayedTimes);
+                }.bind(this);
+
+                this.comp.api.getMatches(receiveMatchList);
+            },
+            formatMatchClass: function(match) {
+                var end = match.end;
+                var start = match.start;
+
+                if (moment(end) < new Date()) {
+                    return 'old';
+                } else if (moment(start) > new Date()) {
+                    return 'next';
+                } else {
+                    return 'current';
+                }
+            }
+        });
+    </script>
+</polymer-element>

@@ -1,0 +1,105 @@
+<link rel="import" href="../../bower_components/polymer/polymer.html" />
+<link rel="import" href="../natural-sort/component.html" />
+
+<polymer-element name="sr-scores" attributes="comp">
+    <template>
+        <style>
+            :host {
+                display: block;
+                font-size: 1em;
+            }
+
+            table {
+                padding: 1em;
+            }
+
+            td, th {
+                padding: 0.3em 0.4em;
+            }
+
+            #last-scored {
+                width: 50%;
+                margin: 1em auto 0 auto;
+                text-align: center;
+                color: grey;
+            }
+        </style>
+
+        <table>
+            <template repeat="{{ teams in teamsChunks }}">
+                <tr>
+                    <template repeat="{{ team in teams }}">
+                        <td style="text-align: right;">{{ team.tla }}: {{ team.name }}</td>
+                        <th style="text-align: left;">{{ team.scores.league }}</th>
+                    </template>
+                </tr>
+            </template>
+        </table>
+
+        <sr-last-scored id="last-scored"></sr-last-scored>
+    </template>
+
+    <script>
+        Polymer({
+            comp: null,
+            teams: {},
+            teamsChunks: [],
+            updateTableRequest: undefined,
+            compChanged: function() {
+                this.comp.stream.addEventListener('team', function(e) {
+                    // For some reason e.detail is an empty object when the
+                    // event body is explicitly passed `null`, so we need to
+                    // detect that explicitly.
+                    if (Object.keys(e.detail).length == 0) {
+                        // A team was removed. Refresh everything.
+                        this.comp.api.getTeams(function(teams) {
+                            this.teams = teams;
+                            this.requestTableUpdate();
+                        }.bind(this));
+                    } else {
+                        this.teams[e.detail.tla] = e.detail;
+                        this.requestTableUpdate();
+                    }
+                }.bind(this));
+
+                this.$['last-scored'].comp = this.comp;
+                this.$['last-scored'].compChanged();
+            },
+            requestTableUpdate: function() {
+                if (this.tableUpdateRequest != undefined) {
+                    clearTimeout(this.tableUpdateRequest);
+                }
+
+                this.tableUpdateRequest = setTimeout(function() {
+                    this.updateTable();
+                    this.tableUpdateRequest = undefined;
+                }.bind(this), 1000);
+            },
+            updateTable: function() {
+                var teams = [];
+                for (var key in this.teams) {
+                    teams.push(this.teams[key]);
+                }
+
+                teams.sort(function(a, b) {
+                    return naturalSort(a.tla, b.tla);
+                });
+
+                var teamsChunks = [];
+
+                var chunkLength = 4;
+                if (teams.length <= 20) {
+                  chunkLength = 3;
+                }
+
+                for (var i = 0; i < teams.length; i += chunkLength) {
+                    teamsChunks.push(teams.slice(i, i + chunkLength));
+                }
+
+                this.teamsChunks = teamsChunks;
+
+                this.style.fontSize = Math.sqrt(54 / teams.length) + 'em';
+            }
+        });
+    </script>
+</polymer-element>

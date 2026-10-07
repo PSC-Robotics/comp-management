@@ -1,0 +1,41 @@
+<link rel="import" href="../../bower_components/polymer/polymer.html" />
+<link rel="import" href="../sr-clock-pulse/component.html" />
+
+<polymer-element name="sr-clock" attributes="hours minutes">
+    <template>
+        <style>
+            h1 {
+                margin: inherit;
+                color: inherit;
+                font-size: inherit;
+            }
+        </style>
+
+        <h1>{{ hours | padTimeComponent }}:{{ minutes | padTimeComponent }}</h1>
+        <sr-clock-pulse id="pulses"></sr-clock-pulse>
+    </template>
+
+    <script>
+        Polymer({
+            page: null,
+            hours: 0,
+            minutes: 0,
+            ready: function() {
+                this.updateTime();
+                this.$.pulses.addEventListener('pulse', this.updateTime.bind(this));
+            },
+            updateTime: function() {
+                var date = new Date();
+                this.hours = date.getHours();
+                this.minutes = date.getMinutes();
+            },
+            padTimeComponent: function(value) {
+                if (value <= 9) {
+                    return '0' + value;
+                } else {
+                    return '' + value;
+                }
+            },
+        });
+    </script>
+</polymer-element>

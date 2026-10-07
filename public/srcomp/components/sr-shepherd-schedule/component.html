@@ -1,0 +1,283 @@
+<link rel="import" href="../../bower_components/polymer/polymer.html" />
+<link rel="import" href="../moment/component.html">
+
+<polymer-element name="sr-shepherd-schedule" attributes="comp arena">
+    <template>
+        <style>
+            :host {
+                display: block;
+                font-size: 1.6em;
+                text-align: center;
+            }
+
+            td, th {
+                padding: 0.25em 0.5em;
+            }
+
+            tr.old {
+                opacity: 0.5;
+                font-size: 1.2em;
+            }
+
+            tr.current {
+                font-weight: bold;
+                font-size: 1.5em;
+            }
+
+            tr.next {
+                opacity: 0.8;
+                font-size: 1.3em;
+            }
+
+        </style>
+
+        <table>
+            <tr>
+                <th></th>
+                <th>Staging Closes</th>
+                <template repeat="{{ arena in arenasList }}">
+                    <th></th>
+                </template>
+            </tr>
+
+            <template repeat="{{ match in schedule }}">
+                <tr class="{{ formatMatchClass(now, match) }}">
+                    <td>{{ match.displayName }}</td>
+                    <td><time datetime="{{ match.stagingEnd }}"></time></td>
+                    <template repeat="{{ arena in arenasList }}">
+                        <td style="width: 0.1em;"></td>
+                        <template repeat="{{ team in match.arenas[arena].teamOrder }}">
+                            <td class="team" style="color: {{ team.colour }}">
+                                {{ team.code || '—' }}
+                            </td>
+                        </template>
+                    </template>
+                </tr>
+            </template>
+        </table>
+    </template>
+
+    <script src="../../node_modules/moment/moment.js"></script>
+
+    <script>
+        Polymer({
+            comp: null,
+            arena: null,
+            arenas: undefined,
+            arenasList: undefined,
+            corners: {},
+            locations: undefined,
+            teams: undefined,
+            back: 1,
+            forward: 15,
+            schedule: {},
+            ready: function() {
+                setInterval(this._updateDisplayedTimes.bind(this), 5000);
+                setInterval(this.updateSchedule.bind(this), 5000);
+            },
+            _getEarliest: function(a, b) {
+                return Date.parse(a) < Date.parse(b) ? a : b;
+            },
+            _getValues: function(obj) {
+                var values = [];
+                for (var key in obj) {
+                    values.push(obj[key]);
+                }
+                return values;
+            },
+            _updateDisplayedTimes: function() {
+                var clockOffsetMs = this.comp && this.comp.displayConfig &&
+                    this.comp.displayConfig.displayOptions &&
+                    this.comp.displayConfig.displayOptions.clockOffsetMs || 0;
+                this.now = new Date(Date.now() + clockOffsetMs);
+                var dates = this.shadowRoot.querySelectorAll('time');
+                dates.array().forEach(function(elem) {
+                    var epoch = moment(elem.getAttribute('datetime'));
+                    elem.textContent = epoch.fromNow();
+                });
+            },
+            backChanged: function() {
+                this.updateSchedule();
+            },
+            forwardChanged: function() {
+                this.updateSchedule();
+            },
+            compChanged: function() {
+                this.comp.api.getArenas(function(arenas) {
+                    this.arenas = arenas;
+                    this.arenasList = this.arena && arenas[this.arena]
+                        ? [this.arena] : Object.keys(arenas);
+                    this.updateSchedule();
+                }.bind(this));
+
+                this.comp.api.getCorners(function(corners) {
+                    this.corners = corners;
+                    this.updateSchedule();
+                }.bind(this));
+
+                this.comp.api.getLocations(function(locations) {
+                    this.locations = locations;
+                    this.updateSchedule();
+                }.bind(this));
+
+                this.comp.api.getTeams(function(teams) {
+                    this.teams = teams;
+                    this.updateSchedule();
+                }.bind(this));
+
+                this.comp.stream.addEventListener('current-staging-matches', function(e) {
+                    this.updateSchedule();
+                }.bind(this));
+
+                this.comp.stream.addEventListener('knockouts', function() {
+                    this.updateSchedule();
+                }.bind(this));
+            },
+            arenaChanged: function() {
+                if (this.arenas) {
+                    this.arenasList = this.arena && this.arenas[this.arena]
+                        ? [this.arena] : Object.keys(this.arenas);
+                    this.updateSchedule();
+                }
+            },
+            updateSchedule: function() {
+                if (this.arenasList == null || this.arenas == null
+                    || this.locations == null || this.teams == null
+                    || this.corners == null) {
+                    return;  // wait until they're set
+                }
+
+                console.log('Updating schedule…');
+
+                var receiveMatchList = function(matches) {
+                    var schedule = {};
+                    var startTimes = {};
+                    var endTimes = {};
+                    var gameStartTimes = {};
+                    var gameEndTimes = {};
+                    var stagingStartTimes = {};
+                    var stagingEndTimes = {};
+                    var shepherdingSignalTimes = {};
+                    var displayNames = {};
+
+                    matches.filter(function(match) {
+                        return !this.arena || match.arena == this.arena;
+                    }.bind(this)).forEach(function(match) {
+                        var matchKey = (match.knockout_bracket || 'league') + ':' + match.num;
+                        if (!schedule[matchKey]) {
+                            schedule[matchKey] = {};
+                        }
+
+                        displayNames[matchKey] = match.display_name;
+                        match.teamOrder = [0, 1, 2, 3].map(function(position) {
+                            var corner = this.corners[String(position)] || {};
+                            return {
+                                code: match.teams[String(position)],
+                                colour: corner.colour || '#777777'
+                            };
+                        }.bind(this));
+                        schedule[matchKey][match.arena] = match;
+                        startTimes[matchKey] = match.times.slot.start;
+                        endTimes[matchKey] = match.times.slot.end;
+                        gameStartTimes[matchKey] = match.times.game.start;
+                        gameEndTimes[matchKey] = match.times.game.end;
+                        stagingStartTimes[matchKey] = match.times.staging.opens;
+                        stagingEndTimes[matchKey] = match.times.staging.closes;
+                        shepherdingSignalTimes[matchKey] = match.times.staging.signal_shepherds;
+                    }.bind(this));
+
+                    var formattedSchedule = [];
+                    for (var matchKey in schedule) {
+                        var shepherdingSignals = this._getValues(shepherdingSignalTimes[matchKey]);
+                        var shepherdingSignal = shepherdingSignals.reduce(this._getEarliest);
+                        formattedSchedule.push({num: matchKey,
+                                                displayName: displayNames[matchKey],
+                                                arenas: schedule[matchKey],
+                                                start: startTimes[matchKey],
+                                                end: endTimes[matchKey],
+                                                gameStart: gameStartTimes[matchKey],
+                                                gameEnd: gameEndTimes[matchKey],
+                                                stagingStart: stagingStartTimes[matchKey],
+                                                stagingEnd: stagingEndTimes[matchKey],
+                                                shepherdingSignal: shepherdingSignal})
+                    }
+
+                    formattedSchedule.sort(function(left, right) {
+                        return Date.parse(left.gameStart) - Date.parse(right.gameStart) ||
+                            left.num.localeCompare(right.num);
+                    });
+
+                    var displayConfig = this.comp && this.comp.displayConfig || {};
+                    var requestedOffset = Number(displayConfig.stagingCloseOffsetMinutes);
+                    var closeOffsetMs = Number.isFinite(requestedOffset) && requestedOffset >= 0
+                        ? requestedOffset * 60 * 1000 : 5 * 60 * 1000;
+                    var previousGameStartByArena = {};
+                    formattedSchedule.forEach(function(match) {
+                        var opens = [];
+                        var closes = [];
+                        Object.keys(match.arenas).forEach(function(arena) {
+                            var arenaMatch = match.arenas[arena];
+                            var previousGameStart = previousGameStartByArena[arena];
+                            var opensAt = previousGameStart ||
+                                Date.parse(arenaMatch.times.staging.opens);
+                            var closesAt = previousGameStart
+                                ? Date.parse(previousGameStart) + closeOffsetMs
+                                : Date.parse(arenaMatch.times.slot.start);
+                            opens.push(new Date(opensAt).toISOString());
+                            closes.push(new Date(closesAt).toISOString());
+                            previousGameStartByArena[arena] = arenaMatch.times.game.start;
+                        });
+                        match.stagingStart = opens.reduce(this._getEarliest);
+                        match.stagingEnd = closes.reduce(this._getEarliest);
+                        match.shepherdingSignal = match.stagingStart;
+                    }.bind(this));
+
+                    // Anchor on the next match that has not finished so the history count
+                    // excludes the current match and future staging rows.
+                    var pastMatches = Number.isInteger(displayConfig.shepherdingPastMatches)
+                        ? displayConfig.shepherdingPastMatches : 1;
+                    var currentIndex = formattedSchedule.findIndex(function(match) {
+                        return Object.keys(match.arenas).some(function(arena) {
+                            return !['complete', 'awaiting_score', 'cancelled']
+                                .includes(match.arenas[arena].state);
+                        });
+                    });
+                    if (currentIndex === -1) {
+                        currentIndex = formattedSchedule.length;
+                    }
+                    var firstMatchIx = currentIndex - pastMatches;
+                    if (firstMatchIx < 0) {
+                        firstMatchIx = 0;
+                    }
+                    var lastMatchIx = currentIndex + this.forward + 1;
+                    if (lastMatchIx > formattedSchedule.length) {
+                        lastMatchIx = formattedSchedule.length;
+                    }
+
+                    this.schedule = formattedSchedule.slice(firstMatchIx, lastMatchIx);
+                    this.async(this._updateDisplayedTimes);
+                }.bind(this);
+
+                this.comp.api.getMatches(receiveMatchList, 'all');
+            },
+            formatMatchClass: function(now, match) {
+                var stagingStart = moment(match.stagingStart);
+                var end = moment(match.stagingEnd);
+                var active = Object.keys(match.arenas).some(function(arena) {
+                    return ['running', 'paused'].includes(match.arenas[arena].state);
+                });
+                if (active) {
+                    return 'current';
+                }
+
+                if (end.isBefore(now)) {
+                    return 'old';
+                } else if (stagingStart.isAfter(now)) {
+                    return 'next';
+                } else {
+                    return 'current';
+                }
+            }
+        });
+    </script>
+</polymer-element>

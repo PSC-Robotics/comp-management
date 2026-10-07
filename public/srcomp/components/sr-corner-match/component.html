@@ -1,0 +1,28 @@
+<link rel="import" href="../../bower_components/polymer/polymer.html" />
+
+<polymer-element name="sr-corner-match" attributes="match">
+    <template>
+        <style>
+            h1 {
+                font-family: sans-serif;
+                font-size: 6em;
+                color: white;
+            }
+        </style>
+
+        <h1>{{ text }}</h1>
+    </template>
+
+    <script>
+        Polymer({
+            match: undefined,
+            matchChanged: function() {
+                if (this.match) {
+                    this.text = this.match.display_name;
+                } else {
+                    this.text = '';
+                }
+            }
+        });
+    </script>
+</polymer-element>

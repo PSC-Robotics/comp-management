@@ -1,0 +1,244 @@
+<link rel="import" href="../../bower_components/polymer/polymer.html" />
+
+<link rel="import" href="../sr-clock/component.html" />
+<link rel="import" href="../sr-corner-clock/component.html" />
+<link rel="import" href="../sr-delay/component.html" />
+<link rel="import" href="../sr-producer-period/component.html" />
+
+<polymer-element name="sr-producer" attributes="arena comp">
+    <template>
+        <style>
+            :host {
+                display: flex;
+                display: -webkit-flex;
+                flex-direction: column;
+                -webkit-flex-direction: column;
+                align-items: center;
+                -webkit-align-items: center;
+                justify-content: space-between;
+                height: 100%;
+            }
+
+            #title {
+                margin: 0.6em 0 0;
+            }
+
+            #content-row {
+                display: flex;
+                justify-content: space-evenly;
+                width: 100%;
+            }
+
+            sr-corner-clock h1 {
+                margin: 0;
+            }
+
+            #match-clocks {
+                text-align: left;
+            }
+            #match-clocks > div:first-child {
+                margin-bottom: 4em;
+            }
+
+            #time {
+                flex: 0 0 auto;
+                -webkit-flex: 0 0 auto;
+
+                width: 100%;
+
+                display: flex;
+                display: -webkit-flex;
+                flex-direction: row;
+                -webkit-flex-direction: row;
+
+                border-top: 1px solid white;
+                background: rgb(50, 50, 50);
+            }
+
+            sr-clock, sr-delay {
+                flex: 1 1 auto;
+                -webkit-flex: 1 1 auto;
+
+                text-align: center;
+
+                margin: 0.1em;
+                font-size: 3.6em;
+            }
+
+            sr-corner-clock h1 {
+                font-size: 3.6em;
+            }
+        </style>
+
+        <h1 id="title">Producer</h1>
+
+        <div id="content-row">
+            <div id="match-clocks">
+                <div>
+                    <h2>Match {{ currentMatch.num }}</h2>
+                    <sr-corner-clock id="current-match-clock"></sr-corner-clock>
+                </div>
+
+                <div>
+                    <h2>Match {{ nextMatch.num }}</h2>
+                    <sr-corner-clock id="next-match-clock"></sr-corner-clock>
+                </div>
+            </div>
+
+            <sr-producer-period id="period"></sr-producer-period>
+        </div>
+
+        <div id="time">
+            <sr-clock></sr-clock>
+            <sr-delay id="delay"></sr-delay>
+        </div>
+    </template>
+
+    <script src="../../node_modules/moment/moment.js"></script>
+    <script src="../../node_modules/moment-duration-format/lib/moment-duration-format.js"></script>
+
+    <script>
+        var reload = function() {
+            if (this.comp == null || this.arena == null) {
+                return;
+            }
+
+            this.$.delay.comp = this.comp;
+            this.$.delay.compChanged();
+
+            const updateMatches = function(matches) {
+                if (!matches.length) {
+                    this.currentMatch = null;
+                    this.nextMatch = null;
+                    return;
+                }
+
+                if (this.currentMatch == null) {
+                    this.currentMatch = matches[0];
+                    this.nextMatch = matches[1];
+                } else {
+                    const index = matches.findIndex(m => m.num == this.currentMatch.num);
+                    // The current match may have a start time in the past. If
+                    // that happens we'll not get it in the list of upcoming
+                    // matches, but we also don't want to un-set it.
+                    if (index >= 0) {
+                        this.currentMatch = matches[index];
+                    }
+                    this.nextMatch = matches[index + 1];
+                }
+            }.bind(this);
+
+            this.comp.stream.addEventListener('match', function(e) {
+                var matches = e.detail.filter(function(match) {
+                    return match.arena === this.arena;
+                }.bind(this));
+
+                if (matches.length) {
+                    this.currentMatch = matches[0];
+                } else {
+                    this.currentMatch = null;
+                }
+
+                this.comp.api.getUpcomingMatches(this.arena, updateMatches);
+            }.bind(this));
+
+            this.comp.stream.addEventListener('knockouts', function() {
+                this.comp.api.getUpcomingMatches(this.arena, updateMatches);
+            }.bind(this));
+
+            const updatePeriod = function() {
+                // Find the first period which has not yet ended, it will be
+                // either the current one or the next one.
+                const now = new Date();
+                this.period = this.periods.find(p => now < p.apparentEndTime);
+            }.bind(this);
+
+            const parseMatch = function(match) {
+                return {
+                    num: match.num,
+                    displayName: match.display_name,
+                    type: match.type,
+                    times: {
+                        gameStart: moment(match.times.game.start),
+                        gameEnd: moment(match.times.game.end),
+                        slotStart: moment(match.times.slot.start),
+                        slotEnd: moment(match.times.slot.end),
+                    },
+                };
+            };
+
+            const parsePeriods = function(periods, matches) {
+                const parsedPeriods = periods.map(p => {
+                    const parsedPeriod = {
+                        description: p.description,
+                        type: p.type,
+                        startTime: moment(p.start_time),
+                        endTime: moment(p.end_time),
+                        maxEndTime: moment(p.max_end_time),
+                    };
+                    if (p.matches) {
+                        parsedPeriod.matches = {
+                            first: parseMatch(
+                                matches.find(m => m.num == p.matches.first_num),
+                            ),
+                            last: parseMatch(
+                                matches.find(m => m.num == p.matches.last_num),
+                            ),
+                        };
+                    }
+                    // The "end_time" of a period is actually the last time a
+                    // which a match could *start*, so we need to come up with
+                    // our own better way to signal to livestream producers when
+                    // the matches will actually end.
+                    parsedPeriod.apparentEndTime = parsedPeriod.matches
+                        ? parsedPeriod.matches.last.times.slotEnd
+                        : parsedPeriod.maxEndTime;
+                    return parsedPeriod;
+                });
+                parsedPeriods.sort((a, b) => a.apparentEndTime - b.apparentEndTime);
+                return parsedPeriods;
+            }
+
+            const loadPeriods = function() {
+                this.comp.api.getMatches(function(matches) {
+                    matches = matches.filter(m => m.arena == this.arena);
+
+                    this.comp.api.getPeriods(function(periods) {
+                        this.periods = parsePeriods(periods, matches);
+
+                        updatePeriod();
+                    }.bind(this));
+                }.bind(this));
+            }.bind(this);
+
+            // no events on this, so fall back to occasional polls
+            setInterval(updatePeriod, 5 * 1000);
+            setInterval(loadPeriods, 60 * 1000);
+            loadPeriods();
+        };
+        Polymer({
+            comp: null,
+            compChanged: reload,
+            arenaChanged: reload,
+            currentMatch: undefined,
+            currentMatchChanged: function() {
+                this.$['current-match-clock'].match = this.currentMatch;
+                this.$['current-match-clock'].displayOptions =
+                    this.comp && this.comp.displayConfig.displayOptions;
+                this.$['current-match-clock'].matchChanged();
+            },
+            nextMatch: undefined,
+            nextMatchChanged: function() {
+                this.$['next-match-clock'].match = this.nextMatch;
+                this.$['next-match-clock'].displayOptions =
+                    this.comp && this.comp.displayConfig.displayOptions;
+                this.$['next-match-clock'].matchChanged();
+            },
+            period: undefined,
+            periodChanged: function() {
+                this.$.period.period = this.period;
+                this.$.period.periodChanged();
+            },
+        });
+    </script>
+</polymer-element>

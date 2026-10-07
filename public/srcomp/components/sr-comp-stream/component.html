@@ -1,0 +1,92 @@
+<link rel="import" href="../../bower_components/polymer/polymer.html" />
+
+<polymer-element name="sr-comp-stream" attributes="url">
+    <template>
+        <style>
+            :host {
+                display: none;
+            }
+        </style>
+    </template>
+    <script>
+        Polymer({
+            load: function() {
+                console.log('Connecting to the stream…');
+
+                this.eventSource = new EventSource(this.realUrl);
+
+                this.eventSource.addEventListener('current-delay', function(e) {
+                    console.log("Got a 'current-delay' event from the stream.");
+                    this.fire('current-delay', JSON.parse(e.data));
+                }.bind(this));
+
+                this.eventSource.addEventListener('match', function(e) {
+                    console.log("Got a 'match' event from the stream.");
+                    this.fire('match', JSON.parse(e.data));
+                }.bind(this));
+
+                this.eventSource.addEventListener('current-staging-matches', function(e) {
+                    console.log("Got a 'current-staging-matches' event from the stream.");
+                    this.fire('current-staging-matches', JSON.parse(e.data));
+                }.bind(this));
+
+                this.eventSource.addEventListener('current-shepherding-matches', function(e) {
+                    console.log("Got a 'current-shepherding-matches' event from the stream.");
+                    this.fire('current-shepherding-matches', JSON.parse(e.data));
+                }.bind(this));
+
+                this.eventSource.addEventListener('team', function(e) {
+                    console.log("Got a 'team' event from the stream.");
+                    this.fire('team', JSON.parse(e.data));
+                }.bind(this));
+
+                this.eventSource.addEventListener('knockouts', function(e) {
+                    console.log("Got a 'knockouts' event from the stream.");
+                    this.fire('knockouts', JSON.parse(e.data));
+                }.bind(this));
+
+                this.eventSource.addEventListener('knockout-structure', function(e) {
+                    console.log("Got a 'knockout-structure' event from the stream.");
+                    this.fire('knockout-structure', JSON.parse(e.data));
+                }.bind(this));
+
+                this.eventSource.addEventListener('last-scored-match', function(e) {
+                    console.log("Got a 'last-scored-match' event from the stream.");
+                    this.fire('last-scored-match', JSON.parse(e.data));
+                }.bind(this));
+
+                this.eventSource.addEventListener('ping', function(e) {
+                    this.fire('ping', JSON.parse(e.data));
+                }.bind(this));
+
+                this.eventSource.addEventListener('clock-sync', function(e) {
+                    this.fire('clock-sync', JSON.parse(e.data));
+                }.bind(this));
+
+                this.eventSource.onerror = function() {
+                    this.close();
+                }.bind(this);
+
+                this.eventSource.onopen = function() {
+                    console.log('Connected to the stream.');
+                    this.fire('open');
+                }.bind(this);
+            },
+            urlChanged: function() {
+                this.realUrl = this.url.replace(/\{([^{}]*)\}/g,
+                                                function (match, p1) {
+                                                    return window.location[p1];
+                                                });
+                console.log('Stream URL is:', this.realUrl);
+            },
+            close: function() {
+                console.log('Disconnected from the stream.');
+                this.fire('close');
+
+                this.eventSource.close();
+
+                setTimeout(this.load.bind(this), 1000);
+            }
+        });
+    </script>
+</polymer-element>

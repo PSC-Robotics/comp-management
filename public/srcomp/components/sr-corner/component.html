@@ -1,0 +1,154 @@
+<link rel="import" href="../../bower_components/polymer/polymer.html" />
+
+<link rel="import" href="../sr-corner-clock/component.html" />
+<link rel="import" href="../sr-corner-clock-countdown/component.html" />
+<link rel="import" href="../sr-corner-match/component.html" />
+<link rel="import" href="../sr-corner-team/component.html" />
+
+<polymer-element name="sr-corner" attributes="comp arena corner stream show">
+    <template>
+        <style>
+            :host {
+                display: flex;
+                display: -webkit-flex;
+                flex-direction: row;
+                -webkit-flex-direction: row;
+            }
+
+            .bar {
+                flex: 0 0 auto;
+                -webkit-flex: 0 0 auto;
+
+                width: 15%;
+                background: {{ colour }};
+            }
+
+            main {
+                flex: 1 1 auto;
+                -webkit-flex: 1 1 auto;
+
+                background: black;
+                background-repeat: no-repeat;
+                background-size: cover;
+                background-position: center;
+
+                display: flex;
+                display: -webkit-flex;
+                flex-direction: column;
+                -webkit-flex-direction: column;
+                align-items: center;
+                -webkit-align-items: center;
+                justify-content: center;
+                -webkit-justify-content: center;
+            }
+        </style>
+
+        <aside class="bar"></aside>
+
+        <main id="main">
+            <template if="{{ show == 'all' }}">
+                <sr-corner-match id="match"></sr-corner-match>
+                <sr-corner-team id="team" corner="{{ corner }}" show="all"></sr-corner-team>
+                <sr-corner-clock id="clock"></sr-corner-clock>
+                <sr-corner-clock-countdown id="clock-countdown"></sr-corner-clock-countdown>
+            </template>
+
+            <template if="{{ show == 'tla' }}">
+                <sr-corner-team id="team" corner="{{ corner }}" show="tla"></sr-corner-team>
+            </template>
+        </main>
+
+        <aside class="bar"></aside>
+    </template>
+
+    <script>
+        var reload = function() {
+            if (this.comp == null || this.corner == null || this.arena == null) {
+                return;
+            }
+
+            this.comp.api.getCorner(this.corner, function(corner) {
+                this.colour = corner.colour;
+
+                // Polymer Polyfill cannot bind variables in the CSS.
+                var bars = this.shadowRoot.querySelectorAll('.bar');
+                for (var i = 0; i < bars.length; i++) {
+                    bars[i].style.backgroundColor = this.colour;
+                }
+            }.bind(this));
+
+            this.$.team.comp = this.comp;
+            this.$.team.corner = this.corner;
+            this.$.team.compChanged();
+
+            this.comp.stream.addEventListener('match', function(e) {
+                var matches = e.detail.filter(function(match) {
+                    return match.arena === this.arena;
+                }.bind(this));
+
+                if (matches.length) {
+                    this.match = matches[0];
+                }
+            }.bind(this));
+
+            this.comp.stream.addEventListener('knockouts', function() {
+                var updateMatch = function(matches) {
+                    // only update if it's the same match
+                    var newMatch = matches[0];
+                    if (this.match != null && newMatch != null && this.match.num == newMatch.num) {
+                        this.match = newMatch;
+                    }
+                }.bind(this);
+
+                if (this.match) {
+                    this.comp.api.getMatch(this.arena, this.match.num, updateMatch);
+                } else {
+                    this.comp.api.getUpcomingMatches(this.arena, updateMatch);
+                }
+            }.bind(this));
+        };
+        Polymer({
+            comp: null,
+            compChanged: reload,
+            arenaChanged: reload,
+            cornerChanged: reload,
+            match: undefined,
+            matchChanged: function() {
+                if (this.$.match) {
+                    this.$.match.match = this.match;
+                    this.$.match.matchChanged();
+                }
+
+                this.$.team.match = this.match;
+                this.$.team.matchChanged();
+
+                if (this.$.clock) {
+                    this.$.clock.match = this.match;
+                    this.$.clock.displayOptions = this.comp.displayConfig.displayOptions;
+                    this.$.clock.matchChanged();
+                }
+
+                if (this.$['clock-countdown']) {
+                    this.$['clock-countdown'].match = this.match;
+                    this.$['clock-countdown'].displayOptions = this.comp.displayConfig.displayOptions;
+                    this.$['clock-countdown'].matchChanged();
+                }
+
+                if (this.match) {
+                    var tla = this.match.teams[this.corner];
+                    this.comp.api.getTeam(tla, function(team) {
+                        if (team.image_url) {
+                            this.$.main.style.backgroundImage = 'linear-gradient(rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.7)), url(' + team.image_url + ')';
+                        } else {
+                            this.$.main.style.backgroundImage = null;
+                        }
+                    }.bind(this));
+                } else {
+                    this.$.main.style.backgroundImage = null;
+                }
+
+                this.fire('match', this.match);
+            }
+        });
+    </script>
+</polymer-element>

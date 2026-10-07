@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <title>SR Outside Screen</title>
+
+        <script src="bower_components/webcomponentsjs/webcomponents.js"></script>
+        <link rel="import" href="bower_components/core-pages/core-pages.html" />
+
+        <link rel="import" href="components/sr-comp/component.html" />
+        <link rel="import" href="components/sr-clock/component.html" />
+        <link rel="import" href="components/sr-progress/component.html" />
+        <link rel="import" href="components/sr-competitor-schedule/component.html" />
+        <link rel="import" href="components/sr-leaderboard/component.html" />
+        <link rel="import" href="components/sr-knockout-diagram/component.html" />
+        <link rel="import" href="components/moment/component.html" />
+
+        <style>
+            body {
+                position: fixed;
+                width: 100%;
+                height: 100%;
+                top: 0;
+                right: 0;
+                bottom: 0;
+                left: 0;
+                margin: 0;
+                padding: 0;
+
+                font-family: 'Open Sans', sans-serif;
+                background: black;
+                color: white;
+                font-size: 100%;
+            }
+
+            #pages {
+                height: 90%;
+                width: 100%;
+
+                overflow: auto;
+
+                flex: 1 1 auto;
+                -webkit-flex: 1 1 auto;
+                display: flex;
+                display: -webkit-flex;
+                flex-direction: column;
+                -webkit-flex-direction: column;
+                align-items: center;
+                -webkit-align-items: center;
+                justify-content: center;
+                -webkit-justify-content: center;
+            }
+
+            #pages > * {
+                display: none;
+                position: static !important;  /* wrestle with core-pages */
+            }
+
+            #pages > .core-selected {
+                display: block;
+            }
+
+            #progress {
+                height: 10%;
+                width: 100%;
+
+                flex: 0 0 auto;
+                -webkit-flex: 0 0 auto;
+
+                display: flex;
+                display: -webkit-flex;
+                align-items: center;
+                -webkit-align-items: center;
+
+                border-top: 1px solid rgb(100, 100, 100);
+            }
+
+            #progress > h1, #progress > p {
+                color: rgb(200, 200, 200);
+                margin: 0.1em 0.3em;
+
+                flex: 1 1 auto;
+                -webkit-flex: 1 1 auto;
+            }
+            #progress > h1 {
+                font-size: 2.6em;
+            }
+            #progress > p {
+                font-size: 1.7em;
+                font-style: italic;
+            }
+
+            #progress > sr-clock {
+                font-size: 2.6em;
+                margin: 0.1em 0.3em;
+            }
+        </style>
+    </head>
+
+    <body>
+        <sr-comp id="comp"></sr-comp>
+
+        <core-pages id="pages" selected="0">
+            <sr-competitor-schedule
+                data-title="Schedule"
+                data-website-url-slug="schedule"
+                data-needs-comp
+            ></sr-competitor-schedule>
+            <sr-leaderboard
+                data-title="League Leaderboard"
+                data-website-url-slug="league"
+                data-needs-comp
+            ></sr-leaderboard>
+            <!-- sr-knockout-diagram added dynamically inline below -->
+        </core-pages>
+
+        <sr-progress id="progress" progress="1">
+            <h1 id="progress-title"></h1>
+            <p id="website-url"></p>
+            <sr-clock></sr-clock>
+        </sr-progress>
+
+        <script>
+            document.addEventListener('sr-ready', function() {
+                const pages = document.querySelector('#pages');
+
+                var comp = document.querySelector('#comp');
+                var needsComp = document.querySelectorAll('[data-needs-comp]');
+                for (var i = 0; i < needsComp.length; i++) {
+                    needsComp[i].comp = comp;
+                    needsComp[i].compChanged();
+                }
+
+                const appendKnockoutsDiagram = function(title, bracket) {
+                    const newDiagram = document.createElement('sr-knockout-diagram');
+                    newDiagram.comp = comp;
+                    newDiagram.bracket = bracket;
+                    newDiagram.dataset.title = title;
+                    newDiagram.dataset.websiteUrlSlug = 'knockout';
+                    pages.appendChild(newDiagram);
+                    newDiagram.compChanged();
+                };
+
+                const updateKnockoutsDiagrams = function(structure) {
+                    // Remove existing entries, then rebuild
+                    pages.children.array().forEach(child => {
+                        if (child.tagName.toLowerCase() == 'sr-knockout-diagram') {
+                            child.parentNode.removeChild(child);
+                        }
+                    });
+                    structure.brackets.forEach(bracket => appendKnockoutsDiagram(bracket.display_name, bracket.name));
+                };
+
+                // Ideally we'd only use the stream, however older versions of the backends don't offer this event.
+                comp.stream.addEventListener('knockout-structure', e => updateKnockoutsDiagrams(e.detail));
+                comp.api.getKnockoutStructure(updateKnockoutsDiagrams);
+
+                const times = {
+                    knockout: undefined,
+                    noLeaderboard: undefined,
+                };
+                const updateTimes = function(knockoutRounds) {
+                    if (knockoutRounds.length > 0 && knockoutRounds[0].length > 0) {
+                        const firstMatch = knockoutRounds[0][0];
+                        // show the knockouts from 1 hour before the first knockout match
+                        times.knockout = moment(firstMatch.times.slot.start).subtract(1, 'hours');
+                        // hide the leaderboard once the knockouts actually start
+                        times.noLeaderboard = moment(firstMatch.times.game.start);
+                    } else {
+                        times.knockout = undefined;
+                        times.noLeaderboard = undefined;
+                    }
+                };
+                comp.stream.addEventListener('knockouts', e => updateTimes(e.detail));
+
+                var progress = document.querySelector('#progress');
+                var progressTitle = document.querySelector('#progress-title');
+                var websiteUrl = document.querySelector('#website-url');
+
+                var nextPage = function() {
+                    pages.selected = (pages.selected + 1) % pages.children.length;
+                    progressTitle.textContent = pages.children[pages.selected].dataset.title;
+                    var externalUrl = comp.displayConfig.externalUrl || '';
+                    websiteUrl.hidden = !externalUrl;
+                    websiteUrl.textContent = externalUrl
+                        ? externalUrl.replace(/\/+$/, '') + '/' + pages.children[pages.selected].dataset.websiteUrlSlug
+                        : '';
+                    progress.progress = 0;
+                };
+
+                var shouldSelectAutomatically = function(index) {
+                    const tagName = pages.children[index].tagName.toLowerCase();
+                    if (comp.displayConfig.hideOutsidePages.includes(tagName)) {
+                        return false;
+                    }
+                    if (tagName == 'sr-knockout-diagram') {
+                        if (times.knockout != null && moment().isBefore(times.knockout)) {
+                            return false;
+                        }
+                    }
+                    if (tagName == 'sr-leaderboard') {
+                        if (times.noLeaderboard != null && moment().isAfter(times.noLeaderboard)) {
+                            return false;
+                        }
+                    }
+                    return true;
+                };
+
+                setInterval(function() {
+                    var rotationSeconds = comp.displayConfig.rotationSeconds || 10;
+                    progress.progress += 0.2 / rotationSeconds;
+                    if (progress.progress >= 1) {
+                        do {
+                            nextPage();
+                        } while (!shouldSelectAutomatically(pages.selected));
+                    }
+                }, 200);
+
+                // Advance to the next page on click; note that this
+                // always shows _all_ the pages
+                document.addEventListener('click', nextPage);
+
+                /* Work around an issue with Firefox. When the arena fields
+                   above are set, the changed callback should get called
+                   immediately giving time for listeners to be registered on
+                   the stream before it is loaded below. However, in Firefox,
+                   the changed callbacks happen *after* this call below.
+                   Therefore, we wrap it in a 'setTimeout' to ensure it happens
+                   in the next tick, after the changed callbacks.
+
+                   Rather concerningly, using a value of 0ms in the
+                   'setTimeout' doesn't solve the problem. Therefore the 500ms
+                   as it is currently might have to be increased for the
+                   Raspberry Pis which have a lower processing speed than my
+                   laptop. */
+
+                setTimeout(function() {
+                    comp.stream.load();
+                }, 500);
+            });
+        </script>
+    </body>
+</html>

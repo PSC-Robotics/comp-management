@@ -1,0 +1,89 @@
+<link rel="import" href="../../bower_components/polymer/polymer.html" />
+
+<link rel="import" href="../sr-corner/component.html" />
+<link rel="import" href="../sr-staging-schedule/component.html" />
+<link rel="import" href="../sr-clock/component.html" />
+<link rel="import" href="../sr-slot-spacing/component.html" />
+<link rel="import" href="../sr-delay/component.html" />
+
+<polymer-element name="sr-staging" attributes="comp arena">
+    <template>
+        <style>
+            :host {
+                display: flex;
+                display: -webkit-flex;
+                flex-direction: column;
+                -webkit-flex-direction: column;
+                align-items: center;
+                -webkit-align-items: center;
+            }
+
+            h1 {
+                margin: 0.6em 0 0;
+            }
+
+            #schedule {
+                flex: 1 1 auto;
+                -webkit-flex: 1 1 auto;
+
+                margin: 1em;
+
+                overflow-y: auto;
+            }
+
+            #time {
+                flex: 0 0 auto;
+                -webkit-flex: 0 0 auto;
+
+                border-top: 1px solid white;
+                background: rgb(50, 50, 50);
+
+                width: 100%;
+
+                display: flex;
+                display: -webkit-flex;
+                flex-direction: row;
+                -webkit-flex-direction: row;
+            }
+
+            sr-clock, sr-slot-spacing, sr-delay {
+                flex: 1 1 auto;
+                -webkit-flex: 1 1 auto;
+
+                text-align: center;
+
+                margin: 0.1em;
+                font-size: 3.6em;
+            }
+        </style>
+
+        <h1>Staging</h1>
+
+        <sr-staging-schedule id="schedule"></sr-staging-schedule>
+
+        <div id="time">
+            <sr-clock></sr-clock>
+            <sr-slot-spacing id="spacing"></sr-slot-spacing>
+            <sr-delay id="delay"></sr-delay>
+        </div>
+    </template>
+
+    <script>
+        Polymer({
+            comp: null,
+            arena: null,
+            compChanged: function() {
+                this.$.schedule.comp = this.comp;
+                this.$.schedule.arena = this.arena;
+                this.$.schedule.compChanged();
+                this.$.spacing.comp = this.comp;
+                this.$.spacing.compChanged();
+                this.$.delay.comp = this.comp;
+                this.$.delay.compChanged();
+            },
+            arenaChanged: function() {
+                this.$.schedule.arena = this.arena;
+            }
+        });
+    </script>
+</polymer-element>

@@ -1,0 +1,23 @@
+<link rel="import" href="../../bower_components/polymer/polymer.html" />
+
+<polymer-element name="sr-clock-pulse" attributes="displayOptions">
+    <script>
+        Polymer({
+            displayOptions: undefined,
+            ready: function() {
+                var tick = function() {
+                    var now = new Date();
+                    this.fire('pulse', now);
+                    var clockOffsetMs = this.displayOptions &&
+                        this.displayOptions.clockOffsetMs || 0;
+                    var nextPulse = 1000 - ((now.getTime() + clockOffsetMs) % 1000) + 10;
+                    if (nextPulse < 20) {
+                        nextPulse += 1000;
+                    }
+                    setTimeout(tick, nextPulse);
+                }.bind(this);
+                tick();
+            }
+        });
+    </script>
+</polymer-element>

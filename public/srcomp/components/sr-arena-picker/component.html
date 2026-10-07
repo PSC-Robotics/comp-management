@@ -1,0 +1,93 @@
+<link rel="import" href="../../bower_components/polymer/polymer.html" />
+
+<polymer-element name="sr-arena-picker" attributes="comp includecorners">
+    <template>
+        <style>
+            :host {
+                display: block;
+                font-family: inherit;
+                color: inherit;
+                padding: 1em;
+            }
+
+            h1 {
+                margin: 0 0 0.5em 0;
+                font-size: 1.5em;
+            }
+
+            a {
+                color: inherit;
+                font-size: 1.2em;
+                font-weight: bold;
+                padding: 1em;
+                display: inline-block;
+                text-decoration: none;
+            }
+
+            a:hover {
+                background: rgba(255, 255, 255, 0.5);
+            }
+        </style>
+
+        <template if="{{ includecorners }}">
+            <h1>Pick an arena and a corner:</h1>
+
+            <template repeat="{{ arena in arenas }}">
+                <div>
+                    <template repeat="{{ corner in corners }}">
+                        <a href="?{{ arena.name }},{{ corner.number }}">
+                            <span style="color: {{ arena.colour }}">{{ _arenaNameForCorner(arena) }}</span>
+                            <span style="color: {{ corner.colour }}">{{ corner.number }}</span>
+                        </a>
+                    </template>
+                </div>
+            </template>
+        </template>
+
+        <template if="{{ !includecorners }}">
+            <h1>Pick an arena:</h1>
+
+            <template repeat="{{ arena in arenas }}">
+                <span>
+                    <a href="?{{ arena.name }}">
+                        <span style="color: {{ arena.colour }}">{{ arena.display_name || arena.name }}</span>
+                    </a>
+                </span>
+            </template>
+        </template>
+    </template>
+
+    <script>
+        Polymer({
+            comp: null,
+            arenas: null,
+            corners: null,
+            includecorners: null,
+            _getValues: function(obj) {
+                var values = [];
+                for (var key in obj) {
+                    values.push(obj[key]);
+                }
+                return values;
+            },
+            compChanged: function() {
+                this.comp.api.getArenas(function(arenas) {
+                    this.arenas = this._getValues(arenas);
+                }.bind(this));
+
+                this.comp.api.getCorners(function(corners) {
+                    this.corners = this._getValues(corners);
+                }.bind(this));
+            },
+            _arenaNameForCorner: function(arena) {
+                if (this.arenas.length > 1) {
+                    return arena.display_name || arena.name;
+                }
+                return arena.display_name;
+            },
+            go: function() {
+
+            }
+        });
+    </script>
+</polymer-element>

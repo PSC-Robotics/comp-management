@@ -1,0 +1,61 @@
+<link rel="import" href="../../bower_components/polymer/polymer.html" />
+
+<link rel="import" href="../sr-clock-pulse/component.html" />
+
+<polymer-element name="sr-producer-period" attributes="period">
+    <template>
+        <style>
+            .period p {
+                font-size: 1.5em;
+            }
+        </style>
+
+        <div class="period">
+            <h2>{{ period.description }}</h2>
+            <p>Start: {{ startTimeText }}</p>
+            <p>End: {{ endTimeText }}</p>
+        </div>
+
+        <sr-clock-pulse id="pulses"></sr-clock-pulse>
+    </template>
+
+    <script src="../../node_modules/moment/moment.js"></script>
+    <script src="../../node_modules/moment-duration-format/lib/moment-duration-format.js"></script>
+
+    <script>
+        Polymer({
+            period: undefined,
+            ready: function() {
+                this.$.pulses.addEventListener('pulse', this._updateDisplayedTimes.bind(this));
+            },
+            periodChanged: function() {
+                if (!this.period) {
+                    this.startTimeText = undefined;
+                    this.endTimeText = undefined;
+                }
+                this._updateDisplayedTimes({detail: new Date()});
+            },
+            _updateDisplayedTimes: function(e) {
+                if (!this.period) {
+                    return;
+                }
+                const now = e.detail;
+                this.startTimeText = this.formatTime(now, this.period.startTime);
+                this.endTimeText = this.formatTime(now, this.period.apparentEndTime);
+            },
+            preciseTimeThresholdMinutes: 3,
+            formatTime: function(now, when) {
+                const threshold = moment.duration(this.preciseTimeThresholdMinutes * 60 * 1000);
+                const relative = moment.duration(when.diff(now));
+                if (relative > 0 && relative < threshold) {
+                    // Show more precision for close future times. Moment
+                    // doesn't support this natively, so use a plugin to
+                    // format it ourselves.
+                    return "in " + relative.format('m:ss', {trim: false});
+                } else {
+                    return relative.humanize(true);
+                }
+            },
+        });
+    </script>
+</polymer-element>

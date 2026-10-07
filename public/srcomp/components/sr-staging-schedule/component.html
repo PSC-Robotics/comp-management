@@ -1,0 +1,318 @@
+<link rel="import" href="../../bower_components/polymer/polymer.html" />
+<link rel="import" href="../moment/component.html">
+
+<polymer-element name="sr-staging-schedule" attributes="comp arena">
+    <template>
+        <style>
+            :host {
+                display: block;
+                font-size: 2.2em;
+                text-align: center;
+            }
+
+            td, th {
+                padding: 0.25em 0.5em;
+            }
+
+            tr.old {
+                opacity: 0.5;
+                font-size: 1.2em;
+            }
+
+            tr.current {
+                font-weight: bold;
+                font-size: 1.5em;
+            }
+
+            tr.next {
+                opacity: 0.8;
+                font-size: 1.3em;
+            }
+        </style>
+
+        <table>
+            <tr>
+                <th rowspan="2"></th>
+                <th rowspan="2">Match Starts</th>
+                <th rowspan="2">Staging Opens</th>
+                <template repeat="{{ arena in arenasList }}">
+                    <th></th>
+                    <th colspan="{{ cornersList.length }}" style="background-color: {{ arenas[arena].colour | arenaColour }}">
+                        {{ arenas[arena].display_name }}
+                    </th>
+                </template>
+            </tr>
+
+            <tr>
+                <template repeat="{{ arena in arenasList }}">
+                    <th></th>
+                    <template repeat="{{ corner in cornersList }}">
+                        <th style="background-color: {{ arenas[arena].colour | arenaColour }}">
+                            <span style="color: {{ corners[corner].colour }}">
+                                {{ corners[corner].number }}
+                            </span>
+                        </th>
+                    </template>
+                </template>
+            </tr>
+
+            <template repeat="{{ match in schedule }}">
+                <tr class="{{ formatMatchClass(now, match) }}">
+                    <td>{{ match.displayName }}</td>
+                    <td><time class="game-start" datetime="{{ match.gameStart }}"></time></td>
+                    <td><time class="staging" datetime="{{ match.stagingStart }}/{{ match.stagingEnd }}"></time></td>
+                    <template repeat="{{ arena in arenasList }}">
+                        <td style="width: 0.1em;"></td>
+                        <template repeat="{{ corner in cornersList }}">
+                            <td style="background-color: {{ arenas[arena].colour | arenaColour }}">
+                                <span style="color: {{ corners[corner].colour }}">
+                                    {{ match.arenas[arena].teams[corner] || '—' }}
+                                </span>
+                            </td>
+                        </template>
+                    </template>
+                </tr>
+            </template>
+        </table>
+    </template>
+
+    <script src="../../node_modules/moment/moment.js"></script>
+    <script src="../../node_modules/moment-duration-format/lib/moment-duration-format.js"></script>
+
+    <script>
+        Polymer({
+            comp: null,
+            arena: null,
+            arenas: undefined,
+            arenasList: undefined,
+            corners: undefined,
+            cornersList: undefined,
+            back: 1,
+            forward: 7,
+            preciseTimeThresholdMinutes: 3,
+            schedule: {},
+            ready: function() {
+                setInterval(this._updateDisplayedTimes.bind(this), 300);
+            },
+            _updateDisplayedTimes: function() {
+                var clockOffsetMs = this.comp && this.comp.displayConfig &&
+                    this.comp.displayConfig.displayOptions &&
+                    this.comp.displayConfig.displayOptions.clockOffsetMs || 0;
+                var now = this.now = moment(Date.now() + clockOffsetMs);
+                var game_start_times = this.shadowRoot.querySelectorAll('time.game-start');
+
+                const formatTime = this.formatTime.bind(this, now);
+
+                game_start_times.array().forEach(function(elem) {
+                    var epoch = moment(elem.getAttribute('datetime'));
+                    elem.textContent = formatTime(epoch);
+                });
+                var staging_times = this.shadowRoot.querySelectorAll('time.staging');
+                staging_times.array().forEach(function(elem) {
+                    var date_range = elem.getAttribute('datetime');
+
+                    var times = date_range.split('/');
+                    var start = moment(times[0]);
+                    var end = moment(times[1]);
+
+                    if (!end.isAfter(now)) {
+                        elem.textContent = "Closed";
+                    } else if (start.isAfter(now)) {
+                        elem.textContent = formatTime(start);
+                    } else {
+                        elem.textContent = "Open";
+                    }
+                });
+            },
+            arenaColour: function(val) {
+                if (val) {
+                    var r = parseInt(val.substr(1, 2), 16);
+                    var g = parseInt(val.substr(3, 2), 16);
+                    var b = parseInt(val.substr(5, 2), 16);
+                    return 'rgba(' + r + ', ' + g + ', ' + b + ', 0.1)';
+                }
+            },
+            backChanged: function() {
+                this.updateSchedule();
+            },
+            forwardChanged: function() {
+                this.updateSchedule();
+            },
+            compChanged: function() {
+                this.comp.api.getArenas(function(arenas) {
+                    this.arenas = arenas;
+                    this.arenasList = this.arena && arenas[this.arena]
+                        ? [this.arena] : Object.keys(arenas);
+                    this.updateSchedule();
+                }.bind(this));
+
+                this.comp.api.getCorners(function(corners) {
+                    this.corners = corners;
+
+                    var validCornersList = Object.keys(corners);
+                    var proposedCornersList = this.comp.displayConfig.stagingCornersList || validCornersList;
+
+                    var mismatch = (validCornersList.length !== proposedCornersList.length) ||
+                        !validCornersList.every(elem => proposedCornersList.includes(elem));
+
+                    if (mismatch) {
+                        console.warn("Corner list configuration mismatch with valid corners.");
+                        console.warn("Valid corners are: ", validCornersList);
+                        console.warn("Falling back to valid corners.");
+                        proposedCornersList = validCornersList;
+                    }
+
+                    this.cornersList = proposedCornersList;
+
+                    this.updateSchedule();
+                }.bind(this));
+
+                this.comp.stream.addEventListener('current-staging-matches', function(e) {
+                    this.updateSchedule();
+                }.bind(this));
+
+                this.comp.stream.addEventListener('knockouts', function() {
+                    this.updateSchedule();
+                }.bind(this));
+            },
+            arenaChanged: function() {
+                if (this.arenas) {
+                    this.arenasList = this.arena && this.arenas[this.arena]
+                        ? [this.arena] : Object.keys(this.arenas);
+                    this.updateSchedule();
+                }
+            },
+            updateSchedule: function() {
+                if (this.arenasList == null || this.arenas == null
+                    || this.cornersList == null || this.corners == null) {
+                    return;  // wait until they're set
+                }
+
+                console.log('Updating schedule…');
+
+                var receiveMatchList = function(matches) {
+                    var schedule = {};
+                    var startTimes = {};
+                    var endTimes = {};
+                    var gameStartTimes = {};
+                    var gameEndTimes = {};
+                    var stagingStartTimes = {};
+                    var stagingEndTimes = {};
+                    var displayNames = {};
+
+                    matches.filter(function(match) {
+                        return !this.arena || match.arena == this.arena;
+                    }.bind(this)).forEach(function(match) {
+                        if (!schedule[match.num]) {
+                            schedule[match.num] = {};
+                        }
+
+                        displayNames[match.num] = match.display_name;
+                        schedule[match.num][match.arena] = match;
+                        startTimes[match.num] = match.times.slot.start;
+                        endTimes[match.num] = match.times.slot.end;
+                        gameStartTimes[match.num] = match.times.game.start;
+                        gameEndTimes[match.num] = match.times.game.end;
+                        stagingStartTimes[match.num] = match.times.staging.opens;
+                        stagingEndTimes[match.num] = match.times.staging.closes;
+                    }.bind(this));
+
+                    var formattedSchedule = [];
+                    for (var matchNumber in schedule) {
+                        formattedSchedule.push({num: matchNumber,
+                                                displayName: displayNames[matchNumber],
+                                                arenas: schedule[matchNumber],
+                                                start: startTimes[matchNumber],
+                                                end: endTimes[matchNumber],
+                                                gameStart: gameStartTimes[matchNumber],
+                                                gameEnd: gameEndTimes[matchNumber],
+                                                stagingStart: stagingStartTimes[matchNumber],
+                                                stagingEnd: stagingEndTimes[matchNumber]})
+                    }
+
+                    formattedSchedule.sort(function(left, right) {
+                        return Date.parse(left.start) - Date.parse(right.start) ||
+                            Number(left.num) - Number(right.num);
+                    });
+                    var displayConfig = this.comp && this.comp.displayConfig || {};
+                    var requestedOffset = Number(displayConfig.stagingCloseOffsetMinutes);
+                    var closeOffsetMs = Number.isFinite(requestedOffset) && requestedOffset >= 0
+                        ? requestedOffset * 60 * 1000 : 5 * 60 * 1000;
+                    var previousGameStartByArena = {};
+                    formattedSchedule.forEach(function(match) {
+                        var opens = [];
+                        var closes = [];
+                        Object.keys(match.arenas).forEach(function(arena) {
+                            var arenaMatch = match.arenas[arena];
+                            var previousGameStart = previousGameStartByArena[arena];
+                            var opensAt = previousGameStart
+                                ? Date.parse(previousGameStart)
+                                : Date.parse(arenaMatch.times.staging.opens);
+                            var closesAt = previousGameStart
+                                ? Date.parse(previousGameStart) + closeOffsetMs
+                                : Date.parse(arenaMatch.times.slot.start);
+                            if (['running', 'paused', 'awaiting_score', 'complete']
+                                .includes(arenaMatch.state)) {
+                                closesAt = Math.min(closesAt, Date.parse(arenaMatch.times.game.start));
+                            }
+                            opens.push(opensAt);
+                            closes.push(closesAt);
+                            previousGameStartByArena[arena] = arenaMatch.times.game.start;
+                        });
+                        match.stagingStart = new Date(Math.min.apply(null, opens)).toISOString();
+                        match.stagingEnd = new Date(Math.min.apply(null, closes)).toISOString();
+                    });
+
+                    // shrink the schedule to the matches around the current match
+                    var clockOffsetMs = this.comp && this.comp.displayConfig &&
+                        this.comp.displayConfig.displayOptions &&
+                        this.comp.displayConfig.displayOptions.clockOffsetMs || 0;
+                    var now = new Date(Date.now() + clockOffsetMs);
+                    var currentIndex = 0;
+                    formattedSchedule.forEach(function(match, ix) {
+                        if (new Date(match.start) < now) {
+                            currentIndex = ix;
+                        }
+                    });
+                    var firstMatchIx = currentIndex - this.back;
+                    if (firstMatchIx < 0) {
+                        firstMatchIx = 0;
+                    }
+                    var lastMatchIx = currentIndex + this.forward + 1;
+                    if (lastMatchIx > formattedSchedule.length) {
+                        lastMatchIx = formattedSchedule.length;
+                    }
+
+                    this.schedule = formattedSchedule.slice(firstMatchIx, lastMatchIx);
+                    this.async(this._updateDisplayedTimes);
+                }.bind(this);
+
+                this.comp.api.getMatches(receiveMatchList);
+            },
+            formatMatchClass: function(now, match) {
+                var start = match.stagingStart;
+                var end = match.gameStart;
+
+                if (moment(end) < now) {
+                    return 'old';
+                } else if (moment(start) > now) {
+                    return 'next';
+                } else {
+                    return 'current';
+                }
+            },
+            formatTime: function(now, when) {
+                const threshold = moment.duration(this.preciseTimeThresholdMinutes * 60 * 1000);
+                const relative = moment.duration(when.diff(now));
+                if (relative > 0 && relative < threshold) {
+                    // Show more precision for close future times. Moment
+                    // doesn't support this natively, so use a plugin to
+                    // format it ourselves.
+                    return "in " + relative.format('m:ss', {trim: false});
+                } else {
+                    return relative.humanize(true);
+                }
+            },
+        });
+    </script>
+</polymer-element>

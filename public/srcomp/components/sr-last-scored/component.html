@@ -1,0 +1,33 @@
+<link rel="import" href="../../bower_components/polymer/polymer.html" />
+
+<polymer-element name="sr-last-scored" attributes="comp hours minutes">
+    <template>
+        <style>
+            p {
+                margin: inherit;
+                color: inherit;
+                font-size: inherit;
+            }
+        </style>
+
+        <template if="{{ lastScoredMatch !== null }}">
+            <p>Up to date with scores from match {{ lastScoredMatch }}.</p>
+        </template>
+    </template>
+
+    <script>
+        Polymer({
+            comp: undefined,
+            lastScoredMatch: null,
+            compChanged: function() {
+                this.comp.stream.addEventListener('last-scored-match', function(e) {
+                    var detail = e.detail;
+                    if (detail && typeof detail === 'object') {
+                        detail = detail.match_number || detail.num || null;
+                    }
+                    this.lastScoredMatch = typeof detail === 'number' ? detail : null;
+                }.bind(this));
+            }
+        });
+    </script>
+</polymer-element>

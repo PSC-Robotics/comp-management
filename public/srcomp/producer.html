@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <title>SR Producer Screen</title>
+
+        <script src="bower_components/webcomponentsjs/webcomponents.js"></script>
+
+        <link rel="import" href="components/sr-comp/component.html" />
+        <link rel="import" href="components/sr-arena-picker/component.html" />
+        <link rel="import" href="components/sr-producer/component.html" />
+
+        <style>
+            body {
+                position: fixed;
+                width: 100%;
+                height: 100%;
+                top: 0;
+                right: 0;
+                bottom: 0;
+                left: 0;
+                margin: 0;
+                padding: 0;
+
+                font-family: 'Open Sans', sans-serif;
+                background: black;
+                color: white;
+                font-size: 85%;
+            }
+
+            #arena {
+                width: 100%;
+                height: 100%;
+
+                overflow: auto;
+            }
+        </style>
+    </head>
+
+    <body>
+        <sr-comp id="comp"></sr-comp>
+
+        <sr-arena-picker id="picker" hidden></sr-arena-picker>
+        <sr-producer id="producer" hidden></sr-producer>
+
+        <script>
+            var parseArguments = function() {
+                var fragment = window.location.search;
+                var arena = fragment.substr(1);
+                return {arena: arena ? decodeURIComponent(arena) : undefined};
+            };
+
+            var setUpNormal = function(arena, comp) {
+                var producer = document.querySelector('#producer');
+                producer.hidden = false;
+                producer.arena = arena;
+                producer.comp = comp;
+                producer.compChanged();
+            };
+
+            document.addEventListener('sr-ready', function() {
+                var args = parseArguments();
+
+                var comp = document.querySelector('#comp');
+
+                if (!args.arena) {
+                    var picker = document.querySelector('#picker');
+                    picker.hidden = false;
+                    picker.comp = comp;
+                    picker.compChanged();
+                    comp.stream.load();
+                } else {
+                    comp.api.getArena(args.arena, function(compArena) {
+                        if (compArena) {
+                            setUpNormal(args.arena, comp);
+                        } else {
+                            var picker = document.querySelector('#picker');
+                            picker.hidden = false;
+                            picker.comp = comp;
+                            picker.compChanged();
+                        }
+
+                        /* Work around an issue with Firefox. When the
+                            arena fields above are set, the changed callback
+                            should get called immediately giving time for
+                            listeners to be registered on the stream before
+                            it is loaded below. However, in Firefox, the
+                            changed callbacks happen *after* this call
+                            below. Therefore, we wrap it in a 'setTimeout'
+                            to ensure it happens in the next tick, after
+                            the changed callbacks.
+
+                            Rather concerningly, using a value of 0ms in the
+                            'setTimeout' doesn't solve the problem.
+                            Therefore the 500ms as it is currently might
+                            have to be increased for the Raspberry Pis which
+                            have a lower processing speed than my laptop. */
+
+                        setTimeout(function() {
+                            comp.stream.load();
+                        }, 500);
+                    });
+                }
+            });
+        </script>
+    </body>
+</html>

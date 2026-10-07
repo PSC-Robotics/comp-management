@@ -1,0 +1,229 @@
+<link rel="import" href="../../bower_components/polymer/polymer.html" />
+<link rel="import" href="../../bower_components/core-ajax/core-ajax.html" />
+<link rel="import" href="../moment/component.html" />
+
+<polymer-element name="sr-comp-api" attributes="url">
+    <template>
+        <style>
+            :host {
+                display: none;
+            }
+        </style>
+    </template>
+    <script>
+        var nop = function() {};
+        Polymer({
+            _apiCall: function(path, callback, errback) {
+                var root = this.shadowRoot;
+                if (errback == null) {
+                    // If there's no error handler passed in, set it to one
+                    // which just ignores all errors.
+                    errback = nop;
+                }
+                // There are three possible cases for making an API call:
+                // (1) This is the first API call to this path,
+                // (2) There is already an API call in flight on this path,
+                // (3) We already have a response on this path, which we can
+                //     reuse immediately.
+                // We use core-ajax for the requests, and their IDs are the
+                // paths that they are used for, so first check for case (1).
+                var element = root.getElementById(path);
+                if (element == null) {
+                    element = document.createElement('core-ajax');
+                    element.id = path;
+                    element.url = this.realUrl + path;
+                    element.handleAs = 'json';
+                    element.interestedParties = [[callback, errback]];
+                    element.addEventListener('core-response', function(evt) {
+                        element.interestedParties.forEach(function(party) {
+                            var cb = party[0];
+                            var eb = party[1];
+                            if (element.response !== null) {
+                                cb(element.response);
+                            } else {
+                                eb(element.error);
+                            }
+                        });
+                    });
+                    element.addEventListener('core-error', function(evt) {
+                        element.interestedParties.forEach(function(party) {
+                            var eb = party[1];
+                            eb(element.error.response);
+                        });
+                    });
+                    root.appendChild(element);
+                    element.go();
+                } else {
+                    if (element.loading == false) {
+                        // Case (3): We've already loaded this element,
+                        // just call the callback/errback immediately.
+                        if (element.response !== null) {
+                            callback(element.response);
+                        } else {
+                            errback(element.error);
+                        }
+                    } else {
+                        // Case (2): Request is in flight. Register this
+                        // callback/errback pair for being called once it
+                        // returns.
+                        element.interestedParties.push([callback, errback]);
+                    }
+                }
+            },
+            urlChanged: function() {
+                this.realUrl = this.url.replace(/\{([^{}]*)\}/g,
+                                                function (match, p1) {
+                                                    return window.location[p1];
+                                                });
+                console.log('API URL is:', this.realUrl);
+
+                // we have to do this here as we can only guarantee the events
+                // have been fired at this point
+                setTimeout(function() {
+                  var event = document.createEvent('Event');
+                  event.initEvent('sr-ready', true, true);
+                  document.dispatchEvent(event);
+                }, 250);
+            },
+            clearCache: function() {
+                // Remove all the cached core-ajax queries.
+                var root = this.shadowRoot;
+                var child;
+                while (child = root.firstChild) {
+                    root.removeChild(child);
+                }
+            },
+            ready: function() {
+                // Cache responses for up to 5 seconds.
+                setInterval(this.clearCache.bind(this), 5000);
+            },
+            getConfig: function(callback) {
+                this._apiCall('/config', function(res) {
+                    callback(res['config'], undefined);
+                }, function(err) {
+                    callback(undefined, err);
+                });
+            },
+            getArena: function(name, callback) {
+                this._apiCall('/arenas/' + name, function(arena) {
+                    callback(arena, undefined);
+                }, function(err) {
+                    callback(undefined, err);
+                });
+            },
+            getArenas: function(callback) {
+                this._apiCall('/arenas', function(response) {
+                    callback(response.arenas);
+                });
+            },
+            getCorner: function(index, callback) {
+                this._apiCall('/corners/' + index, function(corner) {
+                    callback(corner, undefined);
+                }, function(err) {
+                    callback(undefined, err);
+                });
+            },
+            getCorners: function(callback) {
+                this._apiCall('/corners', function(response) {
+                    callback(response.corners);
+                });
+            },
+            getCurrentDelay: function(callback) {
+                this._apiCall('/current', function(response) {
+                    callback(response['delay']);
+                });
+            },
+            getCurrentMatches: function(callback) {
+                this._apiCall('/current', function(response) {
+                    callback(response['matches']);
+                });
+            },
+            getShepherdingMatches: function(callback) {
+                this._apiCall('/current', function(response) {
+                    callback(response['shepherding_matches']);
+                });
+            },
+            getLocations: function(callback) {
+                 this._apiCall('/locations', function(response) {
+                     callback(response['locations']);
+                 });
+            },
+            getTeams: function(callback) {
+                 this._apiCall('/teams', function(response) {
+                     callback(response['teams']);
+                 });
+            },
+            getTeam: function(tla, callback) {
+                 this.getTeams(function(teamList) {
+                     var team = teamList[tla];
+                     if (team != null) {
+                         callback(team);
+                     } else {
+                         callback({'tla': tla,
+                                   'name': 'Team ' + tla,
+                                   'scores': {'game': 0, 'league': 0}});
+                     }
+                 });
+            },
+            getKnockout: function(callback) {
+                this._apiCall('/knockout', function(response) {
+                    callback(response.rounds);
+                });
+            },
+            getKnockoutStructure: function(callback) {
+                this._apiCall('/knockout/structure', function(response) {
+                    callback(response);
+                }, function(err) {
+                    // Compatibility fallback
+                    callback({
+                        'brackets': [
+                            {'name': null, 'display_name': "Knockouts"},
+                        ],
+                    });
+                });
+            },
+            getTiebreaker: function(callback) {
+                this._apiCall('/tiebreaker', function(response) {
+                    callback(response.tiebreaker, undefined);
+                }, function(err) {
+                    callback(undefined, err);
+                });
+            },
+            getKnockoutMatches: function(callback) {
+                this._apiCall('/matches?type=knockout', function(response) {
+                    callback(response.matches);
+                });
+            },
+            getUpcomingMatches: function(arena, callback) {
+                var nowFormatted = moment().format('YYYY-MM-DDTHH:mm:ssZZ');
+                var url = ('/matches?slot_start_time=' +
+                           encodeURIComponent(nowFormatted) +
+                           '..' +
+                           '&arena=' + encodeURIComponent(arena));
+                this._apiCall(url, function(response) {
+                    callback(response.matches);
+                });
+            },
+            getMatch: function(arena, num, callback) {
+                var url = ('/matches?num=' +
+                           encodeURIComponent(num) +
+                           '&arena=' + encodeURIComponent(arena));
+                this._apiCall(url, function(response) {
+                    callback(response.matches);
+                });
+            },
+            getMatches: function(callback, type) {
+                var url = '/matches' + (type ? '?type=' + encodeURIComponent(type) : '');
+                this._apiCall(url, function(response) {
+                    callback(response.matches);
+                });
+            },
+            getPeriods: function(callback) {
+                var url = ('/periods');
+                this._apiCall(url, function(response) {
+                    callback(response.periods);
+                });
+            }
+        });
+    </script>
+</polymer-element>

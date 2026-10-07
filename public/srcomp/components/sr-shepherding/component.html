@@ -1,0 +1,96 @@
+<link rel="import" href="../../bower_components/polymer/polymer.html" />
+
+<link rel="import" href="../sr-shepherd-schedule/component.html" />
+<link rel="import" href="../sr-shepherd-status/component.html" />
+<link rel="import" href="../sr-clock/component.html" />
+<link rel="import" href="../sr-delay/component.html" />
+
+<polymer-element name="sr-shepherding" attributes="comp arena">
+    <template>
+        <style>
+            :host {
+                display: flex;
+                display: -webkit-flex;
+                flex-direction: column;
+                -webkit-flex-direction: column;
+                align-items: center;
+                -webkit-align-items: center;
+            }
+
+            h1 {
+                margin: 0.6em 0 0;
+            }
+
+            #schedule {
+                flex: 1 1 auto;
+                -webkit-flex: 1 1 auto;
+
+                margin: 1em;
+
+                overflow-y: auto;
+            }
+
+            sr-shepherd-status, #time {
+                flex: 0 0 auto;
+                -webkit-flex: 0 0 auto;
+
+                width: 100%;
+
+                display: flex;
+                display: -webkit-flex;
+                flex-direction: row;
+                -webkit-flex-direction: row;
+            }
+
+            #time {
+                border-top: 1px solid white;
+                background: rgb(50, 50, 50);
+           }
+
+            sr-shepherd-status,
+            sr-clock, sr-delay {
+                flex: 1 1 auto;
+                -webkit-flex: 1 1 auto;
+
+                text-align: center;
+
+                margin: 0.1em;
+                font-size: 3.6em;
+            }
+        </style>
+
+        <h1>Shepherding</h1>
+
+        <sr-shepherd-schedule id="schedule"></sr-shepherd-schedule>
+
+        <div>
+            <sr-shepherd-status id="status"></sr-shepherd-status>
+        </div>
+
+        <div id="time">
+            <sr-clock></sr-clock>
+            <sr-delay id="delay"></sr-delay>
+        </div>
+    </template>
+
+    <script>
+        Polymer({
+            comp: null,
+            arena: null,
+            compChanged: function() {
+                this.$.schedule.comp = this.comp;
+                this.$.schedule.arena = this.arena;
+                this.$.schedule.compChanged();
+                this.$.status.comp = this.comp;
+                this.$.status.arena = this.arena;
+                this.$.status.compChanged();
+                this.$.delay.comp = this.comp;
+                this.$.delay.compChanged();
+            },
+            arenaChanged: function() {
+                this.$.schedule.arena = this.arena;
+                this.$.status.arena = this.arena;
+            }
+        });
+    </script>
+</polymer-element>

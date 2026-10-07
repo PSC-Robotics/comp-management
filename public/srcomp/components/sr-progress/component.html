@@ -1,0 +1,24 @@
+<link rel="import" href="../../bower_components/polymer/polymer.html" />
+
+<polymer-element name="sr-progress" attributes="progress">
+    <template>
+        <style>
+            :host {
+                display: block;
+                background: rgb(5, 5, 5) url('background.png') no-repeat;
+            }
+        </style>
+
+        <content></content>
+    </template>
+
+    <script>
+        Polymer({
+            progress: 0,
+            progressChanged: function() {
+                var p = this.progress * 100;
+                this.style.backgroundSize = p + '% 100%';
+            }
+        });
+    </script>
+</polymer-element>

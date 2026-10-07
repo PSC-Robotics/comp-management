@@ -1,0 +1,181 @@
+<link rel="import" href="../../bower_components/polymer/polymer.html" />
+
+<link rel="import" href="../sr-comp-api/component.html" />
+<link rel="import" href="../sr-comp-stream/component.html" />
+
+<polymer-element name="sr-comp" attributes="displayConfig apiurl streamurl">
+    <template>
+        <style>
+            #error {
+                position: fixed;
+                top: 0;
+                right: 0;
+                bottom: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0, 0, 0, 0.9);
+                z-index: 100000000000;
+
+                display: flex;
+                display: -webkit-flex;
+                flex-direction: row;
+                -webkit-flex-direction: row;
+                align-items: center;
+                -webkit-align-items: center;
+                justify-content: center;
+                -webkit-justify-content: center;
+            }
+            #error[hidden] {
+                display: none;
+            }
+
+            #error p {
+                position: absolute;
+                margin: 0;
+                right: 1em;
+                bottom: 1em;
+                font-family: monospace;
+                font-size: 2em;
+                color: rgb(200, 200, 200);
+            }
+        </style>
+
+        <core-ajax
+          auto
+          url="../../config.json"
+          handleAs="json"
+          on-core-response="{{ gotConfig }}"></core-ajax>
+
+        <sr-comp-api id="api" url="{{ apiurl }}"></sr-comp-api>
+        <sr-comp-stream id="stream" url="{{ streamurl }}"></sr-comp-stream>
+
+        <aside id="error">
+            <content></content>
+            <p>No connection. Please wait…</p>
+        </aside>
+    </template>
+
+    <script>
+        const DEFAULT_DISPLAY_CONFIG = {
+            hideOutsidePages: [],
+            externalUrl: "",
+            maxKnockoutRounds: 5,
+            stagingCornersList: undefined,
+        };
+
+        Polymer({
+            connected: false,
+            displayConfig: DEFAULT_DISPLAY_CONFIG,
+            apiurl: undefined,
+            streamurl: undefined,
+            pingTimeout: undefined,
+            ready: function() {
+                this.api = this.$.api;
+                this.stream = this.$.stream;
+                this.stream.addEventListener('open', function() {
+                    this.connected = true;
+                    this.connectedChanged();
+                    this.startPingTimeout();
+                }.bind(this));
+                this.stream.addEventListener('close', function() {
+                    this.connected = false;
+                    this.connectedChanged();
+                    this.cancelPingTimeout();
+                }.bind(this));
+                // This isn't probably necessary, but clear the API cache
+                // anyway whenever we hear anything from the stream.
+                var clearCache = this.api.clearCache.bind(this.api);
+                this.stream.addEventListener('team', clearCache);
+                this.stream.addEventListener('match', clearCache);
+                this.stream.addEventListener('knockouts', clearCache);
+                this.stream.addEventListener('last-scored-match', clearCache);
+
+                this.stream.addEventListener('ping', function(e) {
+                    this.cancelPingTimeout();
+                    this.startPingTimeout(e.detail);
+                }.bind(this));
+                this.stream.addEventListener('clock-sync', function(e) {
+                    this.syncClock();
+                }.bind(this));
+            },
+            cancelPingTimeout: function() {
+                console.log('Cancelling pending ping disconnect.');
+                clearTimeout(this.pingTimeout);
+                this.pingTimeout = null;
+            },
+            registerPingTimeout: function(delay) {
+              if (this.pingTimeout !== null) {
+                  return;  // Timeout set by something else.
+              }
+
+              console.log('Registering a disconnect in', delay, 'seconds.');
+              this.pingTimeout = setTimeout(function() {
+                  this.stream.close();
+              }.bind(this), delay);
+            },
+            startPingTimeout: function(delay) {
+                var multiplier = 4;
+
+                if (delay === undefined) {
+                    this.api.getConfig(function(config, err) {
+                        var d = err ? 1 : config['ping_period'] * multiplier;
+                        this.registerPingTimeout(d * 1000);
+                    }.bind(this));
+                } else {
+                    this.registerPingTimeout(delay * multiplier);
+                }
+            },
+            connectedChanged: function() {
+                this.$.error.hidden = this.connected;
+            },
+            gotConfig: function(e) {
+                var response = e.detail.response;
+                this.displayConfig = { ...DEFAULT_DISPLAY_CONFIG, ...response.displayConfig };
+                this.displayConfig.displayOptions.clockOffsetMs = response.serverTime - Date.now();
+                console.log("Display config:", this.displayConfig);
+                this.apiurl = response.apiurl;
+                this.streamurl = response.streamurl;
+                this.syncClock();
+                if (this.clockSyncTimer === undefined) {
+                    this.clockSyncTimer = setInterval(this.syncClock.bind(this), 15000);
+                }
+            },
+            syncClock: function() {
+                if (!this.apiurl) {
+                    return;
+                }
+
+                var localStart = Date.now();
+                var requestStart = performance.now();
+                fetch(this.apiurl + '/time', {cache: 'no-store'})
+                    .then(function(response) {
+                        if (!response.ok) {
+                            throw new Error('Clock sync returned HTTP ' + response.status);
+                        }
+                        return response.json();
+                    })
+                    .then(function(response) {
+                        if (!Number.isFinite(response.serverTime)) {
+                            throw new Error('Clock sync response did not include serverTime');
+                        }
+                        var localEnd = Date.now();
+                        var roundTripMs = performance.now() - requestStart;
+                        var estimatedOffset = response.serverTime - ((localStart + localEnd) / 2);
+                        var options = this.displayConfig && this.displayConfig.displayOptions;
+                        if (options) {
+                            var previousOffset = options.clockOffsetMs;
+                            options.clockOffsetMs = this.hasClockSync && Number.isFinite(previousOffset)
+                                ? previousOffset + (estimatedOffset - previousOffset) * 0.25
+                                : estimatedOffset;
+                            options.clockUncertaintyMs = roundTripMs / 2;
+                            this.hasClockSync = true;
+                        }
+                    }.bind(this))
+                    .catch(function(error) {
+                        console.error('Could not synchronize the SR display clock:', error);
+                    });
+            }
+        });
+    </script>
+</polymer-element>

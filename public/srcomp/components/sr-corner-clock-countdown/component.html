@@ -1,0 +1,136 @@
+<link rel="import" href="../../bower_components/polymer/polymer.html" />
+<link rel="import" href="../sr-clock-pulse/component.html" />
+
+<polymer-element name="sr-corner-clock-countdown" attributes="match displayOptions">
+    <template>
+        <style>
+            .container {
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: black;
+
+                display: flex;
+                display: -webkit-flex;
+                align-items: center;
+                -webkit-align-items: center;
+                justify-content: center;
+                -webkit-justify-content: center;
+            }
+            .container[hidden] {
+                display: none;
+            }
+
+            h1 {
+                font-size: min(25em, 40vw, 40vh);
+                color: white;
+                text-align: center;
+                font-family: sans-serif;
+            }
+        </style>
+
+        <div class="container" style="background-color: {{ backgroundColor }}" hidden?="{{ !text }}">
+            <h1>{{ text }}</h1>
+        </div>
+
+        <sr-clock-pulse id="pulses"></sr-clock-pulse>
+    </template>
+
+    <script>
+        Polymer({
+            match: undefined,
+            currentGameStart: undefined,
+            currentGameEnd: undefined,
+            displayOptions: undefined,
+            ready: function() {
+                this.updateDisplay({detail: new Date()});
+                this.$.pulses.displayOptions = this.displayOptions;
+                this.$.pulses.addEventListener('pulse', this.updateDisplay.bind(this));
+            },
+            displayOptionsChanged: function() {
+                if (this.$.pulses) {
+                    this.$.pulses.displayOptions = this.displayOptions;
+                }
+            },
+            matchChanged: function() {
+                if (this.match && this.match.times && this.match.times.game) {
+                    this.currentGameStart = new Date(this.match.times.game.start);
+                    this.currentGameEnd = new Date(this.match.times.game.end);
+                } else {
+                    this.currentGameStart = null;
+                    this.currentGameEnd = null;
+                }
+            },
+            updateDisplay: function(e) {
+                var clockOffsetMs = this.displayOptions && this.displayOptions.clockOffsetMs || 0;
+                var now = this.match && this.match.state === 'paused' && this.match.paused_at
+                    ? new Date(new Date(this.match.paused_at).getTime() + clockOffsetMs)
+                    : new Date(e.detail.getTime() + clockOffsetMs);
+                var options = this.displayOptions || {};
+                this.backgroundColor = 'black';
+
+                if (options.showEndCue && this.match && this.match.actual_end) {
+                    var endedAt = new Date(this.match.actual_end);
+                    var endCueMs = (options.endCueDurationSeconds || 3) * 1000;
+                    if (now >= endedAt && now < endedAt.getTime() + endCueMs) {
+                        this.text = 'END';
+                        this.backgroundColor = options.endBackgroundColor || '#b3131b';
+                        return;
+                    }
+                }
+
+                if (options.showEndCountdown && this.currentGameEnd) {
+                    var endRemaining = this.currentGameEnd - now;
+                    var endCountdownSeconds = options.endCountdownSeconds || 10;
+                    if (endRemaining > 0 && endRemaining <= endCountdownSeconds * 1000) {
+                        var endCountdown = Math.ceil(endRemaining / 1000);
+                        this.text = String(endCountdown);
+                        this.backgroundColor = options.flashCountdownNumbers && endCountdown % 2 === 0
+                            ? options.countdownFlashColor || '#ffffff'
+                            : options.countdownBackgroundColor || '#a21f24';
+                        return;
+                    }
+                }
+
+                if (options.showStartCue && this.match && this.match.countdown_started_at) {
+                    var countdownAt = new Date(this.match.countdown_started_at);
+                    var elapsed = now - countdownAt;
+                    if (elapsed >= 0 && elapsed < 2000) {
+                        this.text = 'GET READY';
+                        this.backgroundColor = options.countdownBackgroundColor || '#a21f24';
+                        return;
+                    }
+                    if (elapsed >= 2000 && elapsed < 5000) {
+                        var startCountdown = Math.ceil((5000 - elapsed) / 1000);
+                        this.text = String(startCountdown);
+                        this.backgroundColor = options.flashCountdownNumbers && startCountdown % 2 === 0
+                            ? options.countdownFlashColor || '#ffffff'
+                            : options.countdownBackgroundColor || '#a21f24';
+                        return;
+                    }
+                    var goDurationMs = (options.cueDurationSeconds || 2) * 1000;
+                    if (elapsed >= 5000 && elapsed < 5000 + goDurationMs) {
+                        this.text = 'GO';
+                        this.backgroundColor = options.goBackgroundColor || '#167847';
+                        return;
+                    }
+                    this.text = null;
+                    return;
+                }
+
+                if (now <= this.currentGameStart) {
+                    var t = (this.currentGameStart - now) / 1000;
+                    if (t <= 1) {
+                        this.text = 'Begin!'
+                    } else if (t <= 6) {
+                        this.text = parseInt(t);
+                    }
+                } else {
+                    this.text = null;
+                }
+            }
+        });
+    </script>
+</polymer-element>

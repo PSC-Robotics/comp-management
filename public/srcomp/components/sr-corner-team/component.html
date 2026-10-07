@@ -1,0 +1,61 @@
+<link rel="import" href="../../bower_components/polymer/polymer.html" />
+
+<polymer-element name="sr-corner-team" attributes="comp corner match show">
+    <template>
+        <style>
+            h1, h2 {
+                font-family: sans-serif;
+                color: white;
+                margin: 0;
+                text-align: center;
+            }
+
+            h1 {
+                font-size: 9em;
+            }
+
+            h2 {
+                font-size: 5em;
+                margin-top: 0.05em;
+            }
+        </style>
+
+        <h1 id="tla">{{ tla }}</h1>
+
+        <template if="{{ show == 'all' }}">
+            <h2 id="name">{{ name }}</h2>
+        </template>
+    </template>
+
+    <script>
+        var reload = function() {
+            if (this.comp == null || this.corner == null || this.match == null) {
+                return;
+            }
+
+            if (this.match == null) {
+                // no current match
+                this.tla = '';
+                this.name = '';
+            } else {
+                this.tla = this.match.teams[this.corner];
+                if (this.tla == null) {
+                    this.tla = '—';
+                    this.name = '';
+                } else {
+                    this.name = '';
+                    this.comp.api.getTeam(this.tla, function(team) {
+                        this.name = team.name;
+                    }.bind(this));
+                }
+            }
+        };
+        Polymer({
+            comp: null,
+            match: undefined,
+            compChanged: reload,
+            cornerChanged: reload,
+            matchChanged: reload
+        });
+    </script>
+</polymer-element>

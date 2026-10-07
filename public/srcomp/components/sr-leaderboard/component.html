@@ -1,0 +1,103 @@
+<link rel="import" href="../../bower_components/polymer/polymer.html" />
+<link rel="import" href="../natural-sort/component.html" />
+<link rel="import" href="../sr-last-scored/component.html" />
+
+<polymer-element name="sr-leaderboard" attributes="comp">
+    <template>
+        <style>
+            :host {
+                display: block;
+                font-size: 2.2em;
+                text-align: center;
+            }
+
+            td, th {
+                padding: 0.25em 0.5em;
+            }
+
+            #last-scored {
+                color: grey;
+                margin-top: 1em;
+            }
+        </style>
+
+        <table>
+            <tr>
+                <th colspan="2">Team</th>
+                <th width="20%">League Points</th>
+                <th width="20%">Game Points</th>
+            </tr>
+
+            <template repeat="{{ team in leaderboard }}">
+                <tr>
+                    <td>{{ team.tla }}</td>
+                    <td>{{ team.name }}</td>
+                    <td>{{ team.scores.league }}</td>
+                    <td>{{ team.scores.game }}</td>
+                </tr>
+            </template>
+        </table>
+
+        <sr-last-scored id="last-scored"></sr-last-scored>
+    </template>
+
+    <script>
+        Polymer({
+            comp: null,
+            teams: {},
+            leaderboard: [],
+            tableUpdateRequest: undefined,
+            compChanged: function() {
+                this.comp.stream.addEventListener('team', function(e) {
+                    // For some reason e.detail is an empty object when the
+                    // event body is explicitly passed `null`, so we need to
+                    // detect that explicitly.
+                    if (Object.keys(e.detail).length == 0) {
+                        // A team was removed. Refresh everything.
+                        this.comp.api.getTeams(function(teams) {
+                            this.teams = teams;
+                            this.requestTableUpdate();
+                        }.bind(this));
+                    } else {
+                        this.teams[e.detail.tla] = e.detail;
+                        this.requestTableUpdate();
+                    }
+                }.bind(this));
+
+                this.$['last-scored'].comp = this.comp;
+                this.$['last-scored'].compChanged();
+            },
+            requestTableUpdate: function() {
+                if (this.tableUpdateRequest != undefined) {
+                    clearTimeout(this.tableUpdateRequest);
+                }
+
+                this.tableUpdateRequest = setTimeout(function() {
+                    this.updateTable();
+                    this.tableUpdateRequest = undefined;
+                }.bind(this), 1000);
+            },
+            updateTable: function() {
+                var leaderboard = [];
+                for (var key in this.teams) {
+                    leaderboard.push(this.teams[key]);
+                }
+
+                leaderboard.sort(function(a, b) {
+                    // smaller league pos at the top
+                    var diff = a.league_pos - b.league_pos;
+                    if (diff == 0) {
+                        return naturalSort(a.tla, b.tla);
+                    } else {
+                        return diff;
+                    }
+                });
+
+                var maxTeams = this.comp.displayConfig.maxTeams || 6;
+                leaderboard.splice(maxTeams);
+
+                this.leaderboard = leaderboard;
+            }
+        });
+    </script>
+</polymer-element>
