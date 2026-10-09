@@ -27,12 +27,15 @@ import {
   playoffFormats,
   playoffSeedSnapshotMatchesRanks,
   playoffStages,
+  findDecisivePlayoffTies,
   rankPlayoffScores,
   resolvePlayoffAdvancements,
+  validateTieBreakOrder,
   summarisePlayoffLosses,
   type PlayoffMatchState
 } from './playoffs.js';
 import { renderBracketDiagram, type DiagramHeat } from './bracket-diagram.js';
+import { rankStandings, type StandingScore } from './standings.js';
 import {
   buildSrDisplayConfig,
   groupSrKnockoutMatches,
@@ -296,6 +299,7 @@ ALTER TABLE playoff_brackets ADD CONSTRAINT playoff_brackets_format_check
 ALTER TABLE playoff_matches ADD COLUMN IF NOT EXISTS advancing_places integer;
 ALTER TABLE playoff_matches ADD COLUMN IF NOT EXISTS countdown_restore_start timestamptz;
 ALTER TABLE playoff_matches ADD COLUMN IF NOT EXISTS scored_at timestamptz;
+ALTER TABLE playoff_matches ADD COLUMN IF NOT EXISTS tie_break jsonb;
 ALTER TABLE playoff_brackets DROP CONSTRAINT IF EXISTS playoff_brackets_status_check;
 ALTER TABLE playoff_brackets ADD CONSTRAINT playoff_brackets_status_check
   CHECK (status IN ('active', 'complete', 'replaced'));
@@ -475,7 +479,22 @@ async function fetchStandings(client: Pool | PoolClient, competitionId: string) 
      ORDER BY league_points DESC, t.code ASC`,
     [competitionId]
   );
-  return result.rows;
+  const ranked = rankStandings(result.rows.map((row) => ({
+    ...row, leaguePoints: Number(row.league_points), matchPoints: Number(row.match_points)
+  })), await fetchLeagueScores(client, competitionId));
+  return ranked.map(({ leaguePoints: _league, matchPoints: _match, tiedWith, ...row }) => ({ ...row, tied_with: tiedWith }));
+}
+
+/** Every league score, for head-to-head and best-match tie-breaks. */
+async function fetchLeagueScores(client: Pool | PoolClient, competitionId: string): Promise<StandingScore[]> {
+  const scores = await client.query<{ match_id: string; team_id: string; league_points: string }>(
+    `SELECT ms.match_id, ms.team_id, ms.league_points
+     FROM match_scores ms JOIN matches m ON m.id = ms.match_id WHERE m.competition_id = $1`,
+    [competitionId]
+  );
+  return scores.rows.map((score) => ({
+    matchId: score.match_id, teamId: score.team_id, points: Number(score.league_points)
+  }));
 }
 
 type PlayoffSeedStanding = {
@@ -487,6 +506,8 @@ type PlayoffSeedStanding = {
   challengePoints: number;
   leaguePoints: number;
   scoredMatches: number;
+  /** Teams still level after every tie-break (the judge decides). */
+  tiedWith?: string[];
 };
 
 async function fetchPlayoffSeedSnapshot(client: PoolClient, competitionId: string) {
@@ -529,16 +550,20 @@ async function fetchPlayoffSeedSnapshot(client: PoolClient, competitionId: strin
      ORDER BY standings.league_points DESC, standings.code ASC`,
     [competitionId]
   );
+  const ranked = rankStandings(result.rows.map((team) => ({
+    ...team, leaguePoints: Number(team.league_points), matchPoints: Number(team.match_points)
+  })), await fetchLeagueScores(client, competitionId));
   return {
-    standings: result.rows.map((team, index): PlayoffSeedStanding => ({
+    standings: ranked.map((team, index): PlayoffSeedStanding => ({
       id: team.id,
       rank: index + 1,
       code: team.code,
       name: team.name,
-      matchPoints: Number(team.match_points),
+      matchPoints: team.matchPoints,
       challengePoints: Number(team.challenge_points),
-      leaguePoints: Number(team.league_points),
-      scoredMatches: Number(team.scored_matches)
+      leaguePoints: team.leaguePoints,
+      scoredMatches: Number(team.scored_matches),
+      tiedWith: team.tiedWith
     })),
     latestScoredMatchNumber: Number(result.rows[0]?.seed_match_number ?? 0),
     capturedAt: result.rows[0]?.snapshot_at ?? new Date()
@@ -1669,7 +1694,7 @@ app.get('/api/admin/competitions/:slug/playoffs', { preHandler: requireAdmin }, 
     `SELECT pm.id, pm.match_number, pm.bracket_side, pm.round_number, pm.status, pm.tied,
             pm.team_one_id, pm.team_two_id, pm.team_three_id, pm.team_four_id,
             ARRAY[pm.source_one, pm.source_two, pm.source_three, pm.source_four] AS sources,
-            pm.advancing_places, pm.planned_gap_seconds,
+            pm.advancing_places, pm.planned_gap_seconds, pm.tie_break,
             greatest(0, ceil(extract(epoch FROM (pm.effective_start - pm.scheduled_start))))::int AS delay_seconds,
             pm.scheduled_start, pm.effective_start, pm.arena_name, pm.duration_seconds,
             pm.schedule_state, pm.timer_state, pm.countdown_started_at, pm.placements,
@@ -1680,7 +1705,7 @@ app.get('/api/admin/competitions/:slug/playoffs', { preHandler: requireAdmin }, 
             (SELECT jsonb_agg(jsonb_build_object(
               'teamCode', t.code, 'teamName', t.name, 'points', pms.points,
               'seed', (pb.seed_ranks ->> t.id::text)::integer
-            ) ORDER BY pms.points DESC, (pb.seed_ranks ->> t.id::text)::integer)
+            ) ORDER BY (SELECT p.idx FROM jsonb_array_elements_text(coalesce(pm.placements, '[]'::jsonb)) WITH ORDINALITY AS p(team_id, idx) WHERE p.team_id = t.id::text) NULLS LAST, pms.points DESC, (pb.seed_ranks ->> t.id::text)::integer)
              FROM playoff_match_scores pms JOIN teams t ON t.id = pms.team_id
              WHERE pms.playoff_match_id = pm.id) AS scores
      FROM playoff_matches pm
@@ -1845,7 +1870,7 @@ app.get('/api/admin/competitions/:slug/playoffs/seed-check', { preHandler: requi
       <td>${index + 1}</td><th scope="row">${escapeHtml(team.code)} · ${escapeHtml(team.name)}</th>
       <td>${escapeHtml(team.matchPoints)}</td><td>${escapeHtml(team.challengePoints)}</td>
       <td><strong>${escapeHtml(team.leaguePoints)}</strong></td><td>${escapeHtml(team.scoredMatches)}</td>
-      <td>${seed === undefined ? '—' : `Seed ${escapeHtml(seed)}`}</td></tr>`;
+      <td>${seed === undefined ? '—' : `Seed ${escapeHtml(seed)}`}${team.tiedWith?.length ? `<br><strong style="color:#a44b12">Level with ${escapeHtml(team.tiedWith.join(', '))} — judge to decide</strong>` : ''}</td></tr>`;
   }).join('') || legacyRows;
   const sourceDescription = !hasSnapshot
     ? 'This bracket predates stored standings snapshots. Its saved seed order is preserved, but the original points and match-number cutoff were not recorded; they cannot be verified retroactively.'
@@ -1878,7 +1903,7 @@ thead{background:#edf1ef}.entrant{background:#eff9f3}
     ? `Frozen at first playoff countdown (${escapeHtml(new Date(bracket.seed_frozen_at).toLocaleString())})`
     : 'Live-updating until the first playoff countdown'}
  · <strong>Bracket:</strong> ${escapeHtml(bracket.status)}</p>
-<p class="muted">Match points and challenge points are shown separately. The bold league total determined standings order; ties are ordered by team code.</p></div>
+<p class="muted">Match points and challenge points are shown separately. The bold league total determines standings order. Level teams are separated by match points, then head-to-head points in league matches where they met, then best single match; any still level are flagged for the judge.</p></div>
 <div class="card"><div class="table-wrap"><table><thead><tr><th>League rank</th><th>Team</th>
 <th>Match points</th><th>Challenge points</th><th>Total points</th><th>Scored matches</th>
 <th>Playoff seed</th></tr></thead><tbody>${standingsRows || '<tr><td colspan="7">No snapshot standings were recorded.</td></tr>'}</tbody></table></div></div>
@@ -2438,7 +2463,12 @@ app.post('/api/admin/playoff-matches/:matchId/scores', { preHandler: requireAdmi
     scores: z.array(z.object({
       teamCode: z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/),
       points: z.number().finite()
-    })).min(2).max(4)
+    })).min(2).max(4),
+    /** The judge's full finishing order when teams on equal points would go to different places. */
+    tieBreak: z.object({
+      order: z.array(z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/)).min(2).max(4),
+      reason: z.string().trim().min(1).max(500)
+    }).optional()
   }).parse(request.body);
   const result = await transaction(async (client) => {
     const matchResult = await client.query<{
@@ -2518,10 +2548,40 @@ app.post('/api/admin/playoff-matches/:matchId/scores', { preHandler: requireAdmi
       }
     }
     const scoreByTeam = new Map(body.scores.map((score) => [teamByCode.get(score.teamCode)!, score]));
-    const placement = rankPlayoffScores(
+    let placement = rankPlayoffScores(
       assignedTeamIds.map((teamId) => ({ teamId, points: scoreByTeam.get(teamId)!.points })),
       match.seed_ranks
     );
+    // A tie that changes where teams go (advance vs drop, or final placings) is the judge's call.
+    const pointsByTeam = new Map(assignedTeamIds.map((teamId) => [teamId, scoreByTeam.get(teamId)!.points]));
+    const bracketSources = await client.query<{ id: string; sources: string[] }>(
+      `SELECT id, ARRAY[source_one, source_two, source_three, source_four] AS sources
+       FROM playoff_matches WHERE bracket_id = $1`,
+      [match.bracket_id]
+    );
+    const destination = (place: number) => match.bracket_side === 'final'
+      ? `final:${place}`
+      : bracketSources.rows.find((heat) => heat.sources.includes(`place:${place}:${matchId}`))?.id ?? 'eliminated';
+    const decisiveTies = findDecisivePlayoffTies(placement, pointsByTeam, destination);
+    let tieBreak: { order: string[]; reason: string; decidedBy: string } | null = null;
+    if (decisiveTies.length) {
+      if (!body.tieBreak) {
+        return {
+          status: 409,
+          error: 'Tied teams would finish in places that lead to different outcomes. The judge must decide the order.',
+          tieBreakRequired: true,
+          ties: decisiveTies.map((tie) => ({
+            places: tie.places,
+            teamCodes: tie.teamIds.map((teamId) => codeByTeam.get(teamId))
+          }))
+        };
+      }
+      const order = body.tieBreak.order.map((code) => teamByCode.get(code) ?? code);
+      const invalid = validateTieBreakOrder(order, pointsByTeam);
+      if (invalid) return { status: 400, error: invalid };
+      placement = order;
+      tieBreak = { order: body.tieBreak.order, reason: body.tieBreak.reason, decidedBy: adminEmail(request) };
+    }
     const winner = placement[0];
     const tied = new Set(body.scores.map((score) => score.points)).size < body.scores.length;
     for (const [teamId, score] of scoreByTeam) {
@@ -2559,9 +2619,9 @@ app.post('/api/admin/playoff-matches/:matchId/scores', { preHandler: requireAdmi
     }
     await client.query(
       `UPDATE playoff_matches SET winner_team_id = $2, tied = $3, placements = $4::jsonb,
-         status = 'complete', schedule_state = 'complete',
+         status = 'complete', schedule_state = 'complete', tie_break = $5::jsonb,
          scored_at = coalesce(scored_at, now()) WHERE id = $1`,
-      [matchId, winner, tied, JSON.stringify(placement)]
+      [matchId, winner, tied, JSON.stringify(placement), tieBreak ? JSON.stringify(tieBreak) : null]
     );
     if (match.bracket_side === 'final') {
       await client.query('UPDATE playoff_brackets SET status = $2 WHERE id = $1',
@@ -2586,6 +2646,7 @@ app.post('/api/admin/playoff-matches/:matchId/scores', { preHandler: requireAdmi
       placement: placement.map((teamId) => codeByTeam.get(teamId)),
       scores: body.scores.map((score) => ({ teamCode: score.teamCode, points: score.points })),
       rescheduledHeatIds,
+      tieBreak,
       reason: body.reason ?? null
     });
     return {
@@ -2651,7 +2712,7 @@ async function loadPublicDisplay(slug: string) {
         `SELECT pm.match_number, pm.round_number, pm.bracket_side, pm.status,
                 winner.code AS winner,
                 jsonb_agg(jsonb_build_object('code', t.code, 'points', pms.points)
-                  ORDER BY pms.points DESC) FILTER (WHERE t.code IS NOT NULL) AS scores
+                  ORDER BY (SELECT p.idx FROM jsonb_array_elements_text(coalesce(pm.placements, '[]'::jsonb)) WITH ORDINALITY AS p(team_id, idx) WHERE p.team_id = t.id::text) NULLS LAST, pms.points DESC) FILTER (WHERE t.code IS NOT NULL) AS scores
          FROM playoff_matches pm JOIN playoff_brackets pb ON pb.id = pm.bracket_id
          LEFT JOIN teams winner ON winner.id = pm.winner_team_id
          LEFT JOIN playoff_match_scores pms ON pms.playoff_match_id = pm.id
@@ -2919,7 +2980,7 @@ async function loadPublicDisplay(slug: string) {
               ARRAY[pm.source_one, pm.source_two, pm.source_three, pm.source_four] AS sources,
               ARRAY[a.code, b.code, c.code, d.code] AS teams,
               (SELECT jsonb_agg(jsonb_build_object('team', t.code, 'points', pms.points)
-                 ORDER BY pms.points DESC, (pb.seed_ranks ->> t.id::text)::integer)
+                 ORDER BY (SELECT p.idx FROM jsonb_array_elements_text(coalesce(pm.placements, '[]'::jsonb)) WITH ORDINALITY AS p(team_id, idx) WHERE p.team_id = t.id::text) NULLS LAST, pms.points DESC, (pb.seed_ranks ->> t.id::text)::integer)
                FROM playoff_match_scores pms JOIN teams t ON t.id = pms.team_id
                WHERE pms.playoff_match_id = pm.id) AS scores
        FROM playoff_brackets pb JOIN playoff_matches pm ON pm.bracket_id = pb.id
@@ -3907,6 +3968,12 @@ app.get('/display/:slug', async (request, reply) => {
           remaining=new Date(match.effective_start).getTime()-now;
           label='STARTS IN';
           statusText='UP NEXT';
+          if(remaining<=0&&!match.countdown_started_at){
+            // Its time has come but nobody has started it: show the full match time, not a fake 00:00.
+            remaining=Number(match.duration_seconds)*1000;
+            label='WAITING TO START';
+            statusText='WAITING TO START';
+          }
           if(match.countdown_started_at){
             const goAt=new Date(match.countdown_started_at).getTime()+countdownTotalMs;
             remaining=goAt-now;
@@ -4726,7 +4793,7 @@ app.get('/api/admin/competitions/:slug/matches', { preHandler: requireAdmin }, a
              (pm.source_three <> 'bye')::int + (pm.source_four <> 'bye')::int) AS entrant_count,
             (SELECT count(*)::int FROM playoff_match_scores pms WHERE pms.playoff_match_id = pm.id) AS score_count,
             (SELECT jsonb_agg(jsonb_build_object('teamCode', t.code, 'points', pms.points)
-               ORDER BY pms.points DESC, (pb.seed_ranks ->> t.id::text)::integer)
+               ORDER BY (SELECT p.idx FROM jsonb_array_elements_text(coalesce(pm.placements, '[]'::jsonb)) WITH ORDINALITY AS p(team_id, idx) WHERE p.team_id = t.id::text) NULLS LAST, pms.points DESC, (pb.seed_ranks ->> t.id::text)::integer)
              FROM playoff_match_scores pms JOIN teams t ON t.id = pms.team_id
              WHERE pms.playoff_match_id = pm.id) AS scores,
             jsonb_build_array(

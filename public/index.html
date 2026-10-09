@@ -201,6 +201,10 @@
     .bracket-details { margin-top: .75rem; }
     .bracket-details summary { cursor: pointer; font-weight: 700; padding: .3rem 0; }
     body[data-theme="night"] .diagram-scroll { --bd-surface: #1b2732; --bd-ink: #edf3f4; --bd-muted: #a6b4c2; --bd-line: #45525c; --bd-advance-bg: #163a26; --bd-drop-bg: #3a2a14; }
+    .tie-break { margin-top: 1rem; padding: .85rem 1rem; border: 2px solid var(--warning); background: #fff7ee; }
+    .tie-break h3 { margin: 0 0 .35rem; font-size: 1rem; color: var(--warning); }
+    .tie-break .form-grid { margin-top: .6rem; }
+    body[data-theme="night"] .tie-break { background: #3a2a14; }
     .preview-box { border-left: 4px solid var(--accent); background: var(--raised); padding: .7rem .9rem; }
     .preview-box.error { border-left-color: #b64040; }
     @media(max-width:680px) {
@@ -292,6 +296,7 @@
     <form id="score-form">
       <h2 id="score-title">Match score</h2>
       <div id="score-fields"></div>
+      <div id="tie-break-fields" class="tie-break hidden" role="group" aria-labelledby="tie-break-title"></div>
       <label id="score-reason-label" class="hidden">Correction reason<input id="score-reason" maxlength="500"></label>
       <div class="actions" style="justify-content:flex-end;margin-top:1rem">
         <button type="button" class="secondary" data-close="score-dialog">Cancel</button>
@@ -483,6 +488,7 @@ async function api(path, options={}) {
   if (!response.ok) {
     const error = new Error(data?.error || `Request failed (${response.status})`);
     error.status = response.status;
+    error.data = data;
     throw error;
   }
   return data;
@@ -613,7 +619,7 @@ function matchRows(source=matches, actions=false, edit=false) {
       ?`<span class="badge ${m.state==='pending'?'warn':'good'}">${h(m.team_count)}/${h(m.entrant_count)} teams assigned</span>${Number(m.delay_seconds)>0?` <span class="badge warn">Delayed by ${h(formatDelay(m.delay_seconds))}</span>`:''}`
       :`${m.underfilled?`<span class="badge warn">UNDERFILLED ${h(m.team_count)}/4</span>`:'<span class="badge good">4 teams</span>'}${Number(m.delay_seconds)>0?` <span class="badge warn">Delayed by ${h(formatDelay(m.delay_seconds))}</span>`:''}`;
     return `<tr><td><strong>#${h(m.match_number)}</strong>${playoffTag}<br><span class="subtle">${h(m.arena_name)}</span></td>
-      <td>${h(formatCompetitionDateTime(m.effective_start))}<br><span class="badge">${h(m.state.replaceAll('_',' '))}</span>${m.has_scores?` <span class="badge good">Score entered</span>`:''}${m.countdown_started_at?` <span class="badge warn" data-countdown="${h(new Date(m.countdown_started_at).getTime())}"></span>`:''}${m.actual_start?`<br><span class="match-clock" data-clock data-state="${h(m.state)}" data-start="${h(new Date(m.actual_start).getTime())}" data-paused="${h(m.paused_at?new Date(m.paused_at).getTime():'')}" data-paused-seconds="${h(m.paused_seconds)}" data-duration="${h(m.duration_seconds)}"></span>`:''}</td>
+      <td>${h(formatCompetitionDateTime(m.effective_start))}<br><span class="badge">${h(m.state.replaceAll('_',' '))}</span>${actions&&isDueToStart(m)?' <span class="badge warn">Due now · press Start</span>':''}${m.has_scores?` <span class="badge good">Score entered</span>`:''}${m.countdown_started_at?` <span class="badge warn" data-countdown="${h(new Date(m.countdown_started_at).getTime())}"></span>`:''}${m.actual_start?`<br><span class="match-clock" data-clock data-state="${h(m.state)}" data-start="${h(new Date(m.actual_start).getTime())}" data-paused="${h(m.paused_at?new Date(m.paused_at).getTime():'')}" data-paused-seconds="${h(m.paused_seconds)}" data-duration="${h(m.duration_seconds)}"></span>`:''}</td>
       <td>${compactPositionsHtml(m)}</td><td>${fill}</td>${edit&&!m.isPlayoff?controls:''}${actions?controls:''}</tr>`;
   });
 }
@@ -719,9 +725,10 @@ function bracketBoardHtml() {
       :match.timer_state&&match.timer_state!=='scheduled'?`<span class="badge warn">${h(match.timer_state.replaceAll('_',' '))}</span>`
       :match.status==='ready'?'<span class="badge">Ready</span>':'<span class="badge">Waiting</span>';
     const advance=match.bracket_side!=='final'&&match.advancing_places?`<div class="subtle">Top ${h(match.advancing_places)} progress${bracket.format==='double-elimination'&&match.bracket_side==='upper'?'; others drop to the lower bracket':'; others are out'}</div>`:'';
+    const tieNote=match.tie_break?`<div class="badge warn" title="${h(match.tie_break.reason)}">Tie decided by judge: ${h(match.tie_break.reason)}</div>`:'';
     return `<article class="heat-card" data-side="${h(match.bracket_side)}"><header><span>#${h(match.match_number)} · ${h(playoffSideLabel(match.bracket_side,bracket.format))}</span>${state}</header>
       <div class="subtle">${h(formatCompetitionDateTime(match.effective_start))} · ${h(match.arena_name)}${Number(match.delay_seconds)>0?` · +${h(formatDelay(match.delay_seconds))}`:''}</div>
-      <ol>${list}</ol>${advance}</article>`;
+      <ol>${list}</ol>${advance}${tieNote}</article>`;
   };
   const columns=Array.from({length:stageCount},(_,index)=>{
     const heats=playoffData.matches.filter(match=>(Number(match.stage)||1)===index+1).sort((a,b)=>a.match_number-b.match_number);
@@ -768,6 +775,10 @@ async function schedulePage() {
     ?`Captured ${h(formatCompetitionDateTime(seedBracket.seed_snapshot_at))}. ${seedMatchDescription}`
     :seedMatchDescription;
   const seedCheckUrl=`/api/admin/competitions/${encodeURIComponent(slug())}/playoffs/seed-check`;
+  const seedTies=(Array.isArray(seedBracket?.seed_standings_snapshot)?seedBracket.seed_standings_snapshot:[])
+    .filter(team=>team.rank<=Number(seedBracket.field_size)+1&&team.tiedWith?.length);
+  const seedTieWarning=seedTies.length&&!seedBracket.seed_frozen_at
+    ?`<div role="alert" class="preview-box error" style="margin-bottom:1rem"><strong>Level teams in the playoff seeding:</strong> ${h([...new Set(seedTies.map(team=>[team.code,...team.tiedWith].sort().join(' = ')))].join('; '))}. They are equal on league points, match points, head-to-head and best match, so they are currently listed by team code. The judge should decide the order (for example with a tie-break run recorded as a challenge award) before the first playoff countdown freezes the seeds.</div>`:'';
   return `${heading('Schedule', 'Generate a balanced schedule or add a match manually.')}
     <section class="card"><h2>Generate balanced schedule</h2><form id="generate-form" class="form-grid cols-3">
       <label>Number of matches<input name="matchCount" type="number" min="1" value="${Math.max(1,teams.filter(t=>t.active).length*3)}" required></label>
@@ -801,6 +812,7 @@ async function schedulePage() {
         <span> · ${seedSnapshotDescription}</span>
         <a href="${seedCheckUrl}" style="display:inline-block;margin-left:.5rem">Open standings sanity check</a>
       </div>`:''}
+      ${seedTieWarning}
       <p class="subtle">Choose how teams get from the league to the final. Every heat has two to four robots; seeds are spread across first-round heats and nobody gets a single-team bye. Seeds follow the live league table until the first playoff countdown, then freeze. Ties in a heat are settled by league seed, and playoff points never change league standings.</p>
       <form id="playoff-form" data-replace="${playoffData.bracket?'true':'false'}" class="form-grid cols-3">
         <label>Route to the final<select name="format">
@@ -1051,6 +1063,11 @@ async function activityPage() {
   return `${heading('Activity','Recent administrative and system events.')}
     <section class="card">${table(['Time','Actor','Action','Details'],events.slice(0,100).map(e=>`<tr><td>${h(new Date(e.created_at).toLocaleString())}</td><td>${h(e.actor_email)}</td><td>${h(e.action)}</td><td>${h(JSON.stringify(e.details))}</td></tr>`),'No activity recorded.')}</section>`;
 }
+// A league match or ready playoff heat whose start time has arrived but that nobody has started.
+function isDueToStart(match,now=Date.now()) {
+  if(match.countdown_started_at||new Date(match.effective_start).getTime()>now)return false;
+  return match.isPlayoff?match.state==='ready':['scheduled','ready','delayed'].includes(match.state);
+}
 function scheduleHealthHtml(now) {
   const future=matches.filter(match=>['scheduled','ready','delayed'].includes(match.state)&&!match.countdown_started_at)
     .sort((left,right)=>new Date(left.effective_start)-new Date(right.effective_start));
@@ -1075,11 +1092,9 @@ async function matchesPage() {
   const timerDisplays=await api(`/api/admin/competitions/${encodeURIComponent(slug())}/displays`);
   const timerDisplay=timerDisplays.find(display=>display.display_type==='timer'&&display.enabled);
   const now=Date.now();
-  const active=matches.filter(match=>['running','paused','awaiting_score'].includes(match.state)||Boolean(match.countdown_started_at)||
-    (match.isPlayoff&&match.state==='ready'&&new Date(match.effective_start).getTime()<=now))
+  const active=matches.filter(match=>['running','paused','awaiting_score'].includes(match.state)||Boolean(match.countdown_started_at)||isDueToStart(match,now))
     .sort((left,right)=>new Date(left.effective_start)-new Date(right.effective_start));
-  const future=matches.filter(match=>!['running','paused','awaiting_score','complete','cancelled'].includes(match.state)&&!match.countdown_started_at&&
-    !(match.isPlayoff&&match.state==='ready'&&new Date(match.effective_start).getTime()<=now))
+  const future=matches.filter(match=>!['running','paused','awaiting_score','complete','cancelled'].includes(match.state)&&!match.countdown_started_at&&!isDueToStart(match,now))
     .sort((left,right)=>new Date(left.effective_start)-new Date(right.effective_start));
   const past=matches.filter(match=>['complete','cancelled'].includes(match.state))
     .sort((left,right)=>new Date(right.actual_end||right.effective_start)-new Date(left.actual_end||left.effective_start));
@@ -1148,6 +1163,34 @@ async function startMatchCountdown(button,id) {
   }finally{
     if(button.isConnected)button.disabled=false;
   }
+}
+// A playoff tie that changes outcomes is decided by the judge: show who is level and ask for the order.
+function showTieBreak(form,ties,scores) {
+  const pointsOf=new Map(scores.map(score=>[score.teamCode,score.points]));
+  form.dataset.ties=JSON.stringify(ties);
+  const section=$('tie-break-fields');
+  section.innerHTML=`<h3 id="tie-break-title">Judge's decision needed</h3>
+    <p class="subtle">These teams are level on points but their places lead to different outcomes. Decide the order (for example after a replay or by the judge's ruling) and record why.</p>
+    ${ties.map((tie,index)=>`<div class="form-grid">${tie.places.slice(0,-1).map((place,slot)=>`<label>${h(ordinal(place))} place (${h(pointsOf.get(tie.teamCodes[0]))} pts)<select data-tie="${index}" data-slot="${slot}" required><option value="">Choose…</option>${tie.teamCodes.map(code=>`<option value="${h(code)}">${h(code)}</option>`).join('')}</select></label>`).join('')}<p class="subtle wide">${h(tie.teamCodes.join(' and '))} share ${h(tie.places.map(ordinal).join(', '))}${tie.places.length>2?'; the remaining team takes the last place':`; the other takes ${h(ordinal(tie.places.at(-1)))}`}.</p></div>`).join('')}
+    <label>Reason for the decision<input id="tie-break-reason" maxlength="500" required placeholder="e.g. won the tie-break replay"></label>`;
+  section.classList.remove('hidden');
+  section.scrollIntoView({block:'nearest'});
+  notify('Scores not saved yet: the judge must decide the tie.',true);
+}
+function readTieBreak(form,scores) {
+  if(!form.dataset.ties)return undefined;
+  const ties=JSON.parse(form.dataset.ties);
+  const pointsOf=new Map(scores.map(score=>[score.teamCode,score.points]));
+  // If the points were edited so the teams are no longer level, let the server re-check.
+  if(ties.some(tie=>new Set(tie.teamCodes.map(code=>pointsOf.get(code))).size>1))return undefined;
+  const order=[...scores].sort((left,right)=>right.points-left.points).map(score=>score.teamCode);
+  ties.forEach((tie,index)=>{
+    const chosen=[...form.querySelectorAll(`[data-tie="${index}"]`)].map(select=>select.value);
+    if(chosen.some(value=>!value)||new Set(chosen).size!==chosen.length)throw new Error('Choose a different team for each tied place.');
+    const decided=[...chosen,...tie.teamCodes.filter(code=>!chosen.includes(code))];
+    order.splice(Math.min(...tie.teamCodes.map(code=>order.indexOf(code))),decided.length,...decided);
+  });
+  return {order,reason:$('tie-break-reason').value.trim()};
 }
 function formData(form) { return Object.fromEntries(new FormData(form).entries()); }
 function displayOptionsFromForm(form) {
@@ -1437,6 +1480,7 @@ document.addEventListener('click',async(event)=>{
       }).join('');
       $('score-form').dataset.matchId=id;
       $('score-form').dataset.scoreKind='league';
+      $('tie-break-fields').classList.add('hidden');$('tie-break-fields').innerHTML='';delete $('score-form').dataset.ties;
       $('score-form').dataset.hasExistingScores=String(scoreMap.size>0);
       $('score-reason').value='';
       $('score-reason').required=scoreMap.size>0;
@@ -1459,6 +1503,7 @@ document.addEventListener('click',async(event)=>{
       }).join('');
       $('score-form').dataset.matchId=id;
       $('score-form').dataset.scoreKind='playoff';
+      $('tie-break-fields').classList.add('hidden');$('tie-break-fields').innerHTML='';delete $('score-form').dataset.ties;
       $('score-form').dataset.hasExistingScores=String(scoreMap.size>0);
       $('score-reason').value='';
       $('score-reason').required=scoreMap.size>0;
@@ -1639,7 +1684,14 @@ async function handleFormSubmit(event){
         const scores=[...form.querySelectorAll('[data-points]')].map(input=>({
           teamCode:input.dataset.points,points:Number(input.value)
         }));
-        const result=await api(`/api/admin/playoff-matches/${matchId}/scores`,{method:'POST',body:JSON.stringify({scores,reason})});
+        const tieBreak=readTieBreak(form,scores);
+        let result;
+        try{
+          result=await api(`/api/admin/playoff-matches/${matchId}/scores`,{method:'POST',body:JSON.stringify({scores,reason,tieBreak})});
+        }catch(error){
+          if(error.data?.tieBreakRequired){showTieBreak(form,error.data.ties,scores);return;}
+          throw error;
+        }
         playoffScheduleChanges=new Set([...(result.rescheduledHeatIds||[]),...(result.eventShiftedIds||[])]).size;
       }else{
         const scores=[...form.querySelectorAll('[data-points]')].map(input=>({
@@ -1780,7 +1832,9 @@ async function refreshLive() {
       }
       if(page==='activity')pageData=await api('/api/admin/audit');
     }
-    const signature=JSON.stringify([nextCompetitions,nextTeams,nextMatches,nextLeague,pageData,nextEvents]);
+    // Time passing alone changes which matches are due, so include that in the refresh check.
+    const dueNow=page==='matches'?nextMatches.filter(match=>isDueToStart(match)).map(match=>match.id):null;
+    const signature=JSON.stringify([nextCompetitions,nextTeams,nextMatches,nextLeague,pageData,nextEvents,dueNow]);
     const changed=signature!==liveSignature;
     competitions=nextCompetitions;
     teams=nextTeams;

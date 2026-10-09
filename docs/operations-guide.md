@@ -44,8 +44,17 @@ explained in the preview and cannot be submitted.
 - First-round heats are filled in a serpentine by seed, so seeds 1 and 2 are
   never in the same opening heat. Later rounds avoid putting two teams from the
   same previous heat together wherever the heat sizes allow.
-- Ties within a heat are settled by league seed. Playoff points never change
+- **Ties within a heat are decided by the judge.** If tied teams' places lead
+  to different outcomes (advance vs drop/out, or any final placing), the score
+  dialog asks the judge to set the order and give a reason before it saves;
+  replay the heat (Reset timer) or run a tie-break first if you want one.
+  Ties that make no difference save normally. Playoff points never change
   league standings.
+- **League ties** are separated by match points, then head-to-head points in
+  league matches where the tied teams met, then best single match. Anything
+  still level is flagged on the Schedule page before playoffs; decide it (for
+  example with a tie-break run awarded as a challenge) before the first
+  playoff countdown freezes the seeds.
 
 ### Size of each route
 
@@ -135,7 +144,10 @@ overdue to start. Public schedule displays show the same information to
 competitors: the original time is struck through, the status reads
 "Delayed N min", and a banner says how far behind the event is running.
 
-With **competition auto-run** on, league matches and ready playoff heats start
+With auto-run **off**, a match whose time arrives moves to the top of Live
+control's Active list with a "Due now · press Start" badge, and timer and SR
+screens show "Waiting to start". The clock only runs once someone presses
+Start. With **competition auto-run** on, league matches and ready playoff heats start
 on their own at their effective time. A heat whose teams or arena are still in
 another match waits until they are free and then gets a fresh countdown.
 

@@ -378,3 +378,56 @@ export function resolvePlayoffAdvancements(
   }
   return matches;
 }
+
+export type PlayoffTie = {
+  /** Places (1-based) shared by the tied teams. */
+  places: number[];
+  teamIds: string[];
+};
+
+/**
+ * Ties that change an outcome: teams on equal points whose places lead to
+ * different destinations (e.g. one advances and one drops, or different
+ * final placings). `destination(place)` names where a place leads.
+ * `placement` is the best-first order already computed for the heat.
+ */
+export function findDecisivePlayoffTies(
+  placement: readonly string[],
+  points: ReadonlyMap<string, number>,
+  destination: (place: number) => string
+): PlayoffTie[] {
+  const ties: PlayoffTie[] = [];
+  let start = 0;
+  while (start < placement.length) {
+    let end = start + 1;
+    while (end < placement.length && points.get(placement[end]!) === points.get(placement[start]!)) end += 1;
+    if (end - start > 1) {
+      const places = Array.from({ length: end - start }, (_, index) => start + index + 1);
+      if (new Set(places.map(destination)).size > 1) {
+        ties.push({ places, teamIds: placement.slice(start, end) });
+      }
+    }
+    start = end;
+  }
+  return ties;
+}
+
+/**
+ * Validates a judge's full finishing order: it must contain exactly the heat's
+ * teams and may only reorder teams on equal points.
+ */
+export function validateTieBreakOrder(
+  order: readonly string[],
+  points: ReadonlyMap<string, number>
+): string | null {
+  if (order.length !== points.size || new Set(order).size !== order.length ||
+      order.some((teamId) => !points.has(teamId))) {
+    return 'The tie-break order must list every team in the heat exactly once';
+  }
+  for (let index = 1; index < order.length; index += 1) {
+    if (points.get(order[index]!)! > points.get(order[index - 1]!)!) {
+      return 'The tie-break order can only reorder teams on equal points';
+    }
+  }
+  return null;
+}
