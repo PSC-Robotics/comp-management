@@ -14,6 +14,8 @@ run PSC Robotics competitions.
   final (double elimination, single elimination, straight to the final, final
   size, seeded byes), seeding, heat ranking, advancement and loss tracking.
 - `src/display.ts` - public display option schema and shared clock/cue helpers.
+- `src/bracket-diagram.ts` - renders a playoff bracket as a self-contained SVG
+  (used by the admin portal, the format preview and the public bracket display).
 - `src/srcomp.ts` - adapters from Competition Control data to SRComp shapes.
 - `src/*.test.ts` - unit tests for the modules above (`npm test`).
 - `public/index.html` - the admin portal (single page, no build step).

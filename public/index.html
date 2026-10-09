@@ -192,8 +192,64 @@
     .button-link { display: inline-flex; align-items: center; border: 1px solid var(--line); background: var(--surface); color: var(--ink); padding: .65rem .9rem; font-weight: 650; border-radius: 2px; text-decoration: none; }
     .match-actions .button-link, .actions .button-link { padding: .42rem .6rem; font-size: .78rem; }
     .display-actions { max-width: 430px; }
+    .diagram-scroll { overflow: auto; -webkit-overflow-scrolling: touch; border: 1px solid var(--line); background: var(--raised); padding: .5rem; margin-top: .5rem; max-height: 75vh; }
+    .diagram-scroll svg { display: block; max-width: none; }
+    .bracket-legend { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem .9rem; font-size: .8rem; margin: .5rem 0 0; }
+    .legend-line { display: inline-block; width: 24px; border-top: 2px solid #3267d5; margin-right: -.5rem; }
+    .legend-line.drop { border-top: 2px dashed #c76a10; }
+    .legend-line.final { border-top-color: #19875b; }
+    .bracket-details { margin-top: .75rem; }
+    .bracket-details summary { cursor: pointer; font-weight: 700; padding: .3rem 0; }
+    body[data-theme="night"] .diagram-scroll { --bd-surface: #1b2732; --bd-ink: #edf3f4; --bd-muted: #a6b4c2; --bd-line: #45525c; --bd-advance-bg: #163a26; --bd-drop-bg: #3a2a14; }
     .preview-box { border-left: 4px solid var(--accent); background: var(--raised); padding: .7rem .9rem; }
     .preview-box.error { border-left-color: #b64040; }
+    @media(max-width:680px) {
+      /* Compact chrome: the page heading already names the page, so the top bar only holds the competition picker. */
+      aside { max-height: none; flex-direction: row; flex-wrap: wrap; align-items: center; padding: .45rem .55rem .5rem; gap: .35rem .6rem; }
+      .brand { font-size: .9rem; flex: 1 1 auto; }
+      nav { flex: 1 1 100%; -webkit-mask-image: linear-gradient(90deg,#000 88%,transparent); mask-image: linear-gradient(90deg,#000 88%,transparent); scroll-padding-inline: 1rem; }
+      nav button { padding: .5rem .75rem; font-size: .8rem; }
+      #top-title { display: none; }
+      .topbar { min-height: 0; padding: .45rem .75rem; }
+      .topbar label > span, #competition-switcher-label { font-size: 0; gap: 0; }
+      .topbar select { font-size: .85rem; }
+      .page-head p, .overview-intro p { font-size: .85rem; }
+      /* Tables become one card per row with the column name beside each value. */
+      .table-wrap { overflow: visible; margin-inline: 0; }
+      .table-wrap table, .table-wrap tbody, .table-wrap tr, .table-wrap td { display: block; width: 100%; }
+      .table-wrap table { white-space: normal; margin-top: .25rem; }
+      .table-wrap thead { display: none; }
+      .table-wrap tr { border: 1px solid var(--line); border-radius: 7px; background: var(--surface); margin-bottom: .6rem; padding: .35rem .7rem; box-shadow: 0 1px 3px rgb(22 34 51 / 6%); }
+      .table-wrap td { display: grid; grid-template-columns: minmax(5.5rem, 34%) minmax(0, 1fr); gap: .6rem; align-items: center; padding: .4rem 0; border-bottom: 1px solid var(--line); }
+      .table-wrap td::before { content: attr(data-label); color: var(--muted); font-size: .68rem; font-weight: 750; letter-spacing: .05em; text-transform: uppercase; }
+      .table-wrap td:not([data-label])::before, .table-wrap td[data-label=""]::before { display: none; }
+      .table-wrap td:not([data-label]), .table-wrap td[data-label=""] { display: block; }
+      .table-wrap td:last-child { border-bottom: 0; }
+      .table-wrap td:first-child { display: block; font-size: 1rem; padding-top: .45rem; }
+      .table-wrap td:first-child::before { display: none; }
+      .table-wrap td:first-child br { display: none; }
+      .table-wrap td:first-child .cell-value { display: flex; flex-wrap: wrap; align-items: center; gap: .2rem .5rem; }
+      .table-wrap td.cell-actions { display: block; padding-top: .55rem; }
+      .table-wrap td.cell-actions::before { display: none; }
+      .match-actions { gap: .45rem; }
+      .cell-value { min-width: 0; overflow-wrap: anywhere; }
+      .section-title { flex-direction: column; align-items: stretch; gap: .5rem; }
+      .section-title h2 { margin-bottom: .25rem; }
+      .section-title .actions { width: 100%; }
+      .section-title > button, .section-title > .badge, .section-title > a { align-self: flex-start; }
+      .match-actions button, .match-actions .button-link { flex: 1 1 calc(50% - .45rem); min-height: 42px; font-size: .85rem; justify-content: center; }
+      .live-position-list { min-width: 0; }
+      .display-actions { max-width: none; }
+      /* Dialogs open as bottom sheets. */
+      dialog { width: 100vw; max-width: 100vw; margin: auto 0 0; max-height: 92vh; border-radius: 12px 12px 0 0; }
+      dialog .actions { position: sticky; bottom: -1rem; background: var(--surface); padding: .6rem 0; margin-bottom: -1rem; }
+      dialog .actions button { flex: 1 1 auto; min-height: 44px; }
+      .status { left: .75rem; right: .75rem; bottom: .75rem; max-width: none; }
+      .display-options { grid-template-columns: 1fr; }
+      .option-group { padding: .7rem; }
+      .bracket-board { grid-auto-columns: minmax(200px, 80vw); }
+      .diagram-scroll { margin-inline: -.4rem; max-height: 70vh; }
+    }
   </style>
 </head>
 <body>
@@ -627,7 +683,8 @@ function updatePlayoffPreview(form) {
       if(by('lower').length)parts.push(`${by('lower').length} lower-bracket heat(s) in ${rounds('lower')} round(s)`);
       const finalEntrants=(final?.sources||[]).map(source=>source.startsWith('seed:')?`seed ${source.slice(5)}`:`${ordinal(source.split(':')[1])} of heat ${source.split(':')[2]}`);
       box.classList.remove('error');
-      box.innerHTML=`${parts.join(' · ')}<br>Final (${finalEntrants.length} teams): ${h(finalEntrants.join(', '))}<br>${h(PLAYOFF_FORMAT_HELP[values.format]||'')}${Number(values.finalByes)&&values.format!=='direct-final'?` The top ${h(values.finalByes)} league seed(s) skip the knockout and go straight to the final.`:''}`;
+      box.innerHTML=`${parts.join(' · ')}<br>Final (${finalEntrants.length} teams): ${h(finalEntrants.join(', '))}<br>${h(PLAYOFF_FORMAT_HELP[values.format]||'')}${Number(values.finalByes)&&values.format!=='direct-final'?` The top ${h(values.finalByes)} league seed(s) skip the knockout and go straight to the final.`:''}
+        <details class="bracket-details" ${preview.heats.length>1?'open':''}><summary>Bracket diagram</summary><div class="diagram-scroll">${preview.diagram||''}</div>${bracketLegendHtml()}</details>`;
       $('playoff-submit')?.removeAttribute('disabled');
     }catch(error){
       if(request!==playoffPreviewRequest)return;
@@ -636,6 +693,9 @@ function updatePlayoffPreview(form) {
       $('playoff-submit')?.setAttribute('disabled','');
     }
   },150);
+}
+function bracketLegendHtml() {
+  return '<p class="bracket-legend subtle"><span class="legend-line"></span>Winners progress<span class="legend-line drop"></span>Drops to lower bracket<span class="legend-line final"></span>Into the final</p>';
 }
 function bracketBoardHtml() {
   const bracket=playoffData.bracket;
@@ -670,8 +730,10 @@ function bracketBoardHtml() {
   }).join('');
   const teamRows=(playoffData.teams||[]).map(team=>`<tr><td>${h(team.seed)}</td><td><strong>${h(team.code)}</strong></td><td>${h(team.name)}</td><td>${h(team.losses)}</td><td>${team.eliminated?'<span class="badge warn">Eliminated</span>':'<span class="badge good">Still in</span>'}</td></tr>`);
   return `<section class="card" style="margin-top:1rem"><div class="section-title"><h2>Playoff bracket</h2><span class="badge">${h(playoffFormatLabel(bracket.format))}</span></div>
-    <div class="bracket-board">${columns}</div>
-    <details style="margin-top:.6rem"><summary>Team progress</summary>${table(['Seed','Code','Team','Losses','Status'],teamRows,'No playoff entrants.')}</details></section>`;
+    <div class="diagram-scroll">${playoffData.diagram||''}</div>
+    ${bracketLegendHtml()}
+    <details class="bracket-details"><summary>Heat cards</summary><div class="bracket-board">${columns}</div></details>
+    <details class="bracket-details"><summary>Team progress</summary>${table(['Seed','Code','Team','Losses','Status'],teamRows,'No playoff entrants.')}</details></section>`;
 }
 async function schedulePage() {
   playoffData=slug()?await api(`/api/admin/competitions/${encodeURIComponent(slug())}/playoffs`):{bracket:null,matches:[],teams:[]};
@@ -1033,6 +1095,28 @@ async function matchesPage() {
       ${table(['Match','Time / status','Arena positions','Fill','Controls'],matchRows(future,true),'No future matches.')}</section>
     <section class="card" style="margin-top:1rem"><h2>Past matches</h2>${table(['Match','Time / status','Arena positions','Fill','Controls'],matchRows(past,true),'No past matches.')}</section>`;
 }
+// Copies each column heading onto its cells so tables can be shown as labelled cards on phones.
+function labelTableCells(root) {
+  root.querySelectorAll('table').forEach(tableNode=>{
+    const headings=[...tableNode.querySelectorAll('thead th')].map(th=>th.textContent.trim());
+    tableNode.querySelectorAll('tbody tr').forEach(row=>{
+      let column=0;
+      for(const cell of row.children){
+        const span=Number(cell.getAttribute('colspan')||1);
+        if(span===1&&!cell.hasAttribute('data-label'))cell.dataset.label=headings[column]||'';
+        if(cell.querySelector('.match-actions,.actions'))cell.classList.add('cell-actions');
+        else if(cell.dataset.label&&!cell.querySelector(':scope > .cell-value')){
+          // Keep the cell's content together beside its label in the card layout.
+          const value=document.createElement('div');
+          value.className='cell-value';
+          value.append(...cell.childNodes);
+          cell.append(value);
+        }
+        column+=span;
+      }
+    });
+  });
+}
 async function render() {
   const pages={competitions:competitionsPage,overview:overviewPage,teams:teamsPage,challenges:challengesPage,schedule:schedulePage,matches:matchesPage,league:leaguePage,arena:arenaPage,displays:displaysPage,settings:settingsPage,activity:activityPage};
   const pageToRender=page;
@@ -1040,6 +1124,8 @@ async function render() {
   const content=await pages[pageToRender]();
   if(revision!==renderRevision||pageToRender!==page)return;
   $('view').innerHTML=content;
+  labelTableCells($('view'));
+  document.querySelector('#nav button.active')?.scrollIntoView({block:'nearest',inline:'center'});
   if(pageToRender==='displays')updateDisplayOptionVisibility($('display-form'));
   if(pageToRender==='schedule'&&$('playoff-form'))updatePlayoffPreview($('playoff-form'));
 }

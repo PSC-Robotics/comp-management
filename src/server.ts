@@ -32,6 +32,7 @@ import {
   summarisePlayoffLosses,
   type PlayoffMatchState
 } from './playoffs.js';
+import { renderBracketDiagram, type DiagramHeat } from './bracket-diagram.js';
 import {
   buildSrDisplayConfig,
   groupSrKnockoutMatches,
@@ -1721,12 +1722,40 @@ app.get('/api/admin/competitions/:slug/playoffs', { preHandler: requireAdmin }, 
     losses: record.get(team.id)?.losses ?? 0,
     eliminated: record.get(team.id)?.eliminated ?? false
   })).sort((one, two) => Number(one.seed) - Number(two.seed));
+  const diagram = renderBracketDiagram(matches.rows.map((match) => heatForDiagram(match, competition.timezone)), {
+    format: bracket.rows[0].format,
+    eliminated: teams.filter((team) => team.eliminated).map((team) => team.code)
+  });
   return {
     bracket: bracket.rows[0],
     teams,
+    diagram,
     matches: matches.rows.map((match) => ({ ...match, stage: stages.get(match.id) ?? 1 }))
   };
 });
+
+function heatStatusLabel(scheduleState: string, timerState: string, effectiveStart: Date | string, timeZone: string): string {
+  if (scheduleState === 'complete') return 'Result';
+  if (timerState === 'running' || timerState === 'paused') return 'Live';
+  if (timerState === 'awaiting_score') return 'Scoring';
+  return formatCompetitionTime(new Date(effectiveStart), timeZone);
+}
+
+function heatForDiagram(match: Record<string, any>, timeZone: string): DiagramHeat {
+  const scores = Array.isArray(match.scores) ? match.scores as { teamCode: string; points: number }[] : [];
+  return {
+    id: match.id,
+    number: match.match_number,
+    side: match.bracket_side,
+    sources: match.sources,
+    teams: [match.team_one_code, match.team_two_code, match.team_three_code, match.team_four_code],
+    results: match.status === 'complete' ? scores.map((score) => ({ team: score.teamCode, points: score.points })) : null,
+    advancing: match.advancing_places,
+    status: heatStatusLabel(match.schedule_state, match.timer_state, match.effective_start, timeZone),
+    arena: match.arena_name,
+    live: ['running', 'paused'].includes(match.timer_state)
+  };
+}
 
 app.get('/api/admin/playoff-formats/preview', { preHandler: requireAdmin }, async (request, reply) => {
   const query = z.object({
@@ -1749,7 +1778,11 @@ app.get('/api/admin/playoff-formats/preview', { preHandler: requireAdmin }, asyn
         sources: match.sources.filter((source) => source !== 'bye').map((source) =>
           source.replace(/^place:(\d):(.+)$/, (_whole, place: string, key: string) => `place:${place}:${number.get(key)}`))
       })),
-      stages: Math.max(...stages.values())
+      stages: Math.max(...stages.values()),
+      diagram: renderBracketDiagram(plan.map((match, index) => ({
+        id: match.key, number: index + 1, side: match.side, sources: [...match.sources],
+        advancing: match.side === 'final' ? null : match.advancing
+      })), { format: query.format })
     };
   } catch (error) {
     if (error instanceof RangeError) return reply.code(400).send({ error: error.message });
@@ -2911,7 +2944,21 @@ async function loadPublicDisplay(slug: string) {
       key: heat.id, side: heat.bracket_side, sources: heat.sources,
       placements: heat.status === 'complete' ? heat.placements : null, advancing: heat.advancing_places
     })));
+    const eliminatedCodes = [...record].filter(([, entry]) => entry.eliminated)
+      .map(([teamId]) => codeById.get(teamId)).filter((code): code is string => Boolean(code));
     data = {
+      diagram: renderBracketDiagram(bracket.rows.map((heat) => ({
+        id: heat.id,
+        number: heat.match_number,
+        side: heat.bracket_side,
+        sources: heat.sources,
+        teams: heat.teams,
+        results: heat.status === 'complete' ? heat.scores : null,
+        advancing: heat.advancing_places,
+        status: heatStatusLabel(heat.schedule_state, heat.timer_state, heat.effective_start, display.competition_timezone),
+        arena: heat.arena_name,
+        live: ['running', 'paused'].includes(heat.timer_state)
+      })), { format: bracket.rows[0]?.format ?? null, eliminated: eliminatedCodes }),
       format: bracket.rows[0]?.format ?? null,
       heats: bracket.rows.map(({ id, sources, placements: _placements, ...heat }) => ({
         ...heat,
@@ -2919,8 +2966,7 @@ async function loadPublicDisplay(slug: string) {
         sources: sources.map((source) => source.replace(/^place:(\d):(.+)$/,
           (_whole, place: string, key: string) => `place:${place}:${numberById.get(key) ?? '?'}`))
       })),
-      eliminated: [...record].filter(([, entry]) => entry.eliminated)
-        .map(([teamId]) => codeById.get(teamId)).filter(Boolean)
+      eliminated: eliminatedCodes
     };
   }
   return {
@@ -3504,7 +3550,7 @@ app.get('/display/:slug', async (request, reply) => {
         : '<td>—</td>').join('');
       return `<tr><th scope="row">${escapeHtml(match.match_type)} ${escapeHtml(match.match_number)}</th><td>${escapeHtml(formatCompetitionDateTime(String(match.effective_start), display.competitionTimezone))}</td><td>${escapeHtml(match.arena_name)}</td>${cells}</tr>`;
     }).join('');
-    content = `<table><thead><tr><th>Match</th><th>Time</th><th>Arena</th>${[0,1,2,3].map((position) => `<th>Position ${position}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table>`;
+    content = `<table><thead><tr><th>Match</th><th>Time</th><th>Arena</th>${[0,1,2,3].map((position) => `<th><span class="long-label">Position </span><span class="short-label">P</span>${position}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table>`;
   } else if (['schedule', 'sr-staging', 'sr-shepherding'].includes(display.type)) {
     const showArena = options.showArena && !options.hideScheduleArena;
     const timeContent = (value: unknown) => {
@@ -3561,10 +3607,13 @@ app.get('/display/:slug', async (request, reply) => {
         : '';
       const rowState = ['running', 'paused'].includes(String(match.state)) || match.countdown_started_at
         ? ' class="row-live"' : match === nextUp ? ' class="row-next"' : String(match.state) === 'complete' ? ' class="row-done"' : '';
-      return `<tr${rowState} data-team-codes="${escapeHtml(teamCodes.join(','))}"><td><strong>${escapeHtml(match.match_number)}</strong></td>${showArena ? `<td>${escapeHtml(match.arena_name)}</td>` : ''}<td>${wasTime}${timeContent(match.effective_start)}</td>${positionCells}<td>${fillStatus}</td></tr>`;
+      const mobileStatus = status === 'Scheduled' && expectedTeams >= 4
+        ? (match.is_playoff ? '<span class="tag">Playoff</span>' : '')
+        : fillStatus;
+      return `<tr${rowState} data-team-codes="${escapeHtml(teamCodes.join(','))}"><td><strong>${escapeHtml(match.match_number)}</strong>${showArena ? `<div class="mobile-only muted">${escapeHtml(match.arena_name)}</div>` : ''}</td>${showArena ? `<td class="arena-col">${escapeHtml(match.arena_name)}</td>` : ''}<td>${wasTime}${timeContent(match.effective_start)}${mobileStatus ? `<div class="mobile-status">${mobileStatus}</div>` : ''}</td>${positionCells}<td class="status-cell">${fillStatus}</td></tr>`;
     }).join('');
     const positionOrder = display.type === 'sr-staging' ? options.srStagingCornerOrder : [0, 1, 2, 3];
-    content = `${behindBanner}<table><thead><tr><th>Match</th>${showArena ? '<th>Arena</th>' : ''}<th>${options.relativeTime ? 'Starts in / elapsed' : 'Time'}</th>${positionOrder.map((position) => `<th>Position ${position}</th>`).join('')}<th>Status</th></tr></thead><tbody>${rows}</tbody></table>`;
+    content = `${behindBanner}<table><thead><tr><th>Match</th>${showArena ? '<th class="arena-col">Arena</th>' : ''}<th>${options.relativeTime ? 'Starts in / elapsed' : 'Time'}</th>${positionOrder.map((position) => `<th><span class="long-label">Position </span><span class="short-label">P</span>${position}</th>`).join('')}<th class="status-cell">Status</th></tr></thead><tbody>${rows}</tbody></table>`;
     if (options.enableTeamFilter) {
       const teams = new Map<string, string>();
       for (const match of Array.isArray(data) ? data : []) {
@@ -3645,7 +3694,9 @@ app.get('/display/:slug', async (request, reply) => {
       return `<section class="stage"><h2>${title}</h2>${stageHeats.map(card).join('')}</section>`;
     }).join('');
     content = heats.length
-      ? `<div class="bracket">${columns}</div>`
+      ? `<div class="bracket-diagram-wrap">${String(bracket.diagram ?? '')}</div>
+        <p class="bracket-legend muted"><span class="legend-line win"></span>Winners progress <span class="legend-line drop"></span>Drops to lower bracket <span class="legend-line final"></span>Into the final</p>
+        <details class="bracket-list"><summary>Heat list</summary><div class="bracket">${columns}</div></details>`
       : '<p class="muted" style="text-align:center;margin-top:3rem">The playoff bracket will appear here once it has been scheduled.</p>';
   }
   reply.header('cache-control', 'no-store');
@@ -3716,11 +3767,28 @@ app.get('/display/:slug', async (request, reply) => {
       .schedule-position-team{font:900 1.15rem/1 ui-monospace,monospace}
       body.cue-red{background:${options.countdownBackgroundColor}!important;color:${readableTextColour(options.countdownBackgroundColor)}!important;transition:background-color .15s linear}
       .board-footer{max-width:1100px;margin:1rem auto 0;font-size:.85rem}
+      .short-label{display:none}.mobile-status{display:none}.mobile-only{display:none}
+      @media(max-width:700px){
+        body{padding:.75rem}
+        main table{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch;margin-top:1rem;font-size:.9rem}
+        main td,main th{padding:.5rem .4rem}
+        .long-label{display:none}.short-label{display:inline}
+        .status-cell,.arena-col{display:none}.mobile-only{display:block;font-size:.75rem}.mobile-status{display:block;font-size:.75rem;line-height:1.2;margin-top:.15rem;opacity:.85;white-space:normal}
+        .schedule-position-team{font-size:1rem}
+        .team-filter select{width:100%;font-size:1rem;min-height:2.5rem}
+        h1{font-size:1.4rem}
+      }
       .schedule-banner{margin:1rem 0 0;padding:.6rem .9rem;border-left:5px solid #c76a10;background:${darkTheme ? '#3a2a14' : '#fff3e3'};font-weight:700}
       tr.row-live td{background:${darkTheme ? '#16341f' : '#e6f6ec'}}tr.row-next td{background:${darkTheme ? '#1d2a3a' : '#eef3ff'}}tr.row-done{opacity:.6}
       .tag{display:inline-block;font-size:.7rem;font-weight:800;letter-spacing:.05em;text-transform:uppercase;border:1px solid currentColor;padding:0 .3rem;margin-right:.2rem}
       .bracket{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(200px,1fr);gap:1rem;overflow-x:auto;margin-top:1.5rem;align-items:start}
       .stage h2{font-size:.8rem;text-transform:uppercase;letter-spacing:.08em;opacity:.7;margin:0 0 .6rem}
+      .bracket-diagram-wrap{margin-top:1rem;overflow:auto;--bd-surface:${darkTheme ? '#1b2732' : '#ffffff'};--bd-ink:${darkTheme ? '#edf3f4' : '#19212c'};--bd-muted:${darkTheme ? '#a6b4c2' : '#687384'};--bd-line:${darkTheme ? '#45525c' : '#c9d0d8'};--bd-advance-bg:${darkTheme ? '#163a26' : '#e5f5ec'};--bd-drop-bg:${darkTheme ? '#3a2a14' : '#fff0e2'}}
+      .bracket-diagram-wrap svg{display:block;width:100%;height:auto;min-width:min(100%,640px);max-height:80vh}
+      @media(max-width:700px){.bracket-diagram-wrap svg{width:auto;max-width:none;max-height:none}}
+      .bracket-legend{display:flex;flex-wrap:wrap;align-items:center;gap:.4rem 1rem;font-size:.85rem;margin:.6rem 0 0}
+      .legend-line{display:inline-block;width:26px;border-top:2px solid #3267d5;margin-right:-.6rem}.legend-line.drop{border-top:2px dashed #c76a10}.legend-line.final{border-top-color:#19875b}
+      .bracket-list{margin-top:1rem}.bracket-list summary{cursor:pointer;font-weight:700}
       .heat{border:1px solid ${darkTheme ? '#45525c' : '#c9ceca'};border-left:5px solid #3267d5;padding:.55rem .7rem;margin-bottom:.7rem;break-inside:avoid}
       .heat-lower{border-left-color:#c76a10}.heat-final{border-left-color:#19875b}
       .heat header{display:flex;justify-content:space-between;font-weight:800;border:0;padding:0;gap:.5rem}.heat-meta{font-size:.8rem}

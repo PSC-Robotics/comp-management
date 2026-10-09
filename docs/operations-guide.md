@@ -23,8 +23,12 @@ and challenge awards all count); after that they are frozen. The
 | **Teams in the final** | 4 (default), 3, or 2 for a head-to-head final. |
 | **Top seeds straight to the final** | The league winner (or top 2 / top 3 seeds) skip the knockout rounds entirely and only play the final. The remaining final places are earned in the knockout. Rewards league performance. Double elimination needs at least two earned places, so with a four-team final you can seed at most two teams. |
 
-The form previews the number of heats, how many stages they form, and who
-reaches the final before anything is created. Invalid combinations are
+The form previews the number of heats, how many stages they form, who
+reaches the final, and a **bracket diagram** before anything is created. The
+same diagram is shown on the Schedule page and the public Playoff bracket
+display once the bracket exists: solid lines follow the winners' path, dashed
+orange lines show drops to the lower bracket, and green lines lead into the
+final. Invalid combinations are
 explained in the preview and cannot be submitted.
 
 ### Heat sizes and seeding rules

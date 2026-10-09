@@ -8,7 +8,7 @@
     "start": "node dist/server.js",
     "dev": "tsx watch src/server.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "tsx --test src/scheduler.test.ts src/display.test.ts src/playoffs.test.ts src/srcomp.test.ts"
+    "test": "tsx --test src/*.test.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.2",
