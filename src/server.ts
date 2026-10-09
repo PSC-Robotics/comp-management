@@ -22,11 +22,14 @@ import {
 } from './display.js';
 import {
   buildPlayoffSeedRanks,
-  buildDoubleEliminationPlan,
-  playoffAdvancingPlaces,
+  buildPlayoffPlan,
+  playoffDependencies,
+  playoffFormats,
   playoffSeedSnapshotMatchesRanks,
+  playoffStages,
   rankPlayoffScores,
   resolvePlayoffAdvancements,
+  summarisePlayoffLosses,
   type PlayoffMatchState
 } from './playoffs.js';
 import {
@@ -43,11 +46,11 @@ import {
   calculateTimerResetStart,
   calculateScheduleCascade,
   calculateWaveStartTime,
-  calculatePlannedHeatCascade,
+  calculatePlayoffHeatCascade,
   calculateEventScheduleShifts,
+  planPlayoffHeatTimes,
   generateBalancedMatches,
-  greatestCommonDivisor,
-  roundedDelaySeconds
+  greatestCommonDivisor
 } from './scheduler.js';
 
 const env = z.object({
@@ -206,7 +209,7 @@ ALTER TABLE public_displays DROP CONSTRAINT IF EXISTS public_displays_display_ty
 UPDATE public_displays SET display_type = 'schedule' WHERE display_type = 'bracket';
 ALTER TABLE public_displays ADD CONSTRAINT public_displays_display_type_check
   CHECK (display_type IN (
-    'league', 'schedule', 'arena', 'timer', 'corner', 'results',
+    'league', 'schedule', 'arena', 'timer', 'corner', 'results', 'playoffs',
     'sr-arena', 'sr-outside', 'sr-producer', 'sr-shepherding', 'sr-staging'
   ));
 CREATE TABLE IF NOT EXISTS playoff_brackets (
@@ -282,6 +285,16 @@ WHERE status <> 'replaced' AND EXISTS (
   WHERE pm.bracket_id = playoff_brackets.id
     AND pm.source_three = 'pending' AND pm.source_four = 'pending'
 );
+ALTER TABLE playoff_brackets ADD COLUMN IF NOT EXISTS format text NOT NULL DEFAULT 'double-elimination';
+ALTER TABLE playoff_brackets ADD COLUMN IF NOT EXISTS final_size integer NOT NULL DEFAULT 4;
+ALTER TABLE playoff_brackets ADD COLUMN IF NOT EXISTS final_byes integer NOT NULL DEFAULT 0;
+ALTER TABLE playoff_brackets DROP CONSTRAINT IF EXISTS playoff_brackets_format_check;
+ALTER TABLE playoff_brackets ADD CONSTRAINT playoff_brackets_format_check
+  CHECK (format IN ('double-elimination', 'single-elimination', 'direct-final')
+    AND final_size BETWEEN 2 AND 4 AND final_byes >= 0 AND final_byes < final_size);
+ALTER TABLE playoff_matches ADD COLUMN IF NOT EXISTS advancing_places integer;
+ALTER TABLE playoff_matches ADD COLUMN IF NOT EXISTS countdown_restore_start timestamptz;
+ALTER TABLE playoff_matches ADD COLUMN IF NOT EXISTS scored_at timestamptz;
 ALTER TABLE playoff_brackets DROP CONSTRAINT IF EXISTS playoff_brackets_status_check;
 ALTER TABLE playoff_brackets ADD CONSTRAINT playoff_brackets_status_check
   CHECK (status IN ('active', 'complete', 'replaced'));
@@ -554,6 +567,43 @@ async function hasTeamInActiveMatch(
   return Boolean(active.rowCount);
 }
 
+/** True when any of the heat's teams, or its arena, is already in a running, paused or counting-down match. */
+async function playoffHeatHasActiveConflict(
+  client: PoolClient,
+  competitionId: string,
+  heatId: string,
+  teamIds: string[],
+  arenaName: string
+): Promise<boolean> {
+  const conflict = await client.query(
+    `SELECT 1 FROM matches m JOIN match_positions mp ON mp.match_id = m.id
+     WHERE m.competition_id = $1 AND mp.team_id = ANY($2::uuid[])
+       AND (m.state IN ('running', 'paused') OR
+         (m.countdown_started_at > now() - ($5 * interval '1 second')
+          AND m.state IN ('scheduled', 'ready', 'delayed')))
+     UNION ALL
+     SELECT 1 FROM playoff_matches other JOIN playoff_brackets ob ON ob.id = other.bracket_id
+     WHERE ob.competition_id = $1 AND other.id <> $3
+       AND (other.timer_state IN ('running', 'paused')
+         OR other.countdown_started_at > now() - ($5 * interval '1 second'))
+       AND ARRAY[other.team_one_id,other.team_two_id,other.team_three_id,other.team_four_id]
+         && $2::uuid[]
+     UNION ALL
+     SELECT 1 FROM matches WHERE competition_id = $1 AND arena_name = $4
+       AND (state IN ('running', 'paused') OR
+         (countdown_started_at > now() - ($5 * interval '1 second')
+          AND state IN ('scheduled', 'ready', 'delayed')))
+     UNION ALL
+     SELECT 1 FROM playoff_matches other JOIN playoff_brackets ob ON ob.id = other.bracket_id
+     WHERE ob.competition_id = $1 AND other.id <> $3 AND other.arena_name = $4
+       AND (other.timer_state IN ('running', 'paused')
+         OR other.countdown_started_at > now() - ($5 * interval '1 second'))
+     LIMIT 1`,
+    [competitionId, teamIds, heatId, arenaName, MATCH_COUNTDOWN_TOTAL_SECONDS + 2]
+  );
+  return Boolean(conflict.rowCount);
+}
+
 async function processMatchClocks(): Promise<void> {
   const due = await pool.query<{ id: string; competition_id: string }>(
     `SELECT m.id, m.competition_id FROM matches m
@@ -667,6 +717,60 @@ async function processMatchClocks(): Promise<void> {
         [candidate.id]
       );
       await audit(client, 'system:timer', 'match.timer_finished', 'match', candidate.id);
+    });
+  }
+
+  // Competition auto-run also starts ready playoff heats at their effective time.
+  const autoHeats = await pool.query<{ id: string; competition_id: string }>(
+    `SELECT pm.id, pb.competition_id
+     FROM playoff_matches pm
+     JOIN playoff_brackets pb ON pb.id = pm.bracket_id
+     JOIN competition_settings settings ON settings.competition_id = pb.competition_id
+     WHERE settings.auto_run_enabled AND pb.status = 'active' AND pm.status = 'ready'
+       AND pm.schedule_state = 'scheduled' AND pm.timer_state = 'scheduled'
+       AND pm.countdown_started_at IS NULL
+       AND pm.effective_start <= now() + ($1 * interval '1 second')
+     ORDER BY pm.effective_start, pm.match_number LIMIT 25`,
+    [MATCH_COUNTDOWN_TOTAL_SECONDS]
+  );
+  for (const candidate of autoHeats.rows) {
+    await transaction(async (client) => {
+      await client.query('SELECT id FROM competitions WHERE id = $1 FOR UPDATE', [candidate.competition_id]);
+      await refreshUnstartedPlayoffSeeds(client, candidate.competition_id, 'system:auto-start');
+      const heatResult = await client.query<{
+        bracket_id: string; match_number: number; arena_name: string; team_ids: (string | null)[];
+        status: string; timer_state: string; countdown_started_at: Date | null;
+      }>(
+        `SELECT pm.bracket_id, pm.match_number, pm.arena_name, pm.status, pm.timer_state,
+                pm.countdown_started_at,
+                ARRAY[pm.team_one_id, pm.team_two_id, pm.team_three_id, pm.team_four_id] AS team_ids
+         FROM playoff_matches pm JOIN playoff_brackets pb ON pb.id = pm.bracket_id
+         WHERE pm.id = $1 AND pb.status = 'active' FOR UPDATE OF pm`,
+        [candidate.id]
+      );
+      const heat = heatResult.rows[0];
+      if (!heat || heat.status !== 'ready' || heat.timer_state !== 'scheduled' || heat.countdown_started_at) return;
+      const teamIds = heat.team_ids.filter((teamId): teamId is string => teamId !== null);
+      if (teamIds.length < 2) return;
+      // Wait (without logging every tick) until the arena and teams are free.
+      if (await playoffHeatHasActiveConflict(client, candidate.competition_id, candidate.id, teamIds, heat.arena_name)) return;
+      const started = await client.query<{ countdown_started_at: Date }>(
+        `UPDATE playoff_matches SET countdown_restore_start = effective_start,
+           countdown_started_at = greatest(effective_start - ($2 * interval '1 second'), now())
+         WHERE id = $1 RETURNING countdown_started_at`,
+        [candidate.id, MATCH_COUNTDOWN_TOTAL_SECONDS]
+      );
+      await client.query(
+        'UPDATE playoff_brackets SET seed_frozen_at = coalesce(seed_frozen_at, now()) WHERE id = $1',
+        [heat.bracket_id]
+      );
+      await audit(client, 'system:auto-start', 'playoff_match.countdown_started', 'playoff_match', candidate.id, {
+        trigger: 'competition_auto_run',
+        matchNumber: heat.match_number,
+        countdownStartedAt: new Date(started.rows[0]!.countdown_started_at).toISOString()
+      });
+      await reflowSchedule(client, candidate.competition_id, 'system:auto-start',
+        `playoff heat #${heat.match_number} automatic start`);
     });
   }
 
@@ -787,22 +891,32 @@ async function delayNextMatchesAfterManualStart(
   actor: string,
   trigger = 'manual start'
 ): Promise<string[]> {
+  // Playoff heats queued in the same arena keep their place behind the league match.
   const later = await client.query<{
     id: string;
+    kind: 'league' | 'playoff';
     effective_start: Date;
     duration_seconds: number;
     planned_gap_seconds: number;
     match_number: number;
   }>(
-    `SELECT id, effective_start, duration_seconds, planned_gap_seconds, match_number
+    `SELECT id, 'league' AS kind, effective_start, duration_seconds, planned_gap_seconds, match_number
      FROM matches
      WHERE competition_id = $1 AND arena_name = $2 AND id <> $3
        AND (effective_start, match_number) > ($4, $5)
        AND state IN ('scheduled', 'ready', 'delayed')
-     ORDER BY effective_start, match_number
-     FOR UPDATE`,
+       AND countdown_started_at IS NULL
+     UNION ALL
+     SELECT pm.id, 'playoff', pm.effective_start, pm.duration_seconds, pm.planned_gap_seconds, pm.match_number
+     FROM playoff_matches pm JOIN playoff_brackets pb ON pb.id = pm.bracket_id
+     WHERE pb.competition_id = $1 AND pb.status = 'active' AND pm.arena_name = $2 AND pm.id <> $3
+       AND (pm.effective_start, pm.match_number) > ($4, $5)
+       AND pm.schedule_state = 'scheduled' AND pm.timer_state = 'scheduled'
+       AND pm.countdown_started_at IS NULL
+     ORDER BY effective_start, match_number`,
     [competitionId, arenaName, matchId, priorEffectiveStart, matchNumber]
   );
+  const kindById = new Map(later.rows.map((next) => [next.id, next.kind]));
   const shifts = calculateScheduleCascade(
     later.rows.map((next) => ({
       id: next.id,
@@ -814,6 +928,13 @@ async function delayNextMatchesAfterManualStart(
   );
   for (const shift of shifts) {
     const effectiveStart = new Date(shift.effectiveStart);
+    if (kindById.get(shift.id) === 'playoff') {
+      await client.query('UPDATE playoff_matches SET effective_start = $2 WHERE id = $1', [shift.id, effectiveStart]);
+      await audit(client, actor, 'playoff.schedule_cascaded', 'playoff_match', shift.id, {
+        causedByMatchId: matchId, trigger, effectiveStart: effectiveStart.toISOString(), delaySeconds: shift.delaySeconds
+      });
+      continue;
+    }
     await client.query(
       `UPDATE matches SET effective_start = $2, state = 'delayed', revision = revision + 1
        WHERE id = $1`,
@@ -831,18 +952,26 @@ async function delayNextMatchesAfterManualStart(
       delaySeconds: shift.delaySeconds
     });
   }
-  return shifts.map((shift) => shift.id);
+  // Later league matches have moved; playoff heats and timed events may now need to follow.
+  const reflowed = await reflowSchedule(client, competitionId, actor, trigger);
+  return [...new Set([...shifts.map((shift) => shift.id), ...reflowed])];
 }
 
 class ScheduleCollisionError extends Error {
   readonly statusCode = 409;
 }
 
+type ReflowOptions = {
+  /** Event edits must not overlap a running match or force a counting-down match to move. */
+  strictEvents?: boolean;
+};
+
 async function shiftScheduledMatchesAroundEvents(
   client: PoolClient,
   competitionId: string,
   actor: string,
-  cause: string
+  cause: string,
+  { strictEvents = false }: ReflowOptions = {}
 ): Promise<string[]> {
   const eventRows = await client.query<{ title: string; starts_at: Date; duration_minutes: number }>(
     `SELECT title, starts_at, duration_minutes FROM competition_events
@@ -861,7 +990,7 @@ async function shiftScheduledMatchesAroundEvents(
      WHERE competition_id = $1 AND state IN ('running', 'paused') FOR UPDATE`,
     [competitionId]
   );
-  for (const match of active.rows) {
+  for (const match of strictEvents ? active.rows : []) {
     if (!match.actual_start) continue;
     const start = new Date(match.actual_start).getTime();
     const end = start + (match.duration_seconds + match.paused_seconds) * 1000;
@@ -870,19 +999,35 @@ async function shiftScheduledMatchesAroundEvents(
       throw new ScheduleCollisionError(`Cannot place an event during an active match in ${match.arena_name}`);
     }
   }
+  // Unstarted league matches and playoff heats can move; running or paused ones
+  // stay put but keep their arena busy until their projected end.
   const scheduled = await client.query<{
     id: string; match_number: number; arena_name: string; effective_start: Date;
     duration_seconds: number; planned_gap_seconds: number;
-    state: string; countdown_started_at: Date | null;
+    state: string; countdown_started_at: Date | null; fixed: boolean;
   }>(
-    `SELECT id, match_number, arena_name, effective_start, duration_seconds, planned_gap_seconds,
-            state, countdown_started_at
-     FROM matches WHERE competition_id = $1 AND state IN ('scheduled', 'ready', 'delayed')
+    `SELECT id, match_number, arena_name,
+            CASE WHEN state IN ('running', 'paused') THEN actual_start ELSE effective_start END AS effective_start,
+            CASE WHEN state = 'running' THEN duration_seconds + paused_seconds
+                 WHEN state = 'paused' THEN duration_seconds + paused_seconds +
+                   greatest(0, ceil(extract(epoch FROM (now() - paused_at))))::int
+                 ELSE duration_seconds END AS duration_seconds,
+            planned_gap_seconds, state, countdown_started_at,
+            state IN ('running', 'paused') AS fixed
+     FROM matches WHERE competition_id = $1
+       AND (state IN ('scheduled', 'ready', 'delayed') OR (state IN ('running', 'paused') AND actual_start IS NOT NULL))
      UNION ALL
-     SELECT pm.id, pm.match_number, pm.arena_name, pm.effective_start, pm.duration_seconds,
-            pm.planned_gap_seconds, pm.schedule_state AS state, NULL::timestamptz AS countdown_started_at
+     SELECT pm.id, pm.match_number, pm.arena_name,
+            CASE WHEN pm.timer_state IN ('running', 'paused') THEN pm.actual_start ELSE pm.effective_start END,
+            CASE WHEN pm.timer_state = 'running' THEN pm.duration_seconds + pm.paused_seconds
+                 WHEN pm.timer_state = 'paused' THEN pm.duration_seconds + pm.paused_seconds +
+                   greatest(0, ceil(extract(epoch FROM (now() - pm.paused_at))))::int
+                 ELSE pm.duration_seconds END,
+            pm.planned_gap_seconds, pm.timer_state AS state, pm.countdown_started_at,
+            pm.timer_state IN ('running', 'paused') AS fixed
      FROM playoff_matches pm JOIN playoff_brackets pb ON pb.id = pm.bracket_id
      WHERE pb.competition_id = $1 AND pb.status = 'active' AND pm.schedule_state = 'scheduled'
+       AND (pm.timer_state = 'scheduled' OR (pm.timer_state IN ('running', 'paused') AND pm.actual_start IS NOT NULL))
      ORDER BY arena_name, effective_start, match_number`,
     [competitionId]
   );
@@ -892,9 +1037,11 @@ async function shiftScheduledMatchesAroundEvents(
       matchNumber: match.match_number,
       arenaName: match.arena_name,
       effectiveStart: new Date(match.effective_start).getTime(),
-      durationSeconds: match.duration_seconds,
-      hasCountdown: match.countdown_started_at !== null,
-      plannedGapSeconds: match.planned_gap_seconds
+      durationSeconds: Math.max(1, match.duration_seconds),
+      hasCountdown: strictEvents && match.countdown_started_at !== null,
+      plannedGapSeconds: match.planned_gap_seconds,
+      // Outside event edits a counting-down match simply holds its slot.
+      fixed: match.fixed || (!strictEvents && match.countdown_started_at !== null)
     })),
     events,
     cause
@@ -927,6 +1074,104 @@ async function shiftScheduledMatchesAroundEvents(
     });
   }
   return plan.shifts.map((change) => change.id);
+}
+
+/**
+ * Pushes unstarted heats of the active playoff bracket later so each starts
+ * its planned gap after the heats that feed it and the previous heat in its
+ * arena. Started heats are anchored at their real or projected times.
+ */
+async function cascadePlayoffHeats(
+  client: PoolClient,
+  competitionId: string,
+  actor: string,
+  cause: string
+): Promise<string[]> {
+  const heats = await client.query<{
+    id: string; match_number: number; arena_name: string; effective_start: Date;
+    duration_seconds: number; planned_gap_seconds: number; schedule_state: string; timer_state: string;
+    countdown_started_at: Date | null; actual_start: Date | null; actual_end: Date | null;
+    paused_at: Date | null; paused_seconds: number; scored_at: Date | null; sources: string[];
+  }>(
+    `SELECT pm.id, pm.match_number, pm.arena_name, pm.effective_start, pm.duration_seconds,
+            pm.planned_gap_seconds, pm.schedule_state, pm.timer_state, pm.countdown_started_at,
+            pm.actual_start, pm.actual_end, pm.paused_at, pm.paused_seconds, pm.scored_at,
+            ARRAY[pm.source_one, pm.source_two, pm.source_three, pm.source_four] AS sources
+     FROM playoff_matches pm JOIN playoff_brackets pb ON pb.id = pm.bracket_id
+     WHERE pb.competition_id = $1 AND pb.status = 'active'
+     ORDER BY pm.match_number FOR UPDATE OF pm`,
+    [competitionId]
+  );
+  if (!heats.rowCount) return [];
+  const now = Date.now();
+  const dependencies = playoffDependencies(heats.rows.map((heat) => ({ key: heat.id, sources: heat.sources })));
+  const time = (value: Date | null) => value === null ? null : new Date(value).getTime();
+  const shifts = calculatePlayoffHeatCascade(heats.rows.map((heat) => {
+    const durationMs = heat.duration_seconds * 1000;
+    const base = {
+      id: heat.id,
+      matchNumber: heat.match_number,
+      arenaName: heat.arena_name,
+      effectiveStart: new Date(heat.effective_start).getTime(),
+      durationSeconds: heat.duration_seconds,
+      plannedGapSeconds: heat.planned_gap_seconds,
+      dependsOn: dependencies.get(heat.id) ?? []
+    };
+    const actualStart = time(heat.actual_start);
+    const actualEnd = time(heat.actual_end);
+    if (heat.schedule_state === 'complete') {
+      const end = actualEnd ?? base.effectiveStart + durationMs;
+      return { ...base, fixedEnd: end, resultAvailableAt: Math.max(end, time(heat.scored_at) ?? end) };
+    }
+    if (heat.timer_state === 'awaiting_score') {
+      const end = actualEnd ?? now;
+      return { ...base, fixedEnd: end, resultAvailableAt: Math.max(end, now) };
+    }
+    if (heat.timer_state === 'running' && actualStart !== null) {
+      return { ...base, fixedEnd: Math.max(now, actualStart + durationMs + heat.paused_seconds * 1000) };
+    }
+    if (heat.timer_state === 'paused' && actualStart !== null) {
+      const elapsed = (time(heat.paused_at) ?? now) - actualStart - heat.paused_seconds * 1000;
+      return { ...base, fixedEnd: now + Math.max(0, durationMs - elapsed) };
+    }
+    const countdown = time(heat.countdown_started_at);
+    if (countdown !== null) {
+      return { ...base, fixedEnd: countdown + MATCH_COUNTDOWN_TOTAL_SECONDS * 1000 + durationMs };
+    }
+    return base;
+  }));
+  for (const shift of shifts) {
+    const effectiveStart = new Date(shift.effectiveStart);
+    await client.query('UPDATE playoff_matches SET effective_start = $2 WHERE id = $1', [shift.id, effectiveStart]);
+    await audit(client, actor, 'playoff.schedule_cascaded', 'playoff_match', shift.id, {
+      trigger: cause,
+      effectiveStart: effectiveStart.toISOString(),
+      delaySeconds: shift.delaySeconds
+    });
+  }
+  return shifts.map((shift) => shift.id);
+}
+
+/**
+ * Re-flows everything after a schedule-changing action: playoff heats follow
+ * their feeder heats and arenas, then all unstarted matches and heats move
+ * around timed events and arena overlaps. Repeats until nothing moves.
+ */
+async function reflowSchedule(
+  client: PoolClient,
+  competitionId: string,
+  actor: string,
+  cause: string,
+  options: ReflowOptions = {}
+): Promise<string[]> {
+  const moved = new Set<string>();
+  for (let pass = 0; pass < 6; pass += 1) {
+    const heatShifts = await cascadePlayoffHeats(client, competitionId, actor, cause);
+    const eventShifts = await shiftScheduledMatchesAroundEvents(client, competitionId, actor, cause, options);
+    for (const id of [...heatShifts, ...eventShifts]) moved.add(id);
+    if (!heatShifts.length && !eventShifts.length) break;
+  }
+  return [...moved];
 }
 
 await app.register(cookie, { secret: env.COOKIE_SECRET });
@@ -1411,16 +1656,20 @@ app.get('/api/admin/competitions/:slug/playoffs', { preHandler: requireAdmin }, 
     await refreshUnstartedPlayoffSeeds(client, competition.id, adminEmail(request));
     return client.query(
       `SELECT id, field_size, seed_ranks, seed_standings_snapshot,
-              seed_match_number, seed_snapshot_at, seed_frozen_at, status, created_at
+              seed_match_number, seed_snapshot_at, seed_frozen_at, status, created_at,
+              format, final_size, final_byes
        FROM playoff_brackets WHERE competition_id = $1 AND status <> 'replaced'
        ORDER BY created_at DESC LIMIT 1`,
       [competition.id]
     );
   });
-  if (!bracket.rows[0]) return { bracket: null, matches: [] };
+  if (!bracket.rows[0]) return { bracket: null, matches: [], teams: [] };
   const matches = await pool.query(
     `SELECT pm.id, pm.match_number, pm.bracket_side, pm.round_number, pm.status, pm.tied,
             pm.team_one_id, pm.team_two_id, pm.team_three_id, pm.team_four_id,
+            ARRAY[pm.source_one, pm.source_two, pm.source_three, pm.source_four] AS sources,
+            pm.advancing_places, pm.planned_gap_seconds,
+            greatest(0, ceil(extract(epoch FROM (pm.effective_start - pm.scheduled_start))))::int AS delay_seconds,
             pm.scheduled_start, pm.effective_start, pm.arena_name, pm.duration_seconds,
             pm.schedule_state, pm.timer_state, pm.countdown_started_at, pm.placements,
             one_team.code AS team_one_code, one_team.name AS team_one_name,
@@ -1449,28 +1698,63 @@ app.get('/api/admin/competitions/:slug/playoffs', { preHandler: requireAdmin }, 
       .filter(([, rank]) => Number(rank) <= Number(bracket.rows[0].field_size))
       .map(([teamId]) => teamId)]
   );
-  const losses = new Map(participants.rows.map((team) => [team.id, 0]));
-  const completed = await pool.query<{
-    bracket_side: string; placements: string[] | null;
+  const structure = await pool.query<{
+    id: string; bracket_side: 'upper' | 'lower' | 'final'; placements: string[] | null;
+    advancing_places: number | null; status: string; sources: string[];
   }>(
-    `SELECT bracket_side, placements FROM playoff_matches
-     WHERE bracket_id = $1 AND status = 'complete' AND bracket_side <> 'final'`,
+    `SELECT id, bracket_side, placements, advancing_places, status,
+            ARRAY[source_one, source_two, source_three, source_four] AS sources
+     FROM playoff_matches WHERE bracket_id = $1 ORDER BY match_number`,
     [bracket.rows[0].id]
   );
-  for (const match of completed.rows) {
-    const placements = match.placements ?? [];
-    if (placements.length < 2) continue;
-    for (const teamId of placements.slice(playoffAdvancingPlaces(placements.length))) {
-      losses.set(teamId, (losses.get(teamId) ?? 0) + 1);
-    }
-  }
+  const record = summarisePlayoffLosses(structure.rows.map((match) => ({
+    key: match.id,
+    side: match.bracket_side,
+    sources: match.sources,
+    placements: match.status === 'complete' ? match.placements : null,
+    advancing: match.advancing_places
+  })));
+  const stages = playoffStages(structure.rows.map((match) => ({ key: match.id, sources: match.sources })));
   const teams = participants.rows.map((team) => ({
     ...team,
     seed: seedRanks[team.id],
-    losses: losses.get(team.id) ?? 0,
-    eliminated: (losses.get(team.id) ?? 0) >= 2
+    losses: record.get(team.id)?.losses ?? 0,
+    eliminated: record.get(team.id)?.eliminated ?? false
   })).sort((one, two) => Number(one.seed) - Number(two.seed));
-  return { bracket: bracket.rows[0], teams, matches: matches.rows };
+  return {
+    bracket: bracket.rows[0],
+    teams,
+    matches: matches.rows.map((match) => ({ ...match, stage: stages.get(match.id) ?? 1 }))
+  };
+});
+
+app.get('/api/admin/playoff-formats/preview', { preHandler: requireAdmin }, async (request, reply) => {
+  const query = z.object({
+    fieldSize: z.coerce.number().int().min(2).max(256),
+    format: z.enum(playoffFormats).default('double-elimination'),
+    finalSize: z.coerce.number().int().min(2).max(4).default(4),
+    finalByes: z.coerce.number().int().min(0).max(3).default(0)
+  }).parse(request.query);
+  try {
+    const plan = buildPlayoffPlan(query.fieldSize, query);
+    const stages = playoffStages(plan);
+    const number = new Map(plan.map((match, index) => [match.key, index + 1]));
+    return {
+      heats: plan.map((match) => ({
+        number: number.get(match.key),
+        side: match.side,
+        round: match.round,
+        stage: stages.get(match.key),
+        advancing: match.side === 'final' ? null : match.advancing,
+        sources: match.sources.filter((source) => source !== 'bye').map((source) =>
+          source.replace(/^place:(\d):(.+)$/, (_whole, place: string, key: string) => `place:${place}:${number.get(key)}`))
+      })),
+      stages: Math.max(...stages.values())
+    };
+  } catch (error) {
+    if (error instanceof RangeError) return reply.code(400).send({ error: error.message });
+    throw error;
+  }
 });
 
 app.get('/api/admin/competitions/:slug/playoffs/seed-check', { preHandler: requireAdmin }, async (request, reply) => {
@@ -1573,12 +1857,26 @@ app.post('/api/admin/competitions/:slug/playoffs', { preHandler: requireAdmin },
   const { slug } = z.object({ slug: z.string() }).parse(request.params);
   const body = z.object({
     fieldSize: z.number().int().min(2),
+    format: z.enum(playoffFormats).default('double-elimination'),
+    finalSize: z.number().int().min(2).max(4).default(4),
+    finalByes: z.number().int().min(0).max(3).default(0),
     replaceExisting: z.boolean().default(false),
     scheduledStart: z.string().datetime({ offset: true }).optional(),
     intervalMinutes: z.number().int().min(1).max(1440).optional(),
     finalDelayMinutes: z.number().int().min(0).max(1440).default(0),
-    arenaName: z.string().trim().min(1).max(80).default('Arena 1')
+    arenaName: z.string().trim().min(1).max(80).default('Arena 1'),
+    arenaNames: z.array(z.string().trim().min(1).max(80)).min(1).max(8).optional()
   }).parse(request.body);
+  const arenaNames = [...new Set(body.arenaNames ?? [body.arenaName])];
+  let plan: ReturnType<typeof buildPlayoffPlan>;
+  try {
+    plan = buildPlayoffPlan(body.fieldSize, {
+      format: body.format, finalSize: body.finalSize, finalByes: body.finalByes
+    });
+  } catch (error) {
+    if (error instanceof RangeError) return reply.code(400).send({ error: error.message });
+    throw error;
+  }
   const competition = await findCompetition(pool, slug);
   if (!competition) return reply.code(404).send({ error: 'Competition not found' });
   const result = await transaction(async (client) => {
@@ -1621,6 +1919,9 @@ app.post('/api/admin/competitions/:slug/playoffs', { preHandler: requireAdmin },
       : new Date(Math.max(earliestStart.getTime(), scheduleEndStart.getTime()));
     const intervalMinutes = body.intervalMinutes ??
       Math.max(1, Math.ceil(Number(competition.match_duration_seconds) / 60));
+    if (intervalMinutes * 60 < Number(competition.match_duration_seconds)) {
+      return { status: 400, error: 'Minutes between heats must be at least the match duration' };
+    }
     if (body.scheduledStart && latestMatchEnd &&
         firstStart.getTime() < new Date(latestMatchEnd).getTime()) {
       return {
@@ -1639,14 +1940,14 @@ app.post('/api/admin/competitions/:slug/playoffs', { preHandler: requireAdmin },
     await client.query(
       `INSERT INTO playoff_brackets
          (id, competition_id, field_size, seed_ranks, seed_standings_snapshot,
-          seed_match_number, seed_snapshot_at)
-       VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6, $7)`,
+          seed_match_number, seed_snapshot_at, format, final_size, final_byes)
+       VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6, $7, $8, $9, $10)`,
       [
         bracketId, competition.id, body.fieldSize, JSON.stringify(seedRanks),
-        JSON.stringify(standings), seedSnapshot.latestScoredMatchNumber, seedSnapshot.capturedAt
+        JSON.stringify(standings), seedSnapshot.latestScoredMatchNumber, seedSnapshot.capturedAt,
+        body.format, body.finalSize, body.finalByes
       ]
     );
-    const plan = buildDoubleEliminationPlan(body.fieldSize);
     const ids = new Map(plan.map((match) => [match.key, randomUUID()]));
     const numberResult = await client.query<{ match_number: number }>(
       'SELECT coalesce(max(match_number), 0)::int AS match_number FROM matches WHERE competition_id = $1',
@@ -1654,45 +1955,53 @@ app.post('/api/admin/competitions/:slug/playoffs', { preHandler: requireAdmin },
     );
     const firstMatchNumber = numberResult.rows[0]!.match_number + 1;
     const durationSeconds = Number(competition.match_duration_seconds);
-    for (const match of plan) {
+    const dependencies = playoffDependencies(plan);
+    const timings = new Map(planPlayoffHeatTimes(
+      plan.map((match) => ({
+        key: match.key, dependsOn: dependencies.get(match.key) ?? [], isFinal: match.side === 'final'
+      })),
+      arenaNames, firstStart.getTime(), intervalMinutes * 60, durationSeconds, body.finalDelayMinutes * 60
+    ).map((timing) => [timing.key, timing]));
+    for (const [index, match] of plan.entries()) {
       const id = ids.get(match.key)!;
+      const timing = timings.get(match.key)!;
       const source = (value: string) => value.startsWith('seed:')
         ? value
         : value.replace(/:(playoff-\d+)$/, (_whole, key: string) => `:${ids.get(key)!}`);
       const initialTeam = (value: string) => value.startsWith('seed:')
         ? selectedTeams[Number(value.slice('seed:'.length)) - 1]?.id ?? null
         : null;
-      const matchIndex = plan.indexOf(match);
-      const hasFinalBuffer = match.side === 'final' && matchIndex > 0;
-      const finalBufferMilliseconds = hasFinalBuffer ? body.finalDelayMinutes * 60_000 : 0;
-      const scheduledStart = new Date(firstStart.getTime() +
-        (matchIndex * intervalMinutes * 60_000) + finalBufferMilliseconds);
-      const plannedGapSeconds = Math.max(0, intervalMinutes * 60 - durationSeconds) +
-        (hasFinalBuffer ? body.finalDelayMinutes * 60 : 0);
       await client.query(
         `INSERT INTO playoff_matches
          (id, bracket_id, match_number, bracket_side, round_number,
           source_one, source_two, source_three, source_four,
           team_one_id, team_two_id, team_three_id, team_four_id,
-          scheduled_start, effective_start, arena_name, duration_seconds, planned_gap_seconds)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $14, $15, $16, $17)`,
-        [id, bracketId, firstMatchNumber + plan.indexOf(match), match.side, match.round,
+          scheduled_start, effective_start, arena_name, duration_seconds, planned_gap_seconds,
+          advancing_places)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $14, $15, $16, $17, $18)`,
+        [id, bracketId, firstMatchNumber + index, match.side, match.round,
           ...match.sources.map(source), ...match.sources.map(initialTeam),
-          scheduledStart, body.arenaName, durationSeconds, plannedGapSeconds]
+          new Date(timing.start), timing.arenaName, durationSeconds, timing.plannedGapSeconds,
+          match.side === 'final' ? null : match.advancing]
       );
     }
     await persistPlayoffAdvancements(client, bracketId, seedTeams);
-    const shiftedMatchIds = await shiftScheduledMatchesAroundEvents(
-      client, competition.id, adminEmail(request), 'four-robot playoff heats scheduled'
+    const shiftedMatchIds = await reflowSchedule(
+      client, competition.id, adminEmail(request), 'playoff heats scheduled'
     );
+    // Moves made while first placing the bracket are part of its plan, not delays.
+    await client.query('UPDATE playoff_matches SET scheduled_start = effective_start WHERE bracket_id = $1', [bracketId]);
     await audit(client, adminEmail(request), 'playoffs.generated', 'playoff_bracket', bracketId, {
       fieldSize: body.fieldSize,
+      format: body.format,
+      finalSize: body.finalSize,
+      finalByes: body.finalByes,
       seededTeams: selectedTeams.map((team) => team.code),
       replacedPreviousBrackets: Boolean(existing.rowCount),
       scheduledStart: firstStart.toISOString(),
       intervalMinutes,
       finalDelayMinutes: body.finalDelayMinutes,
-      arenaName: body.arenaName,
+      arenaNames,
       shiftedMatchIds
     });
     return { status: 201, bracketId, matchCount: plan.length, teamCount: selectedTeams.length, shiftedMatchIds };
@@ -1707,7 +2016,7 @@ app.patch('/api/admin/playoff-matches/:matchId/schedule', { preHandler: requireA
     scheduledStart: z.string().datetime({ offset: true }),
     plannedGapMinutes: z.number().int().min(0).max(1440).optional()
   }).parse(request.body);
-  let requestedStart = new Date(body.scheduledStart);
+  const requestedStart = new Date(body.scheduledStart);
   if (requestedStart.getTime() <= Date.now()) {
     return reply.code(400).send({ error: 'A playoff heat must be scheduled in the future' });
   }
@@ -1749,75 +2058,22 @@ app.patch('/api/admin/playoff-matches/:matchId/schedule', { preHandler: requireA
     const plannedGapSeconds = body.plannedGapMinutes === undefined
       ? match.planned_gap_seconds
       : body.plannedGapMinutes * 60;
-    const previousHeat = await client.query<{ latest_end: Date | null }>(
-      `SELECT max(effective_start + make_interval(secs => duration_seconds)) AS latest_end
-       FROM playoff_matches WHERE bracket_id = $1 AND match_number < $2`,
-      [match.bracket_id, match.match_number]
-    );
-    const previousEnd = previousHeat.rows[0]?.latest_end
-      ? new Date(previousHeat.rows[0].latest_end).getTime()
-      : null;
-    if (previousEnd !== null) {
-      const adjustment = calculatePlannedHeatCascade([{
-        id: matchId,
-        effectiveStart: requestedStart.getTime(),
-        durationSeconds: match.duration_seconds,
-        plannedGapSeconds
-      }], previousEnd)[0];
-      if (adjustment) requestedStart = new Date(adjustment.effectiveStart);
-    }
     await client.query(
       `UPDATE playoff_matches SET scheduled_start = $2, effective_start = $2, arena_name = $3,
          planned_gap_seconds = $4
        WHERE id = $1`,
       [matchId, requestedStart, body.arenaName, plannedGapSeconds]
     );
-    const laterHeats = await client.query<{
-      id: string; effective_start: Date; duration_seconds: number; planned_gap_seconds: number;
-    }>(
-      `SELECT id, effective_start, duration_seconds, planned_gap_seconds
-       FROM playoff_matches
-       WHERE bracket_id = $1 AND schedule_state = 'scheduled' AND match_number > $2
-       ORDER BY match_number FOR UPDATE`,
-      [match.bracket_id, match.match_number]
-    );
-    const rescheduledIds = new Set<string>();
-    const cascade = calculatePlannedHeatCascade(laterHeats.rows.map((heat) => ({
-      id: heat.id,
-      effectiveStart: new Date(heat.effective_start).getTime(),
-      durationSeconds: heat.duration_seconds,
-      plannedGapSeconds: heat.planned_gap_seconds
-    })), requestedStart.getTime() + match.duration_seconds * 1000);
-    const heatById = new Map(laterHeats.rows.map((heat) => [heat.id, heat]));
-    for (const shift of cascade) {
-      if (!heatById.has(shift.id)) throw new Error(`Rescheduled playoff heat ${shift.id} disappeared`);
-      await client.query('UPDATE playoff_matches SET effective_start = $2 WHERE id = $1',
-        [shift.id, new Date(shift.effectiveStart)]);
-      rescheduledIds.add(shift.id);
-    }
-    const shiftedMatchIds = await shiftScheduledMatchesAroundEvents(
+    // The heat itself moves later if its feeder heats or arena need it to; later heats follow.
+    const rescheduledIds = new Set(await reflowSchedule(
       client, competitionId, adminEmail(request), `playoff heat #${match.match_number} rescheduled`
-    );
-    for (const shiftedId of shiftedMatchIds) rescheduledIds.add(shiftedId);
+    ));
     const finalStartResult = await client.query<{ effective_start: Date }>(
-      'SELECT effective_start FROM playoff_matches WHERE id = $1',
+      'UPDATE playoff_matches SET scheduled_start = effective_start WHERE id = $1 RETURNING effective_start',
       [matchId]
     );
+    rescheduledIds.delete(matchId);
     const finalStart = new Date(finalStartResult.rows[0]!.effective_start);
-    const dependent = await client.query(
-      `SELECT 1 FROM playoff_matches
-       WHERE bracket_id = $1 AND schedule_state = 'scheduled'
-         AND (source_one = $2 OR source_two = $2 OR source_three = $2 OR source_four = $2)
-         AND effective_start < (
-           SELECT effective_start + make_interval(secs => duration_seconds)
-           FROM playoff_matches WHERE id = $2
-         ) + make_interval(secs => planned_gap_seconds)
-       LIMIT 1`,
-      [match.bracket_id, matchId]
-    );
-    if (dependent.rowCount) {
-      throw new ScheduleCollisionError('Move dependent playoff heats later first; this heat must finish before its next scheduled heat begins');
-    }
     await audit(client, adminEmail(request), 'playoff_match.schedule_updated', 'playoff_match', matchId, {
       matchNumber: match.match_number,
       arenaName: body.arenaName,
@@ -1877,38 +2133,13 @@ app.post('/api/admin/playoff-matches/:matchId/control/:action', { preHandler: re
       if (teamIds.length < 2) {
         return { status: 409 as const, error: 'At least two assigned teams are required to start this heat' };
       }
-      const activeConflict = await client.query(
-        `SELECT 1 FROM matches m JOIN match_positions mp ON mp.match_id = m.id
-         WHERE m.competition_id = $1 AND mp.team_id = ANY($2::uuid[])
-           AND (m.state IN ('running', 'paused') OR
-             (m.countdown_started_at > now() - ($5 * interval '1 second')
-              AND m.state IN ('scheduled', 'ready', 'delayed')))
-         UNION ALL
-         SELECT 1 FROM playoff_matches other JOIN playoff_brackets ob ON ob.id = other.bracket_id
-         WHERE ob.competition_id = $1 AND other.id <> $3
-           AND (other.timer_state IN ('running', 'paused')
-             OR other.countdown_started_at > now() - ($5 * interval '1 second'))
-           AND ARRAY[other.team_one_id,other.team_two_id,other.team_three_id,other.team_four_id]
-             && $2::uuid[]
-         UNION ALL
-         SELECT 1 FROM matches WHERE competition_id = $1 AND arena_name = $4
-           AND (state IN ('running', 'paused') OR
-             (countdown_started_at > now() - ($5 * interval '1 second')
-              AND state IN ('scheduled', 'ready', 'delayed')))
-         UNION ALL
-         SELECT 1 FROM playoff_matches other JOIN playoff_brackets ob ON ob.id = other.bracket_id
-         WHERE ob.competition_id = $1 AND other.id <> $3 AND other.arena_name = $4
-           AND (other.timer_state IN ('running', 'paused')
-             OR other.countdown_started_at > now() - ($5 * interval '1 second'))
-         LIMIT 1`,
-        [competitionId, teamIds, matchId, heat.arena_name, MATCH_COUNTDOWN_TOTAL_SECONDS + 2]
-      );
-      if (activeConflict.rowCount) {
+      if (await playoffHeatHasActiveConflict(client, competitionId, matchId, teamIds, heat.arena_name)) {
         return { status: 409 as const, error: 'A team or the arena is already active in another match' };
       }
       const now = new Date();
       await client.query(
-        `UPDATE playoff_matches SET countdown_started_at = $2, effective_start = $2
+        `UPDATE playoff_matches SET countdown_restore_start = effective_start,
+           countdown_started_at = $2, effective_start = $2
          WHERE id = $1`,
         [matchId, now]
       );
@@ -1916,34 +2147,24 @@ app.post('/api/admin/playoff-matches/:matchId/control/:action', { preHandler: re
         'UPDATE playoff_brackets SET seed_frozen_at = coalesce(seed_frozen_at, $2) WHERE id = $1',
         [heat.bracket_id, now]
       );
-      const laterHeats = await client.query<{
-        id: string; effective_start: Date; duration_seconds: number; planned_gap_seconds: number;
-      }>(
-        `SELECT id, effective_start, duration_seconds, planned_gap_seconds FROM playoff_matches
-         WHERE bracket_id = $1 AND schedule_state = 'scheduled' AND match_number > $2
-         ORDER BY match_number FOR UPDATE`,
-        [heat.bracket_id, heat.match_number]
+      const shiftedMatchIds = await reflowSchedule(
+        client, competitionId, adminEmail(request), `playoff heat #${heat.match_number} started`
       );
-      const shifts = calculatePlannedHeatCascade(laterHeats.rows.map((item) => ({
-        id: item.id, effectiveStart: new Date(item.effective_start).getTime(),
-        durationSeconds: item.duration_seconds, plannedGapSeconds: item.planned_gap_seconds
-      })), now.getTime() + MATCH_COUNTDOWN_TOTAL_SECONDS * 1000);
-      for (const shift of shifts) {
-        await client.query('UPDATE playoff_matches SET effective_start = $2 WHERE id = $1',
-          [shift.id, new Date(shift.effectiveStart)]);
-      }
       await audit(client, adminEmail(request), 'playoff_match.countdown_started', 'playoff_match', matchId, {
-        matchNumber: heat.match_number, countdownStartedAt: now.toISOString(), startedEarly: true
+        matchNumber: heat.match_number, countdownStartedAt: now.toISOString(), shiftedMatchIds
       });
-      return { status: 200 as const, ok: true, shiftedMatchIds: shifts.map((shift) => shift.id) };
+      return { status: 200 as const, ok: true, shiftedMatchIds };
     }
 
     if (action === 'cancel-countdown') {
       if (!heat.countdown_started_at || heat.timer_state !== 'scheduled') {
         return { status: 409 as const, error: 'There is no active countdown to cancel' };
       }
+      // Return to the slot the heat held before "Start now"; later heats already moved stay put.
       await client.query(
-        `UPDATE playoff_matches SET countdown_started_at = NULL, effective_start = scheduled_start
+        `UPDATE playoff_matches SET countdown_started_at = NULL,
+           effective_start = coalesce(countdown_restore_start, scheduled_start),
+           countdown_restore_start = NULL
          WHERE id = $1`,
         [matchId]
       );
@@ -1988,30 +2209,14 @@ app.post('/api/admin/playoff-matches/:matchId/control/:action', { preHandler: re
       const resetAt = new Date(Math.ceil((Date.now() + 60_000) / 60_000) * 60_000);
       await client.query(
         `UPDATE playoff_matches SET timer_state = 'scheduled', countdown_started_at = NULL,
+           countdown_restore_start = NULL,
            actual_start = NULL, actual_end = NULL, paused_at = NULL, paused_seconds = 0,
            effective_start = $2 WHERE id = $1`,
         [matchId, resetAt]
       );
-      const laterHeats = await client.query<{
-        id: string; effective_start: Date; duration_seconds: number; planned_gap_seconds: number;
-      }>(
-        `SELECT id, effective_start, duration_seconds, planned_gap_seconds FROM playoff_matches
-         WHERE bracket_id = $1 AND schedule_state = 'scheduled' AND match_number > $2
-         ORDER BY match_number FOR UPDATE`,
-        [heat.bracket_id, heat.match_number]
-      );
-      const shifts = calculatePlannedHeatCascade(laterHeats.rows.map((item) => ({
-        id: item.id, effectiveStart: new Date(item.effective_start).getTime(),
-        durationSeconds: item.duration_seconds, plannedGapSeconds: item.planned_gap_seconds
-      })), resetAt.getTime() + 120_000);
-      for (const shift of shifts) {
-        await client.query('UPDATE playoff_matches SET effective_start = $2 WHERE id = $1',
-          [shift.id, new Date(shift.effectiveStart)]);
-      }
-      const eventShiftIds = await shiftScheduledMatchesAroundEvents(
+      const shiftedMatchIds = await reflowSchedule(
         client, competitionId, adminEmail(request), `playoff heat #${heat.match_number} timer reset`
       );
-      const shiftedMatchIds = [...new Set([...shifts.map((shift) => shift.id), ...eventShiftIds])];
       await audit(client, adminEmail(request), 'playoff_match.timer_reset', 'playoff_match', matchId, {
         matchNumber: heat.match_number, resetAt: resetAt.toISOString(),
         shiftedMatchIds
@@ -2022,6 +2227,160 @@ app.post('/api/admin/playoff-matches/:matchId/control/:action', { preHandler: re
       };
     }
     return { status: 200 as const, ok: true };
+  });
+  return reply.code(result.status).send(result);
+});
+
+async function lockUpcomingPlayoffHeat(client: PoolClient, matchId: string) {
+  const initial = await client.query<{ competition_id: string }>(
+    `SELECT pb.competition_id FROM playoff_matches pm
+     JOIN playoff_brackets pb ON pb.id = pm.bracket_id WHERE pm.id = $1`,
+    [matchId]
+  );
+  if (!initial.rows[0]) return { error: { status: 404 as const, error: 'Playoff heat not found' } };
+  const competitionId = initial.rows[0].competition_id;
+  await client.query('SELECT id FROM competitions WHERE id = $1 FOR UPDATE', [competitionId]);
+  const heatResult = await client.query<{
+    match_number: number; arena_name: string; scheduled_start: Date; effective_start: Date;
+    duration_seconds: number; planned_gap_seconds: number; schedule_state: string; timer_state: string;
+    countdown_started_at: Date | null; sources: string[];
+  }>(
+    `SELECT pm.match_number, pm.arena_name, pm.scheduled_start, pm.effective_start, pm.duration_seconds,
+            pm.planned_gap_seconds, pm.schedule_state, pm.timer_state, pm.countdown_started_at,
+            ARRAY[pm.source_one, pm.source_two, pm.source_three, pm.source_four] AS sources
+     FROM playoff_matches pm JOIN playoff_brackets pb ON pb.id = pm.bracket_id
+     WHERE pm.id = $1 AND pb.status = 'active' FOR UPDATE OF pm`,
+    [matchId]
+  );
+  const heat = heatResult.rows[0];
+  if (!heat) return { error: { status: 409 as const, error: 'This playoff bracket is no longer active' } };
+  if (heat.schedule_state !== 'scheduled' || heat.timer_state !== 'scheduled' || heat.countdown_started_at) {
+    return { error: { status: 409 as const, error: 'Only an upcoming playoff heat without an active countdown can be delayed or undelayed' } };
+  }
+  return { competitionId, heat };
+}
+
+app.post('/api/admin/playoff-matches/:matchId/delay', { preHandler: requireAdmin }, async (request, reply) => {
+  const { matchId } = z.object({ matchId: z.string().uuid() }).parse(request.params);
+  const body = z.object({
+    delaySeconds: z.number().int().positive().max(86400),
+    reason: z.string().trim().min(1).max(500)
+  }).parse(request.body);
+  const result = await transaction(async (client) => {
+    const locked = await lockUpcomingPlayoffHeat(client, matchId);
+    if ('error' in locked) return locked.error;
+    const { competitionId, heat } = locked;
+    const moved = await client.query<{ effective_start: Date }>(
+      `UPDATE playoff_matches SET effective_start = effective_start + ($2 * interval '1 second')
+       WHERE id = $1 RETURNING effective_start`,
+      [matchId, body.delaySeconds]
+    );
+    const shiftedMatchIds = await reflowSchedule(
+      client, competitionId, adminEmail(request), `playoff heat #${heat.match_number} delayed: ${body.reason}`
+    );
+    await audit(client, adminEmail(request), 'playoff_match.delayed', 'playoff_match', matchId, {
+      ...body, matchNumber: heat.match_number,
+      effectiveStart: new Date(moved.rows[0]!.effective_start).toISOString(), shiftedMatchIds
+    });
+    return { status: 200 as const, ok: true, shiftedMatchIds };
+  });
+  return reply.code(result.status).send(result);
+});
+
+app.post('/api/admin/playoff-matches/:matchId/undelay', { preHandler: requireAdmin }, async (request, reply) => {
+  const { matchId } = z.object({ matchId: z.string().uuid() }).parse(request.params);
+  const body = z.object({
+    delaySeconds: z.number().int().positive().max(86400).optional(),
+    restoreScheduled: z.boolean().default(false),
+    reason: z.string().trim().min(1).max(500)
+  }).refine((value) => value.restoreScheduled
+    ? value.delaySeconds === undefined
+    : value.delaySeconds !== undefined, {
+    message: 'Choose either a delay reduction or restoration to the scheduled time'
+  }).parse(request.body);
+  const result = await transaction(async (client) => {
+    const locked = await lockUpcomingPlayoffHeat(client, matchId);
+    if ('error' in locked) return locked.error;
+    const { competitionId, heat } = locked;
+    let reduction: ReturnType<typeof calculateDelayReduction>;
+    try {
+      reduction = calculateDelayReduction(
+        new Date(heat.scheduled_start).getTime(), new Date(heat.effective_start).getTime(),
+        body.delaySeconds, body.restoreScheduled
+      );
+    } catch (error) {
+      if (!(error instanceof RangeError)) throw error;
+      return { status: 409 as const, error: error.message };
+    }
+    const nextStart = new Date(reduction.effectiveStart);
+    const feederIds = [...new Set(heat.sources
+      .map((source) => /^place:[1-4]:(.+)$/.exec(source)?.[1])
+      .filter((id): id is string => id !== undefined))];
+    const feeder = await client.query<{ match_number: number }>(
+      `SELECT match_number FROM playoff_matches
+       WHERE id = ANY($1::uuid[])
+         AND coalesce(actual_end, effective_start + make_interval(secs => duration_seconds))
+             + make_interval(secs => $3::int) > $2
+       ORDER BY match_number LIMIT 1`,
+      [feederIds, nextStart, heat.planned_gap_seconds]
+    );
+    if (feeder.rows[0]) {
+      return {
+        status: 409 as const,
+        error: `Cannot move heat #${heat.match_number} earlier; it must follow heat #${feeder.rows[0].match_number} by its planned gap`
+      };
+    }
+    const arenaConflict = await client.query<{ match_number: number }>(
+      `SELECT match_number FROM (
+         SELECT m.match_number, coalesce(m.actual_start, m.effective_start) AS starts_at, m.duration_seconds
+         FROM matches m WHERE m.competition_id = $1 AND m.arena_name = $2
+           AND m.state IN ('scheduled', 'ready', 'delayed', 'running', 'paused')
+         UNION ALL
+         SELECT pm.match_number, coalesce(pm.actual_start, pm.effective_start), pm.duration_seconds
+         FROM playoff_matches pm JOIN playoff_brackets pb ON pb.id = pm.bracket_id
+         WHERE pb.competition_id = $1 AND pb.status = 'active' AND pm.arena_name = $2
+           AND pm.id <> $3 AND pm.schedule_state = 'scheduled'
+       ) arena_matches
+       WHERE starts_at < $4::timestamptz + make_interval(secs => $5::int)
+         AND starts_at + make_interval(secs => duration_seconds) > $4
+       ORDER BY starts_at LIMIT 1`,
+      [competitionId, heat.arena_name, matchId, nextStart, heat.duration_seconds]
+    );
+    if (arenaConflict.rows[0]) {
+      return {
+        status: 409 as const,
+        error: `Cannot move heat #${heat.match_number} earlier; it would overlap match #${arenaConflict.rows[0].match_number} in ${heat.arena_name}`
+      };
+    }
+    const eventConflict = await client.query<{ title: string }>(
+      `SELECT title FROM competition_events
+       WHERE competition_id = $1
+         AND starts_at < $2::timestamptz + make_interval(secs => $3::int)
+         AND starts_at + make_interval(mins => duration_minutes) > $2
+       ORDER BY starts_at LIMIT 1`,
+      [competitionId, nextStart, heat.duration_seconds]
+    );
+    if (eventConflict.rows[0]) {
+      return {
+        status: 409 as const,
+        error: `Cannot move heat #${heat.match_number} earlier; it would overlap the scheduled event "${eventConflict.rows[0].title}"`
+      };
+    }
+    await client.query('UPDATE playoff_matches SET effective_start = $2 WHERE id = $1', [matchId, nextStart]);
+    await audit(client, adminEmail(request), 'playoff_match.delay_reduced', 'playoff_match', matchId, {
+      reason: body.reason,
+      matchNumber: heat.match_number,
+      reductionSeconds: reduction.reductionSeconds,
+      remainingDelaySeconds: reduction.remainingDelaySeconds,
+      restoredToScheduledTime: body.restoreScheduled,
+      effectiveStart: nextStart.toISOString()
+    });
+    return {
+      status: 200 as const, ok: true,
+      reductionSeconds: reduction.reductionSeconds,
+      remainingDelaySeconds: reduction.remainingDelaySeconds,
+      effectiveStart: nextStart.toISOString()
+    };
   });
   return reply.code(result.status).send(result);
 });
@@ -2167,7 +2526,8 @@ app.post('/api/admin/playoff-matches/:matchId/scores', { preHandler: requireAdmi
     }
     await client.query(
       `UPDATE playoff_matches SET winner_team_id = $2, tied = $3, placements = $4::jsonb,
-         status = 'complete', schedule_state = 'complete' WHERE id = $1`,
+         status = 'complete', schedule_state = 'complete',
+         scored_at = coalesce(scored_at, now()) WHERE id = $1`,
       [matchId, winner, tied, JSON.stringify(placement)]
     );
     if (match.bracket_side === 'final') {
@@ -2179,52 +2539,10 @@ app.post('/api/admin/playoff-matches/:matchId/scores', { preHandler: requireAdmi
     }
     const seedTeams = new Map(Object.entries(match.seed_ranks).map(([teamId, rank]) => [rank, teamId]));
     await persistPlayoffAdvancements(client, match.bracket_id, seedTeams);
-    const rescheduledHeatIds: string[] = [];
-    let eventShiftedIds: string[] = [];
+    let rescheduledHeatIds: string[] = [];
     if (!correcting) {
-      const timing = await client.query<{
-        effective_start: Date;
-        duration_seconds: number;
-      }>(
-        'SELECT effective_start, duration_seconds FROM playoff_matches WHERE id = $1',
-        [matchId]
-      );
-      const projectedEnd = Math.max(
-        Date.now(),
-        new Date(timing.rows[0]!.effective_start).getTime() + timing.rows[0]!.duration_seconds * 1000
-      );
-      const laterHeats = await client.query<{
-        id: string; match_number: number; effective_start: Date;
-        duration_seconds: number; planned_gap_seconds: number;
-      }>(
-        `SELECT id, match_number, effective_start, duration_seconds, planned_gap_seconds
-         FROM playoff_matches
-         WHERE bracket_id = $1 AND schedule_state = 'scheduled' AND match_number > $2
-         ORDER BY match_number FOR UPDATE`,
-        [match.bracket_id, match.match_number]
-      );
-      const cascade = calculatePlannedHeatCascade(laterHeats.rows.map((heat) => ({
-        id: heat.id,
-        effectiveStart: new Date(heat.effective_start).getTime(),
-        durationSeconds: heat.duration_seconds,
-        plannedGapSeconds: heat.planned_gap_seconds
-      })), projectedEnd);
-      const heatById = new Map(laterHeats.rows.map((heat) => [heat.id, heat]));
-      for (const shift of cascade) {
-        const heat = heatById.get(shift.id);
-        if (!heat) throw new Error(`Rescheduled playoff heat ${shift.id} disappeared`);
-        const effectiveStart = new Date(shift.effectiveStart);
-        await client.query('UPDATE playoff_matches SET effective_start = $2 WHERE id = $1',
-          [shift.id, effectiveStart]);
-        await audit(client, adminEmail(request), 'playoff.schedule_cascaded', 'playoff_match', shift.id, {
-          causedByMatchId: matchId,
-          trigger: 'previous heat result entered',
-          effectiveStart: effectiveStart.toISOString(),
-          delaySeconds: shift.delaySeconds
-        });
-        rescheduledHeatIds.push(shift.id);
-      }
-      eventShiftedIds = await shiftScheduledMatchesAroundEvents(
+      // Heats fed by this result cannot start before it was entered (plus their planned gap).
+      rescheduledHeatIds = await reflowSchedule(
         client, match.competition_id, adminEmail(request), `playoff heat #${match.match_number} result entered`
       );
     }
@@ -2235,7 +2553,6 @@ app.post('/api/admin/playoff-matches/:matchId/scores', { preHandler: requireAdmi
       placement: placement.map((teamId) => codeByTeam.get(teamId)),
       scores: body.scores.map((score) => ({ teamCode: score.teamCode, points: score.points })),
       rescheduledHeatIds,
-      eventShiftedIds,
       reason: body.reason ?? null
     });
     return {
@@ -2243,8 +2560,7 @@ app.post('/api/admin/playoff-matches/:matchId/scores', { preHandler: requireAdmi
       winnerTeamId: winner,
       tied,
       placements: placement.map((teamId) => codeByTeam.get(teamId)),
-      rescheduledHeatIds,
-      eventShiftedIds
+      rescheduledHeatIds
     };
   });
   return reply.code(result.status).send(result);
@@ -2458,7 +2774,7 @@ async function loadPublicDisplay(slug: string) {
     if (['schedule', 'sr-staging', 'sr-shepherding'].includes(display.display_type)) {
       const schedule = await pool.query(
         `SELECT 'match' AS item_type, m.match_number, m.arena_name, m.effective_start, m.state,
-                m.countdown_started_at,
+                m.countdown_started_at, m.scheduled_start, false AS is_playoff,
                 count(mp.team_id)::int AS team_count,
                 count(mp.team_id)::int AS entrant_count,
                 jsonb_agg(jsonb_build_object(
@@ -2474,8 +2790,10 @@ async function loadPublicDisplay(slug: string) {
          GROUP BY m.id
          UNION ALL
          SELECT 'match' AS item_type, pm.match_number, pm.arena_name, pm.effective_start,
-                CASE WHEN pm.schedule_state = 'complete' THEN 'complete' ELSE pm.status END AS state,
-                NULL::timestamptz AS countdown_started_at,
+                CASE WHEN pm.schedule_state = 'complete' THEN 'complete'
+                     WHEN pm.timer_state <> 'scheduled' THEN pm.timer_state
+                     ELSE pm.status END AS state,
+                pm.countdown_started_at, pm.scheduled_start, true AS is_playoff,
                 count(pt.id)::int AS team_count,
                 ((pm.source_one <> 'bye')::int + (pm.source_two <> 'bye')::int +
                  (pm.source_three <> 'bye')::int + (pm.source_four <> 'bye')::int) AS entrant_count,
@@ -2497,6 +2815,7 @@ async function loadPublicDisplay(slug: string) {
          UNION ALL
          SELECT 'event' AS item_type, NULL::integer AS match_number, ce.location AS arena_name,
                 ce.starts_at AS effective_start, ce.title AS state, NULL::timestamptz AS countdown_started_at,
+                ce.starts_at AS scheduled_start, false AS is_playoff,
                 NULL::integer AS team_count, NULL::integer AS entrant_count,
                 jsonb_build_array(jsonb_build_object(
                   'title', ce.title, 'description', ce.description,
@@ -2552,12 +2871,20 @@ async function loadPublicDisplay(slug: string) {
       );
       previousResults = previousMatch.rows[0] ?? null;
     }
-  } else {
-    const bracket = await pool.query(
-      `SELECT pm.match_number, pm.bracket_side, pm.round_number, pm.status, pm.winner_team_id,
-              pm.tied, pm.placements,
-              jsonb_build_array(a.code,b.code,c.code,d.code) AS teams,
-              w.code AS winner,
+  } else if (display.display_type === 'playoffs') {
+    const bracket = await pool.query<{
+      id: string; match_number: number; bracket_side: 'upper' | 'lower' | 'final'; round_number: number;
+      status: string; schedule_state: string; timer_state: string; placements: string[] | null;
+      advancing_places: number | null; arena_name: string; effective_start: Date; delay_seconds: number;
+      format: string; sources: string[]; teams: (string | null)[];
+      scores: { team: string; points: number }[] | null;
+    }>(
+      `SELECT pm.id, pm.match_number, pm.bracket_side, pm.round_number, pm.status, pm.schedule_state,
+              pm.timer_state, pm.placements, pm.advancing_places, pm.arena_name, pm.effective_start,
+              greatest(0, ceil(extract(epoch FROM (pm.effective_start - pm.scheduled_start))))::int AS delay_seconds,
+              pb.format,
+              ARRAY[pm.source_one, pm.source_two, pm.source_three, pm.source_four] AS sources,
+              ARRAY[a.code, b.code, c.code, d.code] AS teams,
               (SELECT jsonb_agg(jsonb_build_object('team', t.code, 'points', pms.points)
                  ORDER BY pms.points DESC, (pb.seed_ranks ->> t.id::text)::integer)
                FROM playoff_match_scores pms JOIN teams t ON t.id = pms.team_id
@@ -2567,12 +2894,34 @@ async function loadPublicDisplay(slug: string) {
        LEFT JOIN teams b ON b.id = pm.team_two_id
        LEFT JOIN teams c ON c.id = pm.team_three_id
        LEFT JOIN teams d ON d.id = pm.team_four_id
-       LEFT JOIN teams w ON w.id = pm.winner_team_id
-       WHERE pb.competition_id = $1 AND pb.status IN ('active', 'complete')
+       WHERE pb.id = (
+         SELECT id FROM playoff_brackets WHERE competition_id = $1 AND status IN ('active', 'complete')
+         ORDER BY created_at DESC LIMIT 1
+       )
        ORDER BY pm.match_number`,
       [display.competition_id]
     );
-    data = bracket.rows;
+    const stages = playoffStages(bracket.rows.map((heat) => ({ key: heat.id, sources: heat.sources })));
+    const numberById = new Map(bracket.rows.map((heat) => [heat.id, heat.match_number]));
+    const teamCodes = await pool.query<{ id: string; code: string }>(
+      'SELECT id, code FROM teams WHERE competition_id = $1', [display.competition_id]
+    );
+    const codeById = new Map(teamCodes.rows.map((team) => [team.id, team.code]));
+    const record = summarisePlayoffLosses(bracket.rows.map((heat) => ({
+      key: heat.id, side: heat.bracket_side, sources: heat.sources,
+      placements: heat.status === 'complete' ? heat.placements : null, advancing: heat.advancing_places
+    })));
+    data = {
+      format: bracket.rows[0]?.format ?? null,
+      heats: bracket.rows.map(({ id, sources, placements: _placements, ...heat }) => ({
+        ...heat,
+        stage: stages.get(id) ?? 1,
+        sources: sources.map((source) => source.replace(/^place:(\d):(.+)$/,
+          (_whole, place: string, key: string) => `place:${place}:${numberById.get(key) ?? '?'}`))
+      })),
+      eliminated: [...record].filter(([, entry]) => entry.eliminated)
+        .map(([teamId]) => codeById.get(teamId)).filter(Boolean)
+    };
   }
   return {
     slug: display.display_slug,
@@ -2597,8 +2946,11 @@ type SrDbMatch = SrMatchInput & {
 };
 
 type SrDbKnockoutMatch = SrDbMatch & {
+  id: string;
   bracket_side: string;
   round_number: number;
+  format: string;
+  sources: string[];
 };
 
 type SrTeam = {
@@ -2641,7 +2993,8 @@ async function loadSrCompetitionData(competitionId: string) {
       [competitionId]
     ),
     pool.query<SrDbKnockoutMatch>(
-      `SELECT pm.match_number, pm.arena_name, pm.scheduled_start, pm.effective_start,
+      `SELECT pm.id, pb.format, ARRAY[pm.source_one, pm.source_two, pm.source_three, pm.source_four] AS sources,
+              pm.match_number, pm.arena_name, pm.scheduled_start, pm.effective_start,
               pm.duration_seconds, pm.planned_gap_seconds, pm.actual_start, pm.actual_end,
               pm.countdown_started_at, pm.paused_at, pm.paused_seconds,
               CASE WHEN pm.timer_state = 'awaiting_score' THEN 'awaiting_score'
@@ -2681,10 +3034,13 @@ async function loadSrCompetitionData(competitionId: string) {
     ...match,
     positions: match.positions ?? []
   }));
-  const playoffMatches = playoffResult.rows.map((match) => ({
+  const playoffMatches = playoffResult.rows.map(({ id: _id, format: _format, sources: _sources, ...match }) => ({
     ...match,
     positions: match.positions ?? []
   }));
+  // Knockout columns follow the bracket's dependency order, so the final is always the last column.
+  const stages = playoffStages(playoffResult.rows.map((match) => ({ key: match.id, sources: match.sources })));
+  const playoffFormat = playoffResult.rows[0]?.format;
   const arenas = [...new Set([
     ...matches.map((match) => match.arena_name),
     ...playoffMatches.map((match) => match.arena_name)
@@ -2726,12 +3082,12 @@ async function loadSrCompetitionData(competitionId: string) {
   const knockoutRounds = groupSrKnockoutMatches(
     srPlayoffMatches.map((match, index) => ({
       ...match,
-      round_number: playoffMatches[index]!.round_number
+      round_number: stages.get(playoffResult.rows[index]!.id) ?? 1
     }))
   );
   const bracketNames = ['upper', 'lower', 'final'];
   const bracketLabels: Record<string, string> = {
-    upper: 'Upper Bracket',
+    upper: playoffFormat === 'double-elimination' ? 'Upper Bracket' : 'Knockout',
     lower: 'Lower Bracket',
     final: 'Final'
   };
@@ -3158,7 +3514,27 @@ app.get('/display/:slug', async (request, reply) => {
         ? `<time data-relative-time="${escapeHtml(date.getTime())}" aria-label="${escapeHtml(formatCompetitionDateTime(date, display.competitionTimezone))}"></time>`
         : escapeHtml(formattedTime);
     };
-    const rows = (Array.isArray(data) ? data : []).map((match) => {
+    const scheduleItems = Array.isArray(data) ? data : [];
+    const statusLabel = (match: Record<string, unknown>, delayMinutes: number) => {
+      const state = String(match.state);
+      if (state === 'complete') return 'Complete';
+      if (state === 'running') return 'In progress';
+      if (state === 'paused') return 'Paused';
+      if (state === 'awaiting_score') return 'Awaiting score';
+      if (match.countdown_started_at) return 'Starting';
+      if (state === 'pending') return 'Waiting for results';
+      return delayMinutes > 0 ? `Delayed ${delayMinutes} min` : 'Scheduled';
+    };
+    const minutesLate = (match: Record<string, unknown>) => Math.max(0, Math.round(
+      (new Date(String(match.effective_start)).getTime() - new Date(String(match.scheduled_start ?? match.effective_start)).getTime()) / 60_000
+    ));
+    const nextUp = scheduleItems.find((match) => match.item_type === 'match' &&
+      ['scheduled', 'ready', 'delayed', 'pending'].includes(String(match.state)) && !match.countdown_started_at);
+    const behindMinutes = nextUp ? minutesLate(nextUp) : 0;
+    const behindBanner = behindMinutes > 0
+      ? `<p class="schedule-banner">Running about ${escapeHtml(behindMinutes)} minute${behindMinutes === 1 ? '' : 's'} behind schedule · times shown are the latest expected starts</p>`
+      : '';
+    const rows = scheduleItems.map((match) => {
       const teams = Array.isArray(match.teams) ? match.teams as Array<Record<string, unknown>> : [];
       if (match.item_type === 'event') {
         const event = teams[0] ?? {};
@@ -3176,13 +3552,19 @@ app.get('/display/:slug', async (request, reply) => {
         return `<td><strong class="schedule-position-team" style="color:${colour}">${code}</strong></td>`;
       }).join('');
       const expectedTeams = Number(match.entrant_count ?? match.team_count);
-      const fillStatus = expectedTeams < 4
-        ? `<strong class="warning">${escapeHtml(expectedTeams)}/4 TEAM HEAT</strong>`
-        : escapeHtml(match.state);
-      return `<tr data-team-codes="${escapeHtml(teamCodes.join(','))}"><td><strong>${escapeHtml(match.match_number)}</strong></td>${showArena ? `<td>${escapeHtml(match.arena_name)}</td>` : ''}<td>${timeContent(match.effective_start)}</td>${positionCells}<td>${fillStatus}</td></tr>`;
+      const lateMinutes = minutesLate(match);
+      const status = statusLabel(match, lateMinutes);
+      const fillStatus = `${match.is_playoff ? '<span class="tag">Playoff</span> ' : ''}${escapeHtml(status)}${expectedTeams < 4
+        ? ` <strong class="warning">${escapeHtml(expectedTeams)}/4 TEAM HEAT</strong>` : ''}`;
+      const wasTime = lateMinutes > 0 && !options.relativeTime && !['complete', 'running', 'paused', 'awaiting_score'].includes(String(match.state))
+        ? `<s class="muted">${escapeHtml(formatCompetitionTime(new Date(String(match.scheduled_start)), display.competitionTimezone))}</s> `
+        : '';
+      const rowState = ['running', 'paused'].includes(String(match.state)) || match.countdown_started_at
+        ? ' class="row-live"' : match === nextUp ? ' class="row-next"' : String(match.state) === 'complete' ? ' class="row-done"' : '';
+      return `<tr${rowState} data-team-codes="${escapeHtml(teamCodes.join(','))}"><td><strong>${escapeHtml(match.match_number)}</strong></td>${showArena ? `<td>${escapeHtml(match.arena_name)}</td>` : ''}<td>${wasTime}${timeContent(match.effective_start)}</td>${positionCells}<td>${fillStatus}</td></tr>`;
     }).join('');
     const positionOrder = display.type === 'sr-staging' ? options.srStagingCornerOrder : [0, 1, 2, 3];
-    content = `<table><thead><tr><th>Match</th>${showArena ? '<th>Arena</th>' : ''}<th>${options.relativeTime ? 'Starts in / elapsed' : 'Time'}</th>${positionOrder.map((position) => `<th>Position ${position}</th>`).join('')}<th>Status</th></tr></thead><tbody>${rows}</tbody></table>`;
+    content = `${behindBanner}<table><thead><tr><th>Match</th>${showArena ? '<th>Arena</th>' : ''}<th>${options.relativeTime ? 'Starts in / elapsed' : 'Time'}</th>${positionOrder.map((position) => `<th>Position ${position}</th>`).join('')}<th>Status</th></tr></thead><tbody>${rows}</tbody></table>`;
     if (options.enableTeamFilter) {
       const teams = new Map<string, string>();
       for (const match of Array.isArray(data) ? data : []) {
@@ -3231,11 +3613,40 @@ app.get('/display/:slug', async (request, reply) => {
       <div id="timer-arena" class="arena-square" aria-label="Current match arena positions"></div>
       <p id="timer-warning" class="warning" style="text-align:center"></p><p id="timer-connection" class="muted" role="status" style="text-align:center">Connecting...</p>
       ${options.showPreviousResults ? '<section id="timer-previous-results" class="previous-results" aria-live="polite" hidden></section>' : ''}`;
-  } else {
-    const rows = (Array.isArray(data) ? data : []).map((match) =>
-      `<tr><td>${escapeHtml(match.match_number)}</td><td>${escapeHtml(match.bracket_side)} · round ${escapeHtml(match.round_number)}</td><td>${escapeHtml(Array.isArray(match.teams) ? match.teams.filter(Boolean).join(' · ') : 'TBD')}</td><td>${escapeHtml(Array.isArray(match.scores) ? match.scores.map((score) => `${score.team} ${score.points}`).join(' · ') : match.status)}</td></tr>`
-    ).join('');
-    content = `<table><thead><tr><th>Heat</th><th>Bracket</th><th>Four teams</th><th>Points / placing</th></tr></thead><tbody>${rows}</tbody></table>`;
+  } else if (display.type === 'playoffs') {
+    const bracket = data && !Array.isArray(data) ? data as Record<string, unknown> : {};
+    const heats = Array.isArray(bracket.heats) ? bracket.heats as Array<Record<string, unknown>> : [];
+    const eliminated = new Set(Array.isArray(bracket.eliminated) ? bracket.eliminated.map(String) : []);
+    const sideLabel = (side: unknown) => side === 'final' ? 'Final' : side === 'lower' ? 'Lower bracket'
+      : bracket.format === 'double-elimination' ? 'Upper bracket' : 'Knockout';
+    const ordinalPlace = (place: string) => `${place}${({ '1': 'st', '2': 'nd', '3': 'rd' } as Record<string, string>)[place] ?? 'th'}`;
+    const describe = (source: string) => source.startsWith('seed:')
+      ? `Seed ${source.slice(5)}`
+      : source.replace(/^place:(\d):(.+)$/, (_whole, place: string, heat: string) => `${ordinalPlace(place)} of heat ${heat}`);
+    const stageCount = Math.max(0, ...heats.map((heat) => Number(heat.stage) || 1));
+    const card = (heat: Record<string, unknown>) => {
+      const scores = Array.isArray(heat.scores) ? heat.scores as Array<Record<string, unknown>> : [];
+      const teams = Array.isArray(heat.teams) ? heat.teams as Array<string | null> : [];
+      const sources = Array.isArray(heat.sources) ? heat.sources as string[] : [];
+      const entries = scores.length
+        ? scores.map((score, index) => `<li class="${index < Number(heat.advancing_places ?? 0) || heat.bracket_side === 'final' ? 'through' : eliminated.has(String(score.team)) ? 'out' : ''}"><strong>${escapeHtml(score.team)}</strong><span>${escapeHtml(score.points)}</span></li>`).join('')
+        : sources.map((source, index) => source === 'bye' ? '' : teams[index]
+          ? `<li><strong>${escapeHtml(teams[index])}</strong></li>`
+          : `<li class="tbd">${escapeHtml(describe(source))}</li>`).join('');
+      const state = String(heat.schedule_state) === 'complete' ? 'Result'
+        : ['running', 'paused'].includes(String(heat.timer_state)) ? 'Live'
+          : String(heat.timer_state) === 'awaiting_score' ? 'Scoring'
+            : formatCompetitionTime(new Date(String(heat.effective_start)), display.competitionTimezone);
+      return `<article class="heat heat-${escapeHtml(heat.bracket_side)}"><header><span>Heat ${escapeHtml(heat.match_number)}</span><span>${escapeHtml(state)}</span></header><div class="muted heat-meta">${escapeHtml(sideLabel(heat.bracket_side))} · ${escapeHtml(heat.arena_name)}</div><ol>${entries}</ol></article>`;
+    };
+    const columns = Array.from({ length: stageCount }, (_, index) => {
+      const stageHeats = heats.filter((heat) => (Number(heat.stage) || 1) === index + 1);
+      const title = stageHeats.every((heat) => heat.bracket_side === 'final') ? 'Final' : `Stage ${index + 1}`;
+      return `<section class="stage"><h2>${title}</h2>${stageHeats.map(card).join('')}</section>`;
+    }).join('');
+    content = heats.length
+      ? `<div class="bracket">${columns}</div>`
+      : '<p class="muted" style="text-align:center;margin-top:3rem">The playoff bracket will appear here once it has been scheduled.</p>';
   }
   reply.header('cache-control', 'no-store');
   reply.header('x-content-type-options', 'nosniff');
@@ -3243,7 +3654,7 @@ app.get('/display/:slug', async (request, reply) => {
   const liveTimerDisplay = ['timer', 'arena', 'corner', 'sr-arena', 'sr-producer'].includes(display.type);
   const rotatingOutsideDisplay = display.type === 'sr-outside';
   return reply.type('text/html; charset=utf-8').send(`<!doctype html><html lang="en"><head>
-    <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">${liveTimerDisplay || rotatingOutsideDisplay ? '' : '<meta http-equiv="refresh" content="4">'}
+    <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
     <title>${escapeHtml(display.title)}</title><style>
       *{box-sizing:border-box}body{font:16px/1.45 system-ui,sans-serif;margin:0;padding:clamp(1rem,4vw,3rem);${theme}}
       main{max-width:1100px;margin:auto}header{display:flex;align-items:center;gap:1rem;border-bottom:1px solid currentColor;padding-bottom:1rem}
@@ -3303,11 +3714,22 @@ app.get('/display/:slug', async (request, reply) => {
       .sr-external-link{position:fixed;right:1rem;bottom:1rem;color:inherit}
       #countdown-overlay{color:#fff}
       .schedule-position-team{font:900 1.15rem/1 ui-monospace,monospace}
-      body.cue-red{background:#a21f24!important;color:#fff!important;transition:background-color .15s linear}
+      body.cue-red{background:${options.countdownBackgroundColor}!important;color:${readableTextColour(options.countdownBackgroundColor)}!important;transition:background-color .15s linear}
+      .board-footer{max-width:1100px;margin:1rem auto 0;font-size:.85rem}
+      .schedule-banner{margin:1rem 0 0;padding:.6rem .9rem;border-left:5px solid #c76a10;background:${darkTheme ? '#3a2a14' : '#fff3e3'};font-weight:700}
+      tr.row-live td{background:${darkTheme ? '#16341f' : '#e6f6ec'}}tr.row-next td{background:${darkTheme ? '#1d2a3a' : '#eef3ff'}}tr.row-done{opacity:.6}
+      .tag{display:inline-block;font-size:.7rem;font-weight:800;letter-spacing:.05em;text-transform:uppercase;border:1px solid currentColor;padding:0 .3rem;margin-right:.2rem}
+      .bracket{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(200px,1fr);gap:1rem;overflow-x:auto;margin-top:1.5rem;align-items:start}
+      .stage h2{font-size:.8rem;text-transform:uppercase;letter-spacing:.08em;opacity:.7;margin:0 0 .6rem}
+      .heat{border:1px solid ${darkTheme ? '#45525c' : '#c9ceca'};border-left:5px solid #3267d5;padding:.55rem .7rem;margin-bottom:.7rem;break-inside:avoid}
+      .heat-lower{border-left-color:#c76a10}.heat-final{border-left-color:#19875b}
+      .heat header{display:flex;justify-content:space-between;font-weight:800;border:0;padding:0;gap:.5rem}.heat-meta{font-size:.8rem}
+      .heat ol{list-style:none;margin:.4rem 0 0;padding:0}.heat li{display:flex;justify-content:space-between;gap:.5rem;padding:.12rem 0;font:700 1.05rem/1.3 ui-monospace,monospace}
+      .heat li.tbd{font:500 .85rem/1.3 system-ui,sans-serif;opacity:.65}.heat li.through strong{color:#19875b}.heat li.out{opacity:.5;text-decoration:line-through}
       body.cue-green{background:${options.goBackgroundColor}!important;color:${readableTextColour(options.goBackgroundColor)}!important;transition:background-color .15s linear}
       body.cue-end{background:${options.endBackgroundColor}!important;color:${readableTextColour(options.endBackgroundColor)}!important;transition:background-color .15s linear}
     </style></head><body class="${display.type === 'corner' ? 'corner-board' : ['timer','sr-producer'].includes(display.type) ? `timer-board${options.showTitle ? ' timer-board-has-title' : ' timer-board-no-title'}${options.showPreviousResults ? ' timer-board-with-results' : ''}` : display.type === 'sr-arena' ? 'sr-arena-board' : ''}" style="${theme}"><main>${options.showTitle && display.type !== 'corner' ? `<header>${display.logoDataUrl ? `<img src="${escapeHtml(display.logoDataUrl)}" alt="">` : ''}<div><div class="muted">${escapeHtml(display.competition)}</div><h1>${escapeHtml(display.title)}</h1></div></header>` : ''}
-    ${content}<p class="muted">Updated ${escapeHtml(new Date(display.updatedAt).toLocaleTimeString())}</p></main>
+    ${content}</main>${display.type === 'corner' || ['timer', 'sr-producer'].includes(display.type) ? '' : `<p class="muted board-footer" id="board-updated">Updated ${escapeHtml(formatCompetitionTime(new Date(display.updatedAt), display.competitionTimezone))}</p>`}
     ${liveTimerDisplay ? `<div id="countdown-overlay" class="countdown-overlay" aria-live="assertive" style="background-color:${displayBackground}"></div>` : ''}
     ${rotatingOutsideDisplay ? `<script>
       const outsidePages=[...document.querySelectorAll('[data-sr-outside-page]')];
@@ -3373,7 +3795,7 @@ app.get('/display/:slug', async (request, reply) => {
         }
         const heading=document.createElement('div');
         heading.className='previous-results-heading';
-        heading.textContent='Previous Match '+result.match_number;
+        heading.textContent=(result.match_type==='Playoff'?'Previous heat ':'Previous match ')+result.match_number;
         previousResultsNode.append(heading);
         for(const score of result.scores){
           const team=document.createElement('div');
@@ -3546,26 +3968,30 @@ app.get('/display/:slug', async (request, reply) => {
       const renderClockFrame=()=>{renderClock();requestAnimationFrame(renderClockFrame);};
       requestAnimationFrame(renderClockFrame);
     </script>` : ''}
-    ${['schedule', 'sr-staging', 'sr-shepherding'].includes(display.type) && options.enableTeamFilter ? `<script>
-      const scheduleFilter=document.getElementById('schedule-team-filter');
-      const scheduleStorageKey=${JSON.stringify(`schedule-team-filter:${display.slug}`)};
-      if(scheduleFilter){
-        scheduleFilter.value=sessionStorage.getItem(scheduleStorageKey)||'';
-        const applyScheduleFilter=()=>{
-          const selected=scheduleFilter.value;
-          for(const row of document.querySelectorAll('tbody tr[data-team-codes]')){
-            row.hidden=Boolean(selected)&&!row.dataset.teamCodes.split(',').includes(selected);
-          }
-          sessionStorage.setItem(scheduleStorageKey,selected);
-        };
-        scheduleFilter.addEventListener('change',applyScheduleFilter);
+    ${liveTimerDisplay || rotatingOutsideDisplay ? '' : `<script>
+      // Boards refresh in place (no full-page reload) so they never flash, and keep the team filter.
+      const filterStorageKey=${JSON.stringify(`schedule-team-filter:${display.slug}`)};
+      const applyScheduleFilter=()=>{
+        const filter=document.getElementById('schedule-team-filter');
+        if(!filter)return;
+        const selected=filter.value;
+        for(const row of document.querySelectorAll('tbody tr[data-team-codes]')){
+          row.hidden=Boolean(selected)&&!row.dataset.teamCodes.split(',').includes(selected);
+        }
+      };
+      const restoreScheduleFilter=()=>{
+        const filter=document.getElementById('schedule-team-filter');
+        if(!filter)return;
+        try{filter.value=sessionStorage.getItem(filterStorageKey)||'';}catch{}
         applyScheduleFilter();
-      }
-    </script>` : ''}
-    ${['schedule', 'sr-staging', 'sr-shepherding'].includes(display.type) && options.relativeTime ? `<script>
-      const relativeScheduleTimes=document.querySelectorAll('[data-relative-time]');
-      const renderRelativeScheduleTimes=()=>{
-        for(const node of relativeScheduleTimes){
+      };
+      document.addEventListener('change',event=>{
+        if(event.target.id!=='schedule-team-filter')return;
+        try{sessionStorage.setItem(filterStorageKey,event.target.value);}catch{}
+        applyScheduleFilter();
+      });
+      const renderRelativeTimes=()=>{
+        for(const node of document.querySelectorAll('[data-relative-time]')){
           const delta=Number(node.dataset.relativeTime)-Date.now();
           const seconds=Math.floor(Math.abs(delta)/1000);
           let duration;
@@ -3576,9 +4002,32 @@ app.get('/display/:slug', async (request, reply) => {
           node.textContent=delta>=0?'in '+duration:duration+' ago';
         }
       };
-      renderRelativeScheduleTimes();
-      setInterval(renderRelativeScheduleTimes,1000);
-    </script>` : ''}</body></html>`);
+      const refreshBoard=async()=>{
+        if(document.activeElement&&document.activeElement.id==='schedule-team-filter')return;
+        try{
+          const response=await fetch(location.href,{cache:'no-store'});
+          if(!response.ok)return;
+          const next=new DOMParser().parseFromString(await response.text(),'text/html');
+          const nextMain=next.querySelector('main');
+          const main=document.querySelector('main');
+          if(nextMain&&main&&nextMain.innerHTML!==main.innerHTML){
+            main.innerHTML=nextMain.innerHTML;
+            restoreScheduleFilter();
+            renderRelativeTimes();
+          }
+          const updated=document.getElementById('board-updated');
+          const nextUpdated=next.getElementById('board-updated');
+          if(updated&&nextUpdated){updated.textContent=nextUpdated.textContent;updated.style.color='';}
+        }catch{
+          const updated=document.getElementById('board-updated');
+          if(updated){updated.textContent='Connection lost · retrying';updated.style.color='#b33';}
+        }
+      };
+      restoreScheduleFilter();
+      renderRelativeTimes();
+      setInterval(renderRelativeTimes,1000);
+      setInterval(()=>{void refreshBoard();},5000);
+    </script>`}</body></html>`);
 });
 
 app.get('/api/admin/competitions/:slug/auto-run', { preHandler: requireAdmin }, async (request, reply) => {
@@ -3892,7 +4341,7 @@ app.post('/api/admin/competitions/:slug/events', { preHandler: requireAdmin }, a
       [id, competition.id, body.title, body.description, body.location, body.startsAt, body.durationMinutes, adminEmail(request)]
     );
     await audit(client, adminEmail(request), 'competition_event.created', 'competition_event', id, body);
-    return shiftScheduledMatchesAroundEvents(client, competition.id, adminEmail(request), `event "${body.title}" added`);
+    return reflowSchedule(client, competition.id, adminEmail(request), `event "${body.title}" added`, { strictEvents: true });
   });
   return reply.code(201).send({ id, ...body, shiftedMatchIds });
 });
@@ -3920,8 +4369,8 @@ app.patch('/api/admin/events/:eventId', { preHandler: requireAdmin }, async (req
        RETURNING id, title, description, location, starts_at, duration_minutes`,
       [eventId, body.title, body.description, body.location, body.startsAt, body.durationMinutes]
     );
-    const shiftedMatchIds = await shiftScheduledMatchesAroundEvents(
-      client, event.competition_id, adminEmail(request), `event "${body.title}" updated`
+    const shiftedMatchIds = await reflowSchedule(
+      client, event.competition_id, adminEmail(request), `event "${body.title}" updated`, { strictEvents: true }
     );
     await audit(client, adminEmail(request), 'competition_event.updated', 'competition_event', eventId, {
       ...body,
@@ -4150,7 +4599,7 @@ app.post('/api/admin/competitions/:slug/generate-schedule', { preHandler: requir
         );
       }
     }
-    const shiftedMatchIds = await shiftScheduledMatchesAroundEvents(
+    const shiftedMatchIds = await reflowSchedule(
       client, competition.id, adminEmail(request), 'balanced schedule generated'
     );
     await audit(client, adminEmail(request), 'schedule.generated', 'competition', competition.id, {
@@ -4202,7 +4651,9 @@ app.get('/api/admin/competitions/:slug/matches', { preHandler: requireAdmin }, a
     `SELECT pm.id, pm.match_number, pm.arena_name, pm.scheduled_start, pm.effective_start,
             pm.duration_seconds, pm.planned_gap_seconds, pm.status, pm.bracket_side, pm.round_number,
             pm.schedule_state, pm.timer_state, pm.countdown_started_at, pm.actual_start, pm.actual_end,
-            pm.paused_at, pm.paused_seconds,
+            pm.paused_at, pm.paused_seconds, pm.advancing_places, pb.format AS bracket_format,
+            greatest(0, ceil(extract(epoch FROM (pm.effective_start - pm.scheduled_start))))::int
+              AS delay_seconds,
             ((pm.source_one <> 'bye')::int + (pm.source_two <> 'bye')::int +
              (pm.source_three <> 'bye')::int + (pm.source_four <> 'bye')::int) AS entrant_count,
             (SELECT count(*)::int FROM playoff_match_scores pms WHERE pms.playoff_match_id = pm.id) AS score_count,
@@ -4296,7 +4747,7 @@ app.post('/api/admin/competitions/:slug/matches', { preHandler: requireAdmin }, 
         [matchId, position.number, position.label, cornerColours[position.number - 1]!, teamId]
       );
     }
-    const shifted = await shiftScheduledMatchesAroundEvents(
+    const shifted = await reflowSchedule(
       client, competition.id, adminEmail(request), `match #${body.matchNumber} added`
     );
     await audit(client, adminEmail(request), 'match.created', 'match', matchId, {
@@ -4424,7 +4875,7 @@ app.patch('/api/admin/matches/:matchId/schedule', { preHandler: requireAdmin }, 
         newStart.getTime() + (next.duration_seconds + next.planned_gap_seconds) * 1000
       );
     }
-    const eventShiftedIds = await shiftScheduledMatchesAroundEvents(
+    const eventShiftedIds = await reflowSchedule(
       client, competitionId, adminEmail(request), `match #${match.match_number} edited`
     );
     const allShiftedIds = [...new Set([...shiftedIds, ...eventShiftedIds])];
@@ -4670,6 +5121,62 @@ app.post('/api/admin/matches/:matchId/undelay', { preHandler: requireAdmin }, as
       reductionSeconds,
       remainingDelaySeconds,
       effectiveStart: nextStart.toISOString()
+    };
+  });
+  return reply.code(result.status).send(result);
+});
+
+app.post('/api/admin/competitions/:slug/delay-all', { preHandler: requireAdmin }, async (request, reply) => {
+  const { slug } = z.object({ slug: z.string() }).parse(request.params);
+  const body = z.object({
+    delaySeconds: z.number().int().min(60).max(86400),
+    reason: z.string().trim().min(1).max(500),
+    arenaName: z.string().trim().min(1).max(80).optional()
+  }).parse(request.body);
+  const competition = await findCompetition(pool, slug);
+  if (!competition) return reply.code(404).send({ error: 'Competition not found' });
+  const result = await transaction(async (client) => {
+    await client.query('SELECT id FROM competitions WHERE id = $1 FOR UPDATE', [competition.id]);
+    // Everything not yet started (and not counting down) moves by the same amount, so
+    // their spacing is kept; timed events stay fixed and the re-flow moves matches around them.
+    const league = await client.query<{ id: string }>(
+      `UPDATE matches SET effective_start = effective_start + ($2 * interval '1 second'),
+         state = 'delayed', revision = revision + 1
+       WHERE competition_id = $1 AND state IN ('scheduled', 'ready', 'delayed')
+         AND countdown_started_at IS NULL AND ($3::text IS NULL OR arena_name = $3)
+       RETURNING id`,
+      [competition.id, body.delaySeconds, body.arenaName ?? null]
+    );
+    for (const match of league.rows) {
+      await client.query(
+        `INSERT INTO match_delays (id, match_id, actor_email, reason, delay_seconds)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [randomUUID(), match.id, adminEmail(request), `Competition-wide delay: ${body.reason}`, body.delaySeconds]
+      );
+    }
+    const heats = await client.query<{ id: string }>(
+      `UPDATE playoff_matches pm SET effective_start = pm.effective_start + ($2 * interval '1 second')
+       FROM playoff_brackets pb
+       WHERE pb.id = pm.bracket_id AND pb.competition_id = $1 AND pb.status = 'active'
+         AND pm.schedule_state = 'scheduled' AND pm.timer_state = 'scheduled'
+         AND pm.countdown_started_at IS NULL AND ($3::text IS NULL OR pm.arena_name = $3)
+       RETURNING pm.id`,
+      [competition.id, body.delaySeconds, body.arenaName ?? null]
+    );
+    const shiftedMatchIds = await reflowSchedule(
+      client, competition.id, adminEmail(request), `competition-wide delay: ${body.reason}`
+    );
+    await audit(client, adminEmail(request), 'competition.delay_applied', 'competition', competition.id, {
+      ...body,
+      leagueMatchIds: league.rows.map((match) => match.id),
+      playoffHeatIds: heats.rows.map((heat) => heat.id),
+      shiftedMatchIds
+    });
+    return {
+      status: 200 as const,
+      delayedMatches: league.rowCount ?? 0,
+      delayedHeats: heats.rowCount ?? 0,
+      shiftedMatchIds
     };
   });
   return reply.code(result.status).send(result);

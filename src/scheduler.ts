@@ -26,6 +26,8 @@ export type EventScheduleMatch = ScheduleCascadeCandidate & {
   arenaName: string;
   hasCountdown: boolean;
   plannedGapSeconds?: number;
+  /** A running or paused match: it cannot move but occupies its arena until `effectiveStart + durationSeconds`. */
+  fixed?: boolean;
 };
 
 export type ScheduleEventBlock = {
@@ -71,6 +73,11 @@ export function calculateEventScheduleShifts(
     }
     const priorStart = match.effectiveStart;
     const priorArenaEnd = nextByArena.get(match.arenaName);
+    if (match.fixed) {
+      nextByArena.set(match.arenaName, Math.max(priorArenaEnd ?? Number.NEGATIVE_INFINITY,
+        priorStart + match.durationSeconds * 1000));
+      continue;
+    }
     const gapMilliseconds = priorArenaEnd === undefined ? 0 : (match.plannedGapSeconds ?? 0) * 1000;
     let start = Math.max(priorStart, (priorArenaEnd ?? priorStart) + gapMilliseconds);
     if (start > priorStart) start = Math.ceil(start / 60_000) * 60_000;
@@ -206,35 +213,133 @@ export function calculateWaveStartTime(
   return firstStart + wave * intervalSeconds * 1000;
 }
 
-export type PlannedHeatCandidate = {
+export type PlayoffScheduleHeat = {
   id: string;
+  matchNumber: number;
+  arenaName: string;
   effectiveStart: number;
   durationSeconds: number;
+  /** Minimum gap after the previous heat in the arena and after every heat that feeds this one. */
+  plannedGapSeconds: number;
+  /** Ids of heats whose placings decide this heat's entrants. */
+  dependsOn: string[];
+  /** Set for started, finished or scored heats: they keep their time and free the arena at this instant. */
+  fixedEnd?: number;
+  /** For fixed heats, when the result is known (defaults to `fixedEnd`). Unscored heats are later than their end. */
+  resultAvailableAt?: number;
+};
+
+/**
+ * Moves unstarted playoff heats later so that each one starts no earlier than
+ * its planned gap after (a) the previous heat in the same arena and (b) every
+ * heat that feeds it. Heats in different arenas with no dependency between
+ * them can run side by side. Heats are never moved earlier.
+ */
+export function calculatePlayoffHeatCascade(heats: PlayoffScheduleHeat[]): ScheduleCascadeShift[] {
+  for (const heat of heats) {
+    if (!Number.isFinite(heat.effectiveStart) || !Number.isInteger(heat.durationSeconds) ||
+        heat.durationSeconds < 1 || !Number.isInteger(heat.plannedGapSeconds) || heat.plannedGapSeconds < 0 ||
+        (heat.fixedEnd !== undefined && !Number.isFinite(heat.fixedEnd)) ||
+        (heat.resultAvailableAt !== undefined && !Number.isFinite(heat.resultAvailableAt))) {
+      throw new RangeError('Playoff heat schedule data must contain valid times, durations and gaps');
+    }
+  }
+  const ordered = [...heats].sort((left, right) => left.matchNumber - right.matchNumber);
+  const endById = new Map<string, number>();
+  const resultById = new Map<string, number>();
+  const arenaEnd = new Map<string, number>();
+  const shifts: ScheduleCascadeShift[] = [];
+  for (const heat of ordered) {
+    let start = heat.effectiveStart;
+    if (heat.fixedEnd === undefined) {
+      const gap = heat.plannedGapSeconds * 1000;
+      const constraints = heat.dependsOn
+        .map((id) => resultById.get(id))
+        .filter((value): value is number => value !== undefined);
+      const previousInArena = arenaEnd.get(heat.arenaName);
+      if (previousInArena !== undefined) constraints.push(previousInArena);
+      const delaySeconds = constraints.length
+        ? roundedDelaySeconds(Math.max(...constraints) + gap - start)
+        : 0;
+      if (delaySeconds > 0) {
+        start += delaySeconds * 1000;
+        shifts.push({ id: heat.id, effectiveStart: start, delaySeconds });
+      }
+    }
+    const end = heat.fixedEnd ?? start + heat.durationSeconds * 1000;
+    endById.set(heat.id, end);
+    resultById.set(heat.id, Math.max(end, heat.resultAvailableAt ?? end));
+    arenaEnd.set(heat.arenaName, Math.max(arenaEnd.get(heat.arenaName) ?? Number.NEGATIVE_INFINITY, end));
+  }
+  return shifts;
+}
+
+export type PlayoffHeatTimingInput = {
+  key: string;
+  dependsOn: string[];
+  isFinal: boolean;
+};
+
+export type PlayoffHeatTiming = {
+  key: string;
+  arenaName: string;
+  start: number;
   plannedGapSeconds: number;
 };
 
-export function calculatePlannedHeatCascade(
-  candidates: PlannedHeatCandidate[],
-  previousHeatEnd: number
-): ScheduleCascadeShift[] {
-  if (!Number.isFinite(previousHeatEnd) || candidates.some((candidate) =>
-    !Number.isFinite(candidate.effectiveStart) ||
-    !Number.isInteger(candidate.durationSeconds) || candidate.durationSeconds < 1 ||
-    !Number.isInteger(candidate.plannedGapSeconds) || candidate.plannedGapSeconds < 0
-  )) {
-    throw new RangeError('Planned heat cascade data must contain valid times, durations, and gaps');
+/**
+ * Assigns each heat (in dependency order) to the arena that lets it start
+ * soonest. A heat starts at least one heat slot after any heat feeding it and
+ * after the previous heat in its arena; the final can have an extra buffer.
+ * With one arena this gives the classic back-to-back slots.
+ */
+export function planPlayoffHeatTimes(
+  heats: PlayoffHeatTimingInput[],
+  arenaNames: string[],
+  firstStart: number,
+  intervalSeconds: number,
+  durationSeconds: number,
+  finalBufferSeconds = 0
+): PlayoffHeatTiming[] {
+  if (!arenaNames.length || new Set(arenaNames).size !== arenaNames.length ||
+      !Number.isFinite(firstStart) || !Number.isInteger(intervalSeconds) || intervalSeconds < 1 ||
+      !Number.isInteger(durationSeconds) || durationSeconds < 1 || intervalSeconds < durationSeconds ||
+      !Number.isInteger(finalBufferSeconds) || finalBufferSeconds < 0) {
+    throw new RangeError('Playoff timing needs arenas, a valid first start, and an interval at least as long as a match');
   }
-  let projectedEnd = previousHeatEnd;
-  const shifts: ScheduleCascadeShift[] = [];
-  for (const candidate of candidates) {
-    const delaySeconds = roundedDelaySeconds(
-      projectedEnd + candidate.plannedGapSeconds * 1000 - candidate.effectiveStart
-    );
-    const effectiveStart = candidate.effectiveStart + delaySeconds * 1000;
-    if (delaySeconds > 0) shifts.push({ id: candidate.id, effectiveStart, delaySeconds });
-    projectedEnd = effectiveStart + candidate.durationSeconds * 1000;
-  }
-  return shifts;
+  const interval = intervalSeconds * 1000;
+  const startByKey = new Map<string, number>();
+  const arenaFree = new Map(arenaNames.map((name) => [name, firstStart]));
+  const timings: PlayoffHeatTiming[] = [];
+  heats.forEach((heat, index) => {
+    const ready = Math.max(firstStart, ...heat.dependsOn.map((key) => {
+      const dependencyStart = startByKey.get(key);
+      if (dependencyStart === undefined) throw new RangeError('Playoff heats must be listed after the heats that feed them');
+      return dependencyStart + interval;
+    }));
+    let arenaName = arenaNames[0]!;
+    let start = Number.POSITIVE_INFINITY;
+    for (const name of arenaNames) {
+      const candidate = Math.max(ready, arenaFree.get(name)!);
+      if (candidate < start) {
+        start = candidate;
+        arenaName = name;
+      }
+    }
+    // The final (and anything after it) waits for every other heat, so all arenas close first.
+    if (heat.isFinal && index > 0) {
+      start = Math.max(start, ...timings.map((timing) => timing.start + interval)) + finalBufferSeconds * 1000;
+    }
+    startByKey.set(heat.key, start);
+    arenaFree.set(arenaName, start + interval);
+    timings.push({
+      key: heat.key,
+      arenaName,
+      start,
+      plannedGapSeconds: intervalSeconds - durationSeconds + (heat.isFinal && index > 0 ? finalBufferSeconds : 0)
+    });
+  });
+  return timings;
 }
 
 export function greatestCommonDivisor(left: number, right: number): number {

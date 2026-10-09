@@ -1,4 +1,7 @@
 node_modules/
+# The SR screens load moment.js from this vendored folder; it is part of the app, not an npm install.
+!/public/srcomp/node_modules/
+dist/
 .env
 .DS_Store
 coverage/

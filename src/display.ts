@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 export const displayTypeSchema = z.enum([
-  'league', 'schedule', 'arena', 'timer', 'corner', 'results',
+  'league', 'schedule', 'arena', 'timer', 'corner', 'results', 'playoffs',
   'sr-arena', 'sr-outside', 'sr-producer', 'sr-shepherding', 'sr-staging'
 ]);
 

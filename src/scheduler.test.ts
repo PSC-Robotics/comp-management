@@ -4,7 +4,8 @@ import {
   assignMatchesToWaves,
   calculateEventScheduleShifts,
   calculateDelayReduction,
-  calculatePlannedHeatCascade,
+  calculatePlayoffHeatCascade,
+  planPlayoffHeatTimes,
   calculateScheduleCascade,
   calculateTimerResetStart,
   calculateWaveStartTime,
@@ -142,23 +143,6 @@ test('does not shift non-overlapping matches and rejects invalid cascade data', 
   );
 });
 
-test('cascades playoff heats while preserving planned gaps including a final buffer', () => {
-  const shifts = calculatePlannedHeatCascade([
-    { id: 'next-heat', effectiveStart: 120_000, durationSeconds: 60, plannedGapSeconds: 60 },
-    { id: 'final', effectiveStart: 300_000, durationSeconds: 60, plannedGapSeconds: 300 }
-  ], 100_000);
-  assert.deepEqual(shifts, [
-    { id: 'next-heat', effectiveStart: 180_000, delaySeconds: 60 },
-    { id: 'final', effectiveStart: 540_000, delaySeconds: 240 }
-  ]);
-  assert.deepEqual(calculatePlannedHeatCascade([
-    { id: 'later', effectiveStart: 600_000, durationSeconds: 60, plannedGapSeconds: 300 }
-  ], 180_000), []);
-  assert.throws(() => calculatePlannedHeatCascade([
-    { id: 'invalid', effectiveStart: 0, durationSeconds: 60, plannedGapSeconds: -1 }
-  ], 0), RangeError);
-});
-
 test('shifts matches around event blocks and cascades same-arena delays', () => {
   const plan = calculateEventScheduleShifts([
     { id: 'first', matchNumber: 1, arenaName: 'A', effectiveStart: 100_000, durationSeconds: 40, hasCountdown: false },
@@ -282,4 +266,53 @@ test('rejects impossible appearance targets', () => {
     () => generateBalancedMatches(['AAA', 'BBB', 'CCC', 'DDD', 'EEE', 'FFF'], 1, 9),
     ScheduleGenerationError
   );
+});
+
+test('playoff cascade follows dependencies and arenas, so parallel heats are not serialised', () => {
+  const minute = 60_000;
+  const heats = [
+    { id: 'h1', matchNumber: 1, arenaName: 'A', effectiveStart: 0, durationSeconds: 120, plannedGapSeconds: 60, dependsOn: [] },
+    { id: 'h2', matchNumber: 2, arenaName: 'B', effectiveStart: 0, durationSeconds: 120, plannedGapSeconds: 60, dependsOn: [] },
+    { id: 'h3', matchNumber: 3, arenaName: 'A', effectiveStart: 3 * minute, durationSeconds: 120, plannedGapSeconds: 60, dependsOn: ['h1', 'h2'] }
+  ];
+  assert.deepEqual(calculatePlayoffHeatCascade(heats), []);
+  // Heat 2 overruns in arena B: heat 3 depends on it, so it moves; heat 1 does not.
+  const shifted = calculatePlayoffHeatCascade([
+    heats[0]!, { ...heats[1]!, fixedEnd: 4 * minute + 10_000 }, heats[2]!
+  ]);
+  assert.deepEqual(shifted, [{ id: 'h3', effectiveStart: 6 * minute, delaySeconds: 180 }]);
+  // An unscored heat holds back the heats it feeds until its result is known.
+  const awaiting = calculatePlayoffHeatCascade([
+    { ...heats[0]!, fixedEnd: 2 * minute, resultAvailableAt: 5 * minute }, heats[1]!, heats[2]!
+  ]);
+  assert.deepEqual(awaiting, [{ id: 'h3', effectiveStart: 6 * minute, delaySeconds: 180 }]);
+  assert.throws(() => calculatePlayoffHeatCascade([{ ...heats[0]!, plannedGapSeconds: -1 }]), RangeError);
+});
+
+test('plans playoff heat slots across one or several arenas with a final buffer', () => {
+  const minute = 60_000;
+  const heats = [
+    { key: 'h1', dependsOn: [], isFinal: false },
+    { key: 'h2', dependsOn: [], isFinal: false },
+    { key: 'h3', dependsOn: ['h1', 'h2'], isFinal: false },
+    { key: 'final', dependsOn: ['h3'], isFinal: true }
+  ];
+  assert.deepEqual(planPlayoffHeatTimes(heats, ['A'], 0, 300, 180, 600).map((heat) => [heat.arenaName, heat.start / minute, heat.plannedGapSeconds]), [
+    ['A', 0, 120], ['A', 5, 120], ['A', 10, 120], ['A', 25, 720]
+  ]);
+  assert.deepEqual(planPlayoffHeatTimes(heats, ['A', 'B'], 0, 300, 180).map((heat) => [heat.arenaName, heat.start / minute]), [
+    ['A', 0], ['B', 0], ['A', 5], ['A', 10]
+  ]);
+  assert.throws(() => planPlayoffHeatTimes(heats, ['A'], 0, 60, 180), RangeError);
+  assert.throws(() => planPlayoffHeatTimes([{ key: 'x', dependsOn: ['missing'], isFinal: false }], ['A'], 0, 300, 180), RangeError);
+});
+
+test('running matches occupy their arena when re-flowing the schedule', () => {
+  const plan = calculateEventScheduleShifts([
+    { id: 'running', matchNumber: 1, arenaName: 'A', effectiveStart: 0, durationSeconds: 300, hasCountdown: false, fixed: true },
+    { id: 'heat', matchNumber: 2, arenaName: 'A', effectiveStart: 240_000, durationSeconds: 120, hasCountdown: false, plannedGapSeconds: 60 }
+  ], [], 'league delay');
+  assert.deepEqual(plan.shifts.map(({ id, effectiveStart }) => ({ id, effectiveStart })), [
+    { id: 'heat', effectiveStart: 360_000 }
+  ]);
 });

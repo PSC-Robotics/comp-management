@@ -173,6 +173,27 @@
       .actions button { flex: 1 1 auto; }
       dialog form { padding: 1rem; }
     }
+    .option-group { border: 1px solid var(--line); background: var(--raised); padding: .8rem 1rem; margin: 1rem 0 0; min-width: 0; }
+    .option-group legend { font-weight: 750; padding: 0 .35rem; }
+    .option-group > p { margin: 0 0 .6rem; }
+    .type-description { margin: .4rem 0 0; }
+    .bracket-board { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(220px, 1fr); gap: .8rem; overflow-x: auto; padding-bottom: .5rem; }
+    .bracket-stage h3 { font-size: .75rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 .5rem; }
+    .heat-card { border: 1px solid var(--line); border-left: 4px solid var(--accent); background: var(--surface); padding: .55rem .7rem; margin-bottom: .6rem; font-size: .85rem; }
+    .heat-card[data-side="lower"] { border-left-color: var(--warning); }
+    .heat-card[data-side="final"] { border-left-color: var(--green); }
+    .heat-card header { display: flex; justify-content: space-between; gap: .5rem; font-weight: 750; }
+    .heat-card ol { margin: .4rem 0 .2rem; padding-left: 1.3rem; }
+    .heat-card .source { color: var(--muted); }
+    .schedule-health { display: flex; flex-wrap: wrap; gap: .5rem; }
+    .health-pill { border: 1px solid var(--line); padding: .4rem .65rem; font-weight: 650; font-size: .85rem; }
+    .health-pill.late { background: #fff0e2; color: #9b4a0c; border-color: #f1c79f; }
+    .health-pill.ok { background: #e5f5ec; color: #167549; border-color: #b6e0c8; }
+    .button-link { display: inline-flex; align-items: center; border: 1px solid var(--line); background: var(--surface); color: var(--ink); padding: .65rem .9rem; font-weight: 650; border-radius: 2px; text-decoration: none; }
+    .match-actions .button-link, .actions .button-link { padding: .42rem .6rem; font-size: .78rem; }
+    .display-actions { max-width: 430px; }
+    .preview-box { border-left: 4px solid var(--accent); background: var(--raised); padding: .7rem .9rem; }
+    .preview-box.error { border-left-color: #b64040; }
   </style>
 </head>
 <body>
@@ -226,55 +247,8 @@
     <form id="display-config-form">
       <h2>Configure public display</h2>
       <label>Admin title<input name="title" maxlength="120" required></label>
-      <fieldset style="margin-top:1rem">
-        <legend>Board layout</legend>
-        <div class="display-options">
-          <label class="toggle-control" data-option-except="corner"><input type="checkbox" name="showTitle"> Show title and competition heading</label>
-          <label class="toggle-control" data-option-types="schedule,arena,timer,sr-arena,sr-producer,sr-staging"><input type="checkbox" name="showArena"> Show arena name</label>
-          <label class="toggle-control" data-option-types="arena,sr-arena"><input type="checkbox" name="fillCorners"> Fill corner squares with assigned colours</label>
-          <label class="toggle-control" data-option-types="arena,sr-arena"><input type="checkbox" name="showTeamNames"> Show team names</label>
-          <label class="toggle-control" data-option-types="arena,sr-arena"><input type="checkbox" name="showPositionNumbers"> Show position numbers</label>
-          <label class="toggle-control" data-option-for="corner"><input type="checkbox" name="fillCornerDisplay"> Use the corner colour as the full-screen background</label>
-          <label class="toggle-control" data-option-for="corner"><input type="checkbox" name="showCornerPositionNumber"> Show the corner number in the background</label>
-          <label class="toggle-control" data-option-for="corner"><input type="checkbox" name="showCornerTeamName"> Show team name below the code</label>
-          <label class="toggle-control" data-option-except="corner"><input type="checkbox" name="darkTheme"> Use dark theme for this display</label>
-          <label class="toggle-control" data-option-types="schedule,sr-staging"><input type="checkbox" name="hideCompletedEvents"> Hide completed events from schedule display</label>
-          <label class="toggle-control" data-option-types="schedule,sr-staging"><input type="checkbox" name="hideCompletedMatches"> Hide completed matches from schedule display</label>
-          <label class="toggle-control" data-option-types="schedule,sr-staging"><input type="checkbox" name="enableTeamFilter"> Show team filter dropdown</label>
-          <label class="toggle-control" data-option-types="schedule,sr-staging"><input type="checkbox" name="relativeTime"> Replace time with time until / since match</label>
-          <label class="toggle-control" data-option-types="schedule,sr-staging"><input type="checkbox" name="hideScheduleArena"> Hide arena column</label>
-          <label data-option-for="corner">Corner position<select name="cornerPosition"><option value="0">Position 0 · bottom-left</option><option value="1">Position 1 · top-left</option><option value="2">Position 2 · top-right</option><option value="3">Position 3 · bottom-right</option></select></label>
-          <label class="toggle-control" data-option-types="arena,timer,corner,sr-arena,sr-producer"><input type="checkbox" name="showStartCue"> Show synchronized red 3-2-1 and green GO cue</label>
-          <label class="toggle-control" data-option-types="arena,timer,corner,sr-arena,sr-producer"><input type="checkbox" name="flashCountdownNumbers"> Flash alternate countdown numbers</label>
-          <label data-option-types="arena,timer,corner,sr-arena,sr-producer">Countdown background<input type="color" name="countdownBackgroundColor" value="#a21f24"></label>
-          <label data-option-types="arena,timer,corner,sr-arena,sr-producer">Alternate flash background<input type="color" name="countdownFlashColor" value="#ffffff"></label>
-          <label data-option-types="arena,timer,corner,sr-arena,sr-producer">Show GO for<select name="cueDurationSeconds"><option value="1">1 second</option><option value="2">2 seconds</option><option value="3">3 seconds</option><option value="4">4 seconds</option><option value="5">5 seconds</option></select></label>
-          <label data-option-types="arena,timer,corner,sr-arena,sr-producer">GO screen background<input type="color" name="goBackgroundColor" value="#167847"></label>
-          <label class="toggle-control" data-option-types="arena,timer,corner,sr-arena,sr-producer"><input type="checkbox" name="showEndCue"> Show END when the match timer ends</label>
-          <label class="toggle-control" data-option-types="timer,sr-producer"><input type="checkbox" name="showPreviousResults"> Show previous match scores at the bottom</label>
-          <label data-option-types="arena,timer,corner,sr-arena,sr-producer">Show END for<select name="endCueDurationSeconds"><option value="1">1 second</option><option value="2">2 seconds</option><option value="3">3 seconds</option><option value="4">4 seconds</option><option value="5">5 seconds</option><option value="6">6 seconds</option><option value="7">7 seconds</option><option value="8">8 seconds</option><option value="9">9 seconds</option><option value="10">10 seconds</option></select></label>
-          <label class="toggle-control" data-option-types="arena,timer,corner,sr-arena,sr-producer"><input type="checkbox" name="showEndCountdown"> Show a countdown during the final seconds</label>
-          <label data-option-types="arena,timer,corner,sr-arena,sr-producer">Final countdown starts at<input type="number" name="endCountdownSeconds" min="1" max="60" value="10"></label>
-          <label data-option-types="arena,timer,corner,sr-arena,sr-producer">END screen background<input type="color" name="endBackgroundColor" value="#b3131b"></label>
-          <label data-option-types="sr-arena,sr-producer,sr-shepherding,sr-staging">SR arena filter (blank for all)<input name="srArenaName" maxlength="120"></label>
-          <label data-option-for="sr-outside">SR competition website URL<input name="srExternalUrl" maxlength="500"></label>
-          <label data-option-for="sr-outside">SR maximum leaderboard teams<input name="srMaxTeams" type="number" min="1" max="32"></label>
-          <label data-option-for="sr-outside">SR maximum knockout rounds<input name="srMaxKnockoutRounds" type="number" min="1" max="12"></label>
-          <label data-option-for="sr-outside">SR page rotation interval (seconds)<input name="srRotationSeconds" type="number" min="5" max="120"></label>
-          <label data-option-for="sr-staging">SR staging corner order (0-3, clockwise)<input name="srStagingCornerOrder" maxlength="15"></label>
-          <label class="toggle-control" data-option-for="sr-outside"><input type="checkbox" name="srHideLeaderboard"> Hide leaderboard page</label>
-          <label class="toggle-control" data-option-for="sr-outside"><input type="checkbox" name="srHideSchedule"> Hide schedule page</label>
-          <label class="toggle-control" data-option-for="sr-outside"><input type="checkbox" name="srHideKnockout"> Hide knockout page</label>
-        </div>
-      </fieldset>
-      <fieldset class="wide staging-config" data-option-for="sr-shepherding,sr-staging">
-        <legend>Shepherding &amp; staging control panel</legend>
-        <p class="subtle">Choose how much recent match history remains visible and when staging closes after the previous match starts. These staging times are calculated from the preceding match’s actual start, or its scheduled start until it begins. Corner colours come from Arena position colour settings.</p>
-        <div class="display-options">
-          <label data-option-for="sr-shepherding">Past matches to keep visible<input name="srShepherdingPastMatches" type="number" min="0" max="5" value="1"></label>
-          <label>Close staging after previous match starts (minutes)<input name="srStagingCloseOffsetMinutes" type="number" min="0" max="30" value="5"></label>
-        </div>
-      </fieldset>
+      <p class="subtle type-description" id="display-config-type"></p>
+      <div id="display-config-options"></div>
       <div class="actions" style="justify-content:flex-end;margin-top:1rem">
         <button type="button" class="secondary" data-close="display-config-dialog">Cancel</button>
         <button>Save display settings</button>
@@ -300,6 +274,20 @@
       </div>
       <div class="actions" style="justify-content:flex-end;margin-top:1rem">
         <button type="button" class="secondary" data-close="delay-dialog">Cancel</button><button>Apply delay</button>
+      </div>
+    </form>
+  </dialog>
+  <dialog id="delay-all-dialog">
+    <form id="delay-all-form">
+      <h2>Delay all upcoming matches</h2>
+      <p class="subtle">Moves every league match and playoff heat that has not started (and is not counting down) later by the same amount, keeping their spacing. Timed events such as lunch stay where they are; anything that would overlap them moves past them.</p>
+      <div class="form-grid">
+        <label>Delay in minutes<input name="minutes" type="number" min="1" max="1440" value="5" required></label>
+        <label>Arena<select name="arenaName"></select></label>
+        <label class="wide">Reason<input name="reason" maxlength="500" required placeholder="e.g. field repair"></label>
+      </div>
+      <div class="actions" style="justify-content:flex-end;margin-top:1rem">
+        <button type="button" class="secondary" data-close="delay-all-dialog">Cancel</button><button>Delay upcoming matches</button>
       </div>
     </form>
   </dialog>
@@ -555,16 +543,18 @@ function formatDelay(seconds) {
 }
 function matchRows(source=matches, actions=false, edit=false) {
   return source.map(m => {
-    const playoffTag=m.isPlayoff?`<br><span class="badge warn">PLAYOFF · ${h(m.bracket_side)} round ${h(m.round_number)}</span>`:'';
+    const playoffTag=m.isPlayoff?`<br><span class="badge warn">PLAYOFF · ${h(playoffSideLabel(m.bracket_side,m.bracket_format))}${m.bracket_side==='final'?'':` round ${h(m.round_number)}`}</span>`:'';
+    const heatDelayControls=m.isPlayoff&&['scheduled','ready'].includes(m.state)&&!m.countdown_started_at
+      ?`<button class="secondary" data-action="heat-delay" data-id="${h(m.id)}">Add delay</button>${Number(m.delay_seconds)>0?`<button class="secondary" data-action="heat-undelay" data-id="${h(m.id)}">Reduce delay</button>`:''}`:'';
     const playoffCanScore=m.isPlayoff&&['awaiting_score','complete'].includes(m.state);
     const controls=m.isPlayoff
       ?actions?`<td><div class="match-actions">${m.state==='ready'?`<button data-action="${m.countdown_started_at?'playoff-cancel-start':'playoff-start'}" data-id="${h(m.id)}">${m.countdown_started_at?'Cancel countdown':'Start now'}</button>`:''}${m.state==='running'?`<button class="secondary" data-action="playoff-pause" data-id="${h(m.id)}">Pause</button><button data-action="playoff-finish" data-id="${h(m.id)}">Finish</button><button class="danger" data-action="playoff-reset-timer" data-id="${h(m.id)}">Reset timer</button>`:''}${m.state==='paused'?`<button class="secondary" data-action="playoff-resume" data-id="${h(m.id)}">Resume</button><button data-action="playoff-finish" data-id="${h(m.id)}">Finish</button><button class="danger" data-action="playoff-reset-timer" data-id="${h(m.id)}">Reset timer</button>`:''}${m.state==='awaiting_score'?`<button class="danger" data-action="playoff-reset-timer" data-id="${h(m.id)}">Reset timer</button>`:''}${playoffCanScore
         ?`<button class="secondary" data-action="playoff-score" data-id="${h(m.id)}">${m.has_scores?'Correct score':'Enter score'}</button>`
-        :m.state==='pending'?'<span class="subtle">Waiting for prior results</span>':''}</div></td>`:''
+        :m.state==='pending'?'<span class="subtle">Waiting for prior results</span>':''}${heatDelayControls}</div></td>`:''
       :edit?`<td><div class="match-actions">${['scheduled','ready','delayed'].includes(m.state)?`<button class="secondary" data-action="edit-schedule" data-id="${h(m.id)}">Edit</button>`:''}${!['running','paused'].includes(m.state)?`<button class="danger" data-action="delete-match" data-id="${h(m.id)}">Delete</button>`:''}</div></td>`
       :actions?`<td><div class="match-actions">${['scheduled','ready','delayed'].includes(m.state)?`<button data-action="${m.countdown_started_at?'cancel-start':'start'}" data-id="${h(m.id)}">${m.countdown_started_at?'Cancel countdown':'Start'}</button>`:''}${m.state==='running'?`<button class="secondary" data-action="pause" data-id="${h(m.id)}">Pause</button><button data-action="finish" data-id="${h(m.id)}">Finish</button><button class="danger" data-action="reset-match" data-id="${h(m.id)}">Reset timer</button>`:''}${m.state==='paused'?`<button class="secondary" data-action="resume" data-id="${h(m.id)}">Resume</button><button class="danger" data-action="reset-match" data-id="${h(m.id)}">Reset timer</button>`:''}${m.state==='awaiting_score'?`<button class="secondary" data-action="score" data-id="${h(m.id)}">${m.has_scores?'Correct score':'Enter score'}</button><button class="danger" data-action="reset-match" data-id="${h(m.id)}">Reset timer</button>`:''}${['scheduled','ready','delayed'].includes(m.state)&&!m.countdown_started_at?`<button class="secondary" data-action="delay" data-id="${h(m.id)}">Add delay</button>${Number(m.delay_seconds)>0?`<button class="secondary" data-action="undelay" data-id="${h(m.id)}">Reduce delay</button>`:''}`:''}${m.state==='complete'?`<button class="secondary" data-action="score" data-id="${h(m.id)}">${m.has_scores?'Correct score':'Enter score'}</button>`:''}</div></td>`:'';
     const fill=m.isPlayoff
-      ?`<span class="badge ${m.state==='pending'?'warn':'good'}">${h(m.team_count)}/${h(m.entrant_count)} teams assigned</span>`
+      ?`<span class="badge ${m.state==='pending'?'warn':'good'}">${h(m.team_count)}/${h(m.entrant_count)} teams assigned</span>${Number(m.delay_seconds)>0?` <span class="badge warn">Delayed by ${h(formatDelay(m.delay_seconds))}</span>`:''}`
       :`${m.underfilled?`<span class="badge warn">UNDERFILLED ${h(m.team_count)}/4</span>`:'<span class="badge good">4 teams</span>'}${Number(m.delay_seconds)>0?` <span class="badge warn">Delayed by ${h(formatDelay(m.delay_seconds))}</span>`:''}`;
     return `<tr><td><strong>#${h(m.match_number)}</strong>${playoffTag}<br><span class="subtle">${h(m.arena_name)}</span></td>
       <td>${h(formatCompetitionDateTime(m.effective_start))}<br><span class="badge">${h(m.state.replaceAll('_',' '))}</span>${m.has_scores?` <span class="badge good">Score entered</span>`:''}${m.countdown_started_at?` <span class="badge warn" data-countdown="${h(new Date(m.countdown_started_at).getTime())}"></span>`:''}${m.actual_start?`<br><span class="match-clock" data-clock data-state="${h(m.state)}" data-start="${h(new Date(m.actual_start).getTime())}" data-paused="${h(m.paused_at?new Date(m.paused_at).getTime():'')}" data-paused-seconds="${h(m.paused_seconds)}" data-duration="${h(m.duration_seconds)}"></span>`:''}</td>
@@ -601,6 +591,88 @@ function scheduleMatchRow(match) {
 function positionEditor(index) {
   return `<label>Position ${index-1}<select name="team${index}">${teamOptions()}</select></label>`;
 }
+const PLAYOFF_FORMAT_HELP={
+  'double-elimination':'Finish below the advancing places once and you drop to the lower bracket; a second loss eliminates you. The final brings together the upper- and lower-bracket survivors.',
+  'single-elimination':'Finish below the advancing places in any heat and you are out. Heat winners progress round by round until the final.',
+  'direct-final':'No knockout rounds: the top league teams play a single final heat.'
+};
+function playoffFormatLabel(format) {
+  return {'double-elimination':'Double elimination','single-elimination':'Single elimination','direct-final':'Straight to the final'}[format]||format||'Double elimination';
+}
+function ordinal(value) {
+  const number=Number(value);
+  return number+(['th','st','nd','rd'][(number%100-20)%10]||['th','st','nd','rd'][number%100]||'th');
+}
+function playoffSideLabel(side,format) {
+  return side==='final'?'Final':side==='lower'?'Lower bracket':format==='double-elimination'?'Upper bracket':'Knockout';
+}
+let playoffPreviewTimer=null;
+let playoffPreviewRequest=0;
+function updatePlayoffPreview(form) {
+  clearTimeout(playoffPreviewTimer);
+  playoffPreviewTimer=setTimeout(async()=>{
+    const box=$('playoff-preview');
+    if(!box||!form.isConnected)return;
+    const values=formData(form);
+    const request=++playoffPreviewRequest;
+    const params=new URLSearchParams({fieldSize:values.fieldSize||'0',format:values.format,finalSize:values.finalSize,finalByes:values.finalByes});
+    try{
+      const preview=await api(`/api/admin/playoff-formats/preview?${params}`);
+      if(request!==playoffPreviewRequest)return;
+      const by=side=>preview.heats.filter(heat=>heat.side===side);
+      const rounds=side=>new Set(by(side).map(heat=>heat.round)).size;
+      const final=by('final')[0];
+      const parts=[`<strong>${preview.heats.length} heat${preview.heats.length===1?'':'s'}</strong> across ${preview.stages} stage${preview.stages===1?'':'s'}`];
+      if(by('upper').length)parts.push(`${by('upper').length} ${values.format==='double-elimination'?'upper-bracket':'knockout'} heat(s) in ${rounds('upper')} round(s)`);
+      if(by('lower').length)parts.push(`${by('lower').length} lower-bracket heat(s) in ${rounds('lower')} round(s)`);
+      const finalEntrants=(final?.sources||[]).map(source=>source.startsWith('seed:')?`seed ${source.slice(5)}`:`${ordinal(source.split(':')[1])} of heat ${source.split(':')[2]}`);
+      box.classList.remove('error');
+      box.innerHTML=`${parts.join(' · ')}<br>Final (${finalEntrants.length} teams): ${h(finalEntrants.join(', '))}<br>${h(PLAYOFF_FORMAT_HELP[values.format]||'')}${Number(values.finalByes)&&values.format!=='direct-final'?` The top ${h(values.finalByes)} league seed(s) skip the knockout and go straight to the final.`:''}`;
+      $('playoff-submit')?.removeAttribute('disabled');
+    }catch(error){
+      if(request!==playoffPreviewRequest)return;
+      box.classList.add('error');
+      box.textContent=error.message||'These options cannot produce a bracket.';
+      $('playoff-submit')?.setAttribute('disabled','');
+    }
+  },150);
+}
+function bracketBoardHtml() {
+  const bracket=playoffData.bracket;
+  if(!bracket||!playoffData.matches?.length)return '';
+  const byId=new Map(playoffData.matches.map(match=>[match.id,match]));
+  const stageCount=Math.max(...playoffData.matches.map(match=>Number(match.stage)||1));
+  const codes=match=>[match.team_one_code,match.team_two_code,match.team_three_code,match.team_four_code];
+  const describe=source=>{
+    if(source.startsWith('seed:'))return `Seed ${source.slice(5)}`;
+    const [,place,id]=source.split(':');
+    return `${ordinal(place)} of #${byId.get(id)?.match_number??'?'}`;
+  };
+  const card=match=>{
+    const teams=codes(match);
+    const scores=Array.isArray(match.scores)?match.scores:[];
+    const entrants=(match.sources||[]).map((source,index)=>({source,code:teams[index]})).filter(entry=>entry.source!=='bye');
+    const list=match.status==='complete'&&scores.length
+      ?scores.map(score=>`<li><strong>${h(score.teamCode)}</strong> · ${h(score.points)} pts</li>`).join('')
+      :entrants.map(entry=>`<li>${entry.code?`<strong>${h(entry.code)}</strong>`:''} <span class="source">${entry.code&&entry.source.startsWith('seed:')?'':h(describe(entry.source))}</span></li>`).join('');
+    const state=match.status==='complete'?'<span class="badge good">Result in</span>'
+      :match.timer_state&&match.timer_state!=='scheduled'?`<span class="badge warn">${h(match.timer_state.replaceAll('_',' '))}</span>`
+      :match.status==='ready'?'<span class="badge">Ready</span>':'<span class="badge">Waiting</span>';
+    const advance=match.bracket_side!=='final'&&match.advancing_places?`<div class="subtle">Top ${h(match.advancing_places)} progress${bracket.format==='double-elimination'&&match.bracket_side==='upper'?'; others drop to the lower bracket':'; others are out'}</div>`:'';
+    return `<article class="heat-card" data-side="${h(match.bracket_side)}"><header><span>#${h(match.match_number)} · ${h(playoffSideLabel(match.bracket_side,bracket.format))}</span>${state}</header>
+      <div class="subtle">${h(formatCompetitionDateTime(match.effective_start))} · ${h(match.arena_name)}${Number(match.delay_seconds)>0?` · +${h(formatDelay(match.delay_seconds))}`:''}</div>
+      <ol>${list}</ol>${advance}</article>`;
+  };
+  const columns=Array.from({length:stageCount},(_,index)=>{
+    const heats=playoffData.matches.filter(match=>(Number(match.stage)||1)===index+1).sort((a,b)=>a.match_number-b.match_number);
+    const label=heats.every(match=>match.bracket_side==='final')?'Final':`Stage ${index+1}`;
+    return `<div class="bracket-stage"><h3>${label}</h3>${heats.map(card).join('')}</div>`;
+  }).join('');
+  const teamRows=(playoffData.teams||[]).map(team=>`<tr><td>${h(team.seed)}</td><td><strong>${h(team.code)}</strong></td><td>${h(team.name)}</td><td>${h(team.losses)}</td><td>${team.eliminated?'<span class="badge warn">Eliminated</span>':'<span class="badge good">Still in</span>'}</td></tr>`);
+  return `<section class="card" style="margin-top:1rem"><div class="section-title"><h2>Playoff bracket</h2><span class="badge">${h(playoffFormatLabel(bracket.format))}</span></div>
+    <div class="bracket-board">${columns}</div>
+    <details style="margin-top:.6rem"><summary>Team progress</summary>${table(['Seed','Code','Team','Losses','Status'],teamRows,'No playoff entrants.')}</details></section>`;
+}
 async function schedulePage() {
   playoffData=slug()?await api(`/api/admin/competitions/${encodeURIComponent(slug())}/playoffs`):{bracket:null,matches:[],teams:[]};
   const nextNumber = matches.reduce((n,m)=>Math.max(n,Number(m.match_number)),0)+1;
@@ -610,6 +682,8 @@ async function schedulePage() {
   const fieldSizes=Array.from({length:Math.max(0,activeTeamCount-1)},(_,index)=>index+2);
   const fieldSize=activeTeamCount;
   const intervalMinutes=Math.max(1,Math.ceil(Number(compOption()?.match_duration_seconds||120)/60));
+  const leagueArenas=[...new Set(matches.filter(match=>!match.isPlayoff).map(match=>match.arena_name))];
+  const defaultArenas=(leagueArenas.length?leagueArenas:['Arena 1']).join(', ');
   const playoffStart=new Date(Math.ceil(Math.max(nextStart.getTime(),...matches.map(match=>
     new Date(match.effective_start).getTime()+Number(match.duration_seconds||120)*1000))/60000)*60000);
   const eventRows=scheduleEvents.map(event=>{
@@ -658,23 +732,32 @@ async function schedulePage() {
       <label class="wide">Description<input name="description" maxlength="1000"></label>
       <div class="wide"><button id="event-submit">Add event</button><button id="event-cancel" type="button" data-action="cancel-event-edit" class="secondary hidden">Cancel edit</button></div>
     </form></section>
-    <section class="card" style="margin-top:1rem"><h2>${playoffData.bracket?'Replace scheduled playoffs':'Schedule playoff heats'}</h2>
+    ${bracketBoardHtml()}
+    <section class="card" style="margin-top:1rem"><h2>${playoffData.bracket?'Replace scheduled playoffs':'Schedule playoffs after the league'}</h2>
       ${seedBracket?`<div role="status" style="margin:.8rem 0 1rem;padding:.8rem 1rem;border-left:5px solid ${seedSnapshotAvailable?'var(--good,#16804a)':'var(--warn,#b66a00)'};background:var(--surface,#f2f5f4)">
         <strong>${seedBracket.seed_frozen_at?'Frozen playoff seeding snapshot':'Current playoff seeding snapshot'}</strong>
         <span> · ${seedSnapshotDescription}</span>
         <a href="${seedCheckUrl}" style="display:inline-block;margin-left:.5rem">Open standings sanity check</a>
       </div>`:''}
-      <p class="subtle">Choose any field size from 2 up to all active teams; the default includes every active team. Heats use four teams where possible, with 2- or 3-team heats when needed so odd and non-power-of-four fields can progress without dropping anyone. Top two advance in 3- and 4-team heats; in a 2-team heat, the winner advances. The remaining team(s) take a loss, and teams with two losses are out. Later team slots fill automatically from prior heat placings. The final four are ranked 1st–4th; for a field smaller than four, the final heat ranks the entrants available. Ties are settled by league standing. Playoff seeds and entrants update with the latest standings until the first playoff countdown starts, then freeze to protect the bracket. Playoff scores do not affect league points.</p>
-      <p class="subtle">Choose when the first heat starts, the minutes between heat slots, and an optional extra buffer before the final. Heats are shifted around custom events. If a result is entered late, later heats move forward as needed while retaining their planned gaps and the extra final buffer.</p>
+      <p class="subtle">Choose how teams get from the league to the final. Every heat has two to four robots; seeds are spread across first-round heats and nobody gets a single-team bye. Seeds follow the live league table until the first playoff countdown, then freeze. Ties in a heat are settled by league seed, and playoff points never change league standings.</p>
       <form id="playoff-form" data-replace="${playoffData.bracket?'true':'false'}" class="form-grid cols-3">
+        <label>Route to the final<select name="format">
+          <option value="double-elimination">Double elimination</option>
+          <option value="single-elimination">Single elimination knockout</option>
+          <option value="direct-final">Straight to the final</option>
+        </select></label>
         <label>Playoff entrants<select name="fieldSize" ${fieldSizes.length?'':'disabled'}>${fieldSizes.map(size=>`<option value="${size}" ${size===fieldSize?'selected':''}>Top ${size} teams</option>`).join('')}</select></label>
+        <label>Teams in the final<select name="finalSize"><option value="4" selected>4 teams</option><option value="3">3 teams</option><option value="2">2 teams (head-to-head)</option></select></label>
+        <label>Top seeds straight to the final<select name="finalByes"><option value="0" selected>None</option><option value="1">League winner</option><option value="2">Top 2 seeds</option><option value="3">Top 3 seeds</option></select></label>
         <label>First playoff heat<input name="scheduledStart" type="datetime-local" value="${toLocalDate(playoffStart)}" required></label>
-        <label>Arena<input name="arenaName" value="Arena 1" required></label>
+        <label>Arenas (comma-separated)<input name="arenaNames" value="${h(defaultArenas)}" required></label>
         <label>Minutes between heats<input name="intervalMinutes" type="number" min="${intervalMinutes}" max="1440" value="${intervalMinutes}" required></label>
         <label>Extra delay before final (minutes)<input name="finalDelayMinutes" type="number" min="0" max="1440" value="0" required></label>
-        <div class="wide"><button ${fieldSizes.length?'':'disabled'}>${playoffData.bracket?'Replace and reschedule':'Generate and schedule playoff heats'}</button></div>
+        <div class="wide preview-box subtle" id="playoff-preview" aria-live="polite">Choose options to preview the bracket.</div>
+        <p class="subtle wide">With several arenas, independent heats run side by side; a heat never starts until the heats feeding it have finished and been scored, plus the gap. If anything runs late, later heats move automatically, keeping their gaps and the final buffer.</p>
+        <div class="wide"><button id="playoff-submit" ${fieldSizes.length?'':'disabled'}>${playoffData.bracket?'Replace and reschedule':'Generate and schedule playoffs'}</button></div>
       </form>
-      ${playoffData.bracket?`<p class="subtle" style="margin-top:1rem">Current bracket: top ${h(playoffData.bracket.field_size)} from standings · ${playoffData.bracket.seed_frozen_at?'seeds frozen when play began':'seeds update from the latest league standings until the first playoff countdown starts'} · ${h(playoffData.bracket.status)}. Replacing archives its progression and scores.</p>`:''}
+      ${playoffData.bracket?`<p class="subtle" style="margin-top:1rem">Current bracket: ${h(playoffFormatLabel(playoffData.bracket.format))} · top ${h(playoffData.bracket.field_size)} from standings · final of ${h(playoffData.bracket.final_size)}${Number(playoffData.bracket.final_byes)?` with ${h(playoffData.bracket.final_byes)} seeded bye(s)`:''} · ${playoffData.bracket.seed_frozen_at?'seeds frozen when play began':'seeds update from the latest league standings until the first playoff countdown starts'} · ${h(playoffData.bracket.status)}. Replacing archives its progression and scores.</p>`:''}
     </section>
     <section class="card" style="margin-top:1rem"><h2>Competition schedule</h2>${table(['Match','Time / status','Arena','Position 0','Position 1','Position 2','Position 3','Fill','Actions'],scheduleRows,'No matches or events scheduled.')}</section>
     <section class="card danger-card" style="margin-top:1rem"><div class="section-title"><h2>Clear schedule</h2><button class="danger" data-action="clear-schedule">Clear all scheduled content</button></div>
@@ -762,74 +845,125 @@ function arenaPage() {
     <section class="card"><label>Match<select id="arena-match">${matchesOptions}</select></label>
       ${current?`<div id="arena-position-view">${positionsHtml(current)}</div>${current.underfilled?`<p class="badge warn" style="margin-top:1rem">UNDERFILLED MATCH · ${h(current.team_count)}/4 positions</p>`:''}<p class="subtle">Position 0 starts at bottom-left; positions continue clockwise: 1 top-left, 2 top-right, 3 bottom-right.</p>`:'<div class="empty">No matches scheduled.</div>'}</section>`;
 }
+const DISPLAY_TYPES=[
+  ['league','League table','Live league standings with points and matches played.'],
+  ['schedule','Schedule','League matches, playoff heats and timed events in time order, with live delays.'],
+  ['results','Match points history','Every completed league match and playoff heat with the points each robot scored.'],
+  ['playoffs','Playoff bracket','The playoff bracket by stage: who meets whom, results, and who is still in.'],
+  ['arena','Arena diagram','The current or next match laid out on the arena, with a live clock.'],
+  ['timer','Match timer','Full-screen synchronized match clock with the arena and optional last result.'],
+  ['corner','Corner display','One arena corner: the team in that corner shown large, with the clock.'],
+  ['sr-arena','SR — Arena','Original SRComp arena screen.'],
+  ['sr-outside','SR — Outside','Original SRComp rotating outside screen: leaderboard, schedule and knockout.'],
+  ['sr-producer','SR — Producer','Original SRComp producer screen for streaming and commentary.'],
+  ['sr-shepherding','SR — Shepherding','Original SRComp shepherding board for collecting teams.'],
+  ['sr-staging','SR — Staging','Original SRComp staging board showing who should be queuing.']
+];
+const LIVE_DISPLAY_TYPES=['arena','timer','corner','sr-arena','sr-producer'];
+const BOARD_DISPLAY_TYPES=['league','schedule','results','playoffs','arena','timer'];
+const SR_FILTER_TYPES=['sr-arena','sr-producer','sr-shepherding','sr-staging'];
+const secondsOptions=(max)=>Array.from({length:max},(_,index)=>[index+1,`${index+1} second${index?'s':''}`]);
+const DISPLAY_OPTION_GROUPS=[
+  {title:'Layout',fields:[
+    {name:'showTitle',kind:'check',label:'Show title and competition heading',def:true,types:BOARD_DISPLAY_TYPES},
+    {name:'darkTheme',kind:'check',label:'Dark theme',def:false,types:BOARD_DISPLAY_TYPES},
+    {name:'showArena',kind:'check',label:'Show arena name',def:true,types:['schedule','arena','timer']},
+    {name:'fillCorners',kind:'check',label:'Fill corner squares with their colour',def:false,types:['arena']},
+    {name:'showTeamNames',kind:'check',label:'Show team names',def:true,types:['arena']},
+    {name:'showPositionNumbers',kind:'check',label:'Show position numbers',def:true,types:['arena']},
+    {name:'showPreviousResults',kind:'check',label:'Show the previous match’s scores at the bottom',def:false,types:['timer']}
+  ]},
+  {title:'Corner',fields:[
+    {name:'cornerPosition',kind:'select',label:'Corner position',def:0,types:['corner','sr-arena'],options:[[0,'Position 0 · bottom-left'],[1,'Position 1 · top-left'],[2,'Position 2 · top-right'],[3,'Position 3 · bottom-right']]},
+    {name:'fillCornerDisplay',kind:'check',label:'Use the corner colour as the background',def:true,types:['corner']},
+    {name:'showCornerPositionNumber',kind:'check',label:'Show the corner number in the background',def:true,types:['corner']},
+    {name:'showCornerTeamName',kind:'check',label:'Show team name below the code',def:true,types:['corner']}
+  ]},
+  {title:'Schedule',fields:[
+    {name:'hideCompletedMatches',kind:'check',label:'Hide completed matches',def:false,types:['schedule']},
+    {name:'hideCompletedEvents',kind:'check',label:'Hide finished events',def:false,types:['schedule']},
+    {name:'enableTeamFilter',kind:'check',label:'Show a team filter',def:false,types:['schedule']},
+    {name:'relativeTime',kind:'check',label:'Show “in 5 minutes” instead of clock times',def:false,types:['schedule']},
+    {name:'hideScheduleArena',kind:'check',label:'Hide the arena column',def:false,types:['schedule']}
+  ]},
+  {title:'Start and end cues',description:'Full-screen, server-synchronized GET READY → 3-2-1 → GO and END screens shared by every live display.',fields:[
+    {name:'showStartCue',kind:'check',label:'Show the GET READY / 3-2-1 / GO cue',def:false,types:LIVE_DISPLAY_TYPES},
+    {name:'flashCountdownNumbers',kind:'check',label:'Flash alternate countdown numbers',def:false,types:LIVE_DISPLAY_TYPES},
+    {name:'countdownBackgroundColor',kind:'color',label:'Countdown background',def:'#a21f24',types:LIVE_DISPLAY_TYPES},
+    {name:'countdownFlashColor',kind:'color',label:'Alternate flash background',def:'#ffffff',types:LIVE_DISPLAY_TYPES},
+    {name:'cueDurationSeconds',kind:'select',label:'Show GO for',def:2,types:LIVE_DISPLAY_TYPES,options:secondsOptions(5)},
+    {name:'goBackgroundColor',kind:'color',label:'GO background',def:'#167847',types:LIVE_DISPLAY_TYPES},
+    {name:'showEndCountdown',kind:'check',label:'Count down the final seconds full-screen',def:false,types:LIVE_DISPLAY_TYPES},
+    {name:'endCountdownSeconds',kind:'number',label:'Final countdown starts at (seconds)',def:10,min:1,max:60,types:LIVE_DISPLAY_TYPES},
+    {name:'showEndCue',kind:'check',label:'Show END when the timer reaches zero',def:false,types:LIVE_DISPLAY_TYPES},
+    {name:'endCueDurationSeconds',kind:'select',label:'Show END for',def:3,types:LIVE_DISPLAY_TYPES,options:secondsOptions(10)},
+    {name:'endBackgroundColor',kind:'color',label:'END background',def:'#b3131b',types:LIVE_DISPLAY_TYPES}
+  ]},
+  {title:'SRComp screen',fields:[
+    {name:'srArenaName',kind:'text',label:'Only show this arena (blank for all)',def:'',max:120,types:SR_FILTER_TYPES},
+    {name:'srMaxTeams',kind:'number',label:'Leaderboard teams',def:6,min:1,max:32,types:['sr-outside']},
+    {name:'srMaxKnockoutRounds',kind:'number',label:'Knockout stages shown',def:5,min:1,max:12,types:['sr-outside']},
+    {name:'srRotationSeconds',kind:'number',label:'Seconds per page',def:15,min:5,max:120,types:['sr-outside']},
+    {name:'srHideLeaderboard',kind:'check',label:'Hide leaderboard page',def:false,types:['sr-outside'],special:true},
+    {name:'srHideSchedule',kind:'check',label:'Hide schedule page',def:false,types:['sr-outside'],special:true},
+    {name:'srHideKnockout',kind:'check',label:'Hide knockout page',def:false,types:['sr-outside'],special:true},
+    {name:'srExternalUrl',kind:'text',label:'Competition website link (optional)',def:'',max:500,types:['sr-outside']},
+    {name:'srStagingCornerOrder',kind:'text',label:'Corner order (0-3, comma-separated)',def:'0,3,2,1',max:15,types:['sr-staging'],special:true},
+    {name:'srShepherdingPastMatches',kind:'number',label:'Past matches kept visible',def:1,min:0,max:5,types:['sr-shepherding']},
+    {name:'srStagingCloseOffsetMinutes',kind:'number',label:'Close staging this many minutes after the previous match starts',def:5,min:0,max:30,types:['sr-shepherding','sr-staging']}
+  ]}
+];
+const DISPLAY_OPTION_FIELDS=DISPLAY_OPTION_GROUPS.flatMap(group=>group.fields);
+function displayOptionFieldsHtml() {
+  return DISPLAY_OPTION_GROUPS.map(group=>`<fieldset class="option-group" data-option-group><legend>${h(group.title)}</legend>${group.description?`<p class="subtle">${h(group.description)}</p>`:''}<div class="display-options">${group.fields.map(field=>{
+    const types=`data-option-types="${field.types.join(',')}"`;
+    if(field.kind==='check')return `<label class="toggle-control" ${types}><input type="checkbox" name="${field.name}" ${field.def?'checked':''}> ${h(field.label)}</label>`;
+    if(field.kind==='select')return `<label ${types}>${h(field.label)}<select name="${field.name}">${field.options.map(([value,label])=>`<option value="${h(value)}" ${value===field.def?'selected':''}>${h(label)}</option>`).join('')}</select></label>`;
+    if(field.kind==='number')return `<label ${types}>${h(field.label)}<input type="number" name="${field.name}" min="${field.min}" max="${field.max}" value="${h(field.def)}"></label>`;
+    if(field.kind==='color')return `<label ${types}>${h(field.label)}<input type="color" name="${field.name}" value="${h(field.def)}"></label>`;
+    return `<label ${types}>${h(field.label)}<input name="${field.name}" maxlength="${field.max}" value="${h(field.def)}"></label>`;
+  }).join('')}</div></fieldset>`).join('');
+}
+function fillDisplayOptionForm(form,options) {
+  for(const field of DISPLAY_OPTION_FIELDS){
+    const element=form.elements[field.name];
+    if(!element)continue;
+    let value=options[field.name]??field.def;
+    if(field.name.startsWith('srHide'))value=(options.srHideOutsidePages||[]).includes(field.name.slice(6).toLowerCase());
+    if(field.name==='srStagingCornerOrder')value=(options.srStagingCornerOrder||[0,3,2,1]).join(',');
+    if(field.kind==='check')element.checked=Boolean(value);
+    else element.value=String(value);
+  }
+}
 async function displaysPage() {
   const displays=slug()?await api(`/api/admin/competitions/${encodeURIComponent(slug())}/displays`):[];
   displayRecords=displays;
-  const types=[
-    ['league','League table'],['schedule','Schedule'],['results','Match points history'],
-    ['arena','Arena diagram'],['timer','Match timer'],['corner','Corner display'],
-    ['sr-arena','SR — Arena'],['sr-outside','SR — Outside'],['sr-producer','SR — Producer'],
-    ['sr-shepherding','SR — Shepherding'],['sr-staging','SR — Staging']
-  ];
-  const typeLabels=new Map(types);
-  const rows=displays.map(d=>{
+  const typeInfo=new Map(DISPLAY_TYPES.map(([value,label,description])=>[value,{label,description}]));
+  const typeOrder=new Map(DISPLAY_TYPES.map(([value],index)=>[value,index]));
+  const rows=[...displays].sort((left,right)=>(typeOrder.get(left.display_type)??99)-(typeOrder.get(right.display_type)??99)||left.title.localeCompare(right.title)).map(d=>{
     const url=`${location.origin}/display/${encodeURIComponent(d.slug)}`;
-    const type=d.display_type;
-    return `<tr><td><strong>${h(d.title)}</strong><br><span class="subtle">${h(typeLabels.get(type)||type)}</span></td><td><code>${h(d.slug)}</code></td><td><a href="${h(url)}" target="_blank">${h(url)}</a><br><button class="secondary" data-action="copy" data-copy="${h(url)}">Copy URL</button></td><td><span class="badge ${d.enabled?'good':'warn'}">${d.enabled?'Enabled':'Disabled'}</span></td>    <td><div class="actions"><button class="secondary" data-action="configure-display" data-id="${h(d.id)}">Configure</button><button class="secondary" data-action="toggle-display" data-id="${h(d.id)}" data-enabled="${d.enabled}">${d.enabled?'Disable':'Enable'}</button><button class="secondary" data-action="copy" data-copy='<iframe src="${h(url)}" title="${h(d.title)}" width="100%" height="600" loading="lazy"></iframe>'>Copy embed</button><button class="danger" data-action="delete-display" data-id="${h(d.id)}">Delete</button></div></td></tr>`;
+    const info=typeInfo.get(d.display_type)||{label:d.display_type,description:''};
+    return `<tr><td><strong>${h(d.title)}</strong><br><span class="subtle">${h(info.label)}</span></td>
+      <td><a href="${h(url)}" target="_blank" rel="noopener">/display/${h(d.slug)}</a><br><a class="subtle" href="/api/public/display/${encodeURIComponent(d.slug)}" target="_blank" rel="noopener">JSON</a></td>
+      <td><span class="badge ${d.enabled?'good':'warn'}">${d.enabled?'Enabled':'Disabled'}</span></td>
+      <td><div class="match-actions display-actions"><a class="button-link" href="${h(url)}" target="_blank" rel="noopener">Open</a><button class="secondary" data-action="configure-display" data-id="${h(d.id)}">Configure</button><button class="secondary" data-action="copy" data-copy="${h(url)}">Copy URL</button><button class="secondary" data-action="copy" data-copy='<iframe src="${h(url)}" title="${h(d.title)}" width="100%" height="600" loading="lazy"></iframe>'>Copy embed</button><button class="secondary" data-action="toggle-display" data-id="${h(d.id)}" data-enabled="${d.enabled}">${d.enabled?'Disable':'Enable'}</button><button class="danger" data-action="delete-display" data-id="${h(d.id)}">Delete</button></div></td></tr>`;
   });
-  return `${heading('Public displays','Create shareable pages and embeddable competition outputs.')}
-    <section class="card"><h2>Create display</h2><form id="display-form" class="form-grid cols-3">
-      <label>Title<input name="title" maxlength="120" required></label><label>URL slug<input name="slug" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" maxlength="80" required></label>
-      <label>Display type<select name="type">${types.map(([v,n])=>`<option value="${v}">${n}</option>`).join('')}</select></label>
-      <fieldset class="wide"><legend>Board options</legend><div class="display-options">
-        <label class="toggle-control" data-option-except="corner"><input type="checkbox" name="showTitle" checked> Show title and competition heading</label>
-        <label class="toggle-control" data-option-types="schedule,arena,timer,sr-arena,sr-producer,sr-staging"><input type="checkbox" name="showArena" checked> Show arena name</label>
-        <label class="toggle-control" data-option-types="arena,sr-arena"><input type="checkbox" name="fillCorners"> Fill corner squares with assigned colours</label>
-        <label class="toggle-control" data-option-types="arena,sr-arena"><input type="checkbox" name="showTeamNames" checked> Show team names</label>
-        <label class="toggle-control" data-option-types="arena,sr-arena"><input type="checkbox" name="showPositionNumbers" checked> Show position numbers</label>
-        <label class="toggle-control" data-option-for="corner"><input type="checkbox" name="fillCornerDisplay" checked> Use the corner colour as the full-screen background</label>
-        <label class="toggle-control" data-option-for="corner"><input type="checkbox" name="showCornerPositionNumber" checked> Show the corner number in the background</label>
-        <label class="toggle-control" data-option-for="corner"><input type="checkbox" name="showCornerTeamName" checked> Show team name below the code</label>
-        <label class="toggle-control" data-option-except="corner"><input type="checkbox" name="darkTheme"> Use dark theme for this display</label>
-        <label class="toggle-control" data-option-types="schedule,sr-staging"><input type="checkbox" name="hideCompletedEvents"> Hide completed events from schedule display</label>
-        <label class="toggle-control" data-option-types="schedule,sr-staging"><input type="checkbox" name="hideCompletedMatches"> Hide completed matches from schedule display</label>
-        <label class="toggle-control" data-option-types="schedule,sr-staging"><input type="checkbox" name="enableTeamFilter"> Show team filter dropdown</label>
-        <label class="toggle-control" data-option-types="schedule,sr-staging"><input type="checkbox" name="relativeTime"> Replace time with time until / since match</label>
-        <label class="toggle-control" data-option-types="schedule,sr-staging"><input type="checkbox" name="hideScheduleArena"> Hide arena column</label>
-        <label data-option-for="corner">Corner position<select name="cornerPosition"><option value="0">Position 0 · bottom-left</option><option value="1">Position 1 · top-left</option><option value="2">Position 2 · top-right</option><option value="3">Position 3 · bottom-right</option></select></label>
-        <label class="toggle-control" data-option-types="arena,timer,corner,sr-arena,sr-producer"><input type="checkbox" name="showStartCue"> Show synchronized red 3-2-1 and green GO cue</label>
-        <label class="toggle-control" data-option-types="arena,timer,corner,sr-arena,sr-producer"><input type="checkbox" name="flashCountdownNumbers"> Flash alternate countdown numbers</label>
-        <label data-option-types="arena,timer,corner,sr-arena,sr-producer">Countdown background<input type="color" name="countdownBackgroundColor" value="#a21f24"></label>
-        <label data-option-types="arena,timer,corner,sr-arena,sr-producer">Alternate flash background<input type="color" name="countdownFlashColor" value="#ffffff"></label>
-        <label data-option-types="arena,timer,corner,sr-arena,sr-producer">Show GO for<select name="cueDurationSeconds"><option value="1">1 second</option><option value="2" selected>2 seconds</option><option value="3">3 seconds</option><option value="4">4 seconds</option><option value="5">5 seconds</select></label>
-        <label data-option-types="arena,timer,corner,sr-arena,sr-producer">GO screen background<input type="color" name="goBackgroundColor" value="#167847"></label>
-        <label class="toggle-control" data-option-types="arena,timer,corner,sr-arena,sr-producer"><input type="checkbox" name="showEndCue"> Show END when the match timer ends</label>
-        <label class="toggle-control" data-option-types="timer,sr-producer"><input type="checkbox" name="showPreviousResults"> Show previous match scores at the bottom</label>
-        <label data-option-types="arena,timer,corner,sr-arena,sr-producer">Show END for<select name="endCueDurationSeconds"><option value="1">1 second</option><option value="2">2 seconds</option><option value="3" selected>3 seconds</option><option value="4">4 seconds</option><option value="5">5 seconds</option><option value="6">6 seconds</option><option value="7">7 seconds</option><option value="8">8 seconds</option><option value="9">9 seconds</option><option value="10">10 seconds</option></select></label>
-        <label class="toggle-control" data-option-types="arena,timer,corner,sr-arena,sr-producer"><input type="checkbox" name="showEndCountdown"> Show countdown during final seconds</label>
-        <label data-option-types="arena,timer,corner,sr-arena,sr-producer">Final countdown starts at<input type="number" name="endCountdownSeconds" min="1" max="60" value="10"></label>
-        <label data-option-types="arena,timer,corner,sr-arena,sr-producer">END screen background<input type="color" name="endBackgroundColor" value="#b3131b"></label>
-        <label data-option-types="sr-arena,sr-producer,sr-shepherding,sr-staging">SR arena filter (blank for all)<input name="srArenaName" maxlength="120"></label>
-        <label data-option-for="sr-outside">SR competition website URL<input name="srExternalUrl" maxlength="500"></label>
-        <label data-option-for="sr-outside">SR maximum leaderboard teams<input name="srMaxTeams" type="number" min="1" max="32" value="6"></label>
-        <label data-option-for="sr-outside">SR maximum knockout rounds<input name="srMaxKnockoutRounds" type="number" min="1" max="12" value="5"></label>
-        <label data-option-for="sr-outside">SR page rotation interval (seconds)<input name="srRotationSeconds" type="number" min="5" max="120" value="15"></label>
-        <label data-option-for="sr-staging">SR staging corner order (0-3, clockwise)<input name="srStagingCornerOrder" value="0,3,2,1" maxlength="15"></label>
-        <label class="toggle-control" data-option-for="sr-outside"><input type="checkbox" name="srHideLeaderboard"> Hide leaderboard page</label>
-        <label class="toggle-control" data-option-for="sr-outside"><input type="checkbox" name="srHideSchedule"> Hide schedule page</label>
-        <label class="toggle-control" data-option-for="sr-outside"><input type="checkbox" name="srHideKnockout"> Hide knockout page</label>
-      </div><p class="subtle" style="margin:.75rem 0 0">Corner displays show the team code prominently, with optional team name and corner-colour background. Their synchronized clock labels whether it starts in or time is left. Timer, Arena and Corner screens show a synchronized two-second GET READY, then 3-2-1-GO; the background and optional alternating number flash are configurable.</p></fieldset>
-      <fieldset class="wide staging-config" data-option-for="sr-shepherding,sr-staging">
-        <legend>Shepherding &amp; staging control panel</legend>
-        <p class="subtle">Choose how much recent match history remains visible and when staging closes after the previous match starts. These staging times are calculated from the preceding match’s actual start, or its scheduled start until it begins. Corner colours come from Arena position colour settings.</p>
-        <div class="display-options">
-          <label data-option-for="sr-shepherding">Past matches to keep visible<input name="srShepherdingPastMatches" type="number" min="0" max="5" value="1"></label>
-          <label>Close staging after previous match starts (minutes)<input name="srStagingCloseOffsetMinutes" type="number" min="0" max="30" value="5"></label>
-        </div>
-      </fieldset>
-      <div class="wide"><button>Create public display</button></div>
-    </form></section>
-    <section class="card" style="margin-top:1rem"><h2>Configured displays</h2>${table(['Display','Slug','Public URL','Status','Actions'],rows,'No public displays yet.')}</section>`;
+  const competition=compOption();
+  const draftNotice=competition?.status==='draft'
+    ?`<section class="card" style="margin-bottom:1rem;border-top-color:var(--warning)"><div class="section-title"><h2>Displays are not public yet</h2><button data-action="publish">Publish competition</button></div><p class="subtle">Public display links return “not found” until the competition is published.</p></section>`:'';
+  return `${heading('Public displays','Shareable screens and embeddable outputs for the venue, stream and website.')}
+    ${draftNotice}
+    <section class="card"><h2>Configured displays</h2>${table(['Display','Link','Status','Actions'],rows,'No public displays yet. Create one below.')}</section>
+    <section class="card" style="margin-top:1rem"><h2>Create display</h2><form id="display-form">
+      <div class="form-grid cols-3">
+        <label>Display type<select name="type">${DISPLAY_TYPES.map(([value,label])=>`<option value="${value}">${h(label)}</option>`).join('')}</select></label>
+        <label>Title<input name="title" maxlength="120" required></label>
+        <label>URL slug<input name="slug" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" maxlength="80" required></label>
+      </div>
+      <p class="subtle type-description" id="display-type-description"></p>
+      ${displayOptionFieldsHtml()}
+      <div style="margin-top:1rem"><button>Create public display</button></div>
+    </form></section>`;
 }
 async function settingsPage() {
   if (!slug()) return `${heading('Settings')}<div class="card empty">Create or select a competition first.</div>`;
@@ -855,6 +989,25 @@ async function activityPage() {
   return `${heading('Activity','Recent administrative and system events.')}
     <section class="card">${table(['Time','Actor','Action','Details'],events.slice(0,100).map(e=>`<tr><td>${h(new Date(e.created_at).toLocaleString())}</td><td>${h(e.actor_email)}</td><td>${h(e.action)}</td><td>${h(JSON.stringify(e.details))}</td></tr>`),'No activity recorded.')}</section>`;
 }
+function scheduleHealthHtml(now) {
+  const future=matches.filter(match=>['scheduled','ready','delayed'].includes(match.state)&&!match.countdown_started_at)
+    .sort((left,right)=>new Date(left.effective_start)-new Date(right.effective_start));
+  const arenas=[...new Set(matches.filter(match=>!['complete','cancelled'].includes(match.state)).map(match=>match.arena_name))].sort();
+  if(!arenas.length)return '<div class="empty">Nothing left to run.</div>';
+  const pills=arenas.map(arena=>{
+    const next=future.filter(match=>match.arena_name===arena)[0];
+    if(!next)return `<span class="health-pill ok">${h(arena)} · nothing queued</span>`;
+    const scheduled=new Date(next.scheduled_start).getTime();
+    const effective=new Date(next.effective_start).getTime();
+    const overdue=Math.max(0,now-effective);
+    const behind=Math.max(0,Math.max(effective,now)-scheduled);
+    const label=`${next.isPlayoff?'Heat':'Match'} #${next.match_number}`;
+    if(overdue>=60000)return `<span class="health-pill late">${h(arena)} · ${label} overdue by ${h(formatDelay(Math.floor(overdue/1000)))}</span>`;
+    if(behind>=60000)return `<span class="health-pill late">${h(arena)} · running ${h(formatDelay(Math.floor(behind/1000)))} behind (next: ${label})</span>`;
+    return `<span class="health-pill ok">${h(arena)} · on time (next: ${label})</span>`;
+  });
+  return `<div class="schedule-health">${pills.join('')}</div>`;
+}
 async function matchesPage() {
   if(!slug())return `${heading('Live control','Select a competition to manage match operations.')}<div class="card empty">Create or select a competition to continue.</div>`;
   const timerDisplays=await api(`/api/admin/competitions/${encodeURIComponent(slug())}/displays`);
@@ -873,9 +1026,10 @@ async function matchesPage() {
       <p class="subtle">When enabled, every scheduled match starts automatically at its effective start time. When disabled, matches wait for an operator to start them. The synchronized 3-2-1 countdown is shown on connected timer and arena displays.</p>
       ${timerDisplay?`<a href="/display/${encodeURIComponent(timerDisplay.slug)}" target="_blank" rel="noopener">Open live arena timer</a>`:`<p class="subtle">Create and enable a Timer display in Public displays to publish the live arena clock.</p>`}
     </section>
-    <section class="card"><h2>Active</h2>${table(['Match','Time / status','Arena positions','Fill','Controls'],matchRows(active,true),'No active matches.')}</section>
-    <section class="card" style="margin-top:1rem"><div class="section-title"><h2>Future matches</h2><button class="secondary" data-action="undelay-all" ${future.some(match=>new Date(match.effective_start)>new Date(match.scheduled_start))?'':'disabled'}>Undelay all future matches</button></div>
-      <p class="subtle">Restores unstarted league matches and active playoff heats to their original future start times. Matches with a countdown, active arena conflict, schedule conflict, event conflict, or original start in the past are left unchanged.</p>
+    <section class="card" style="margin-top:1rem"><h2>Schedule status</h2>${scheduleHealthHtml(now)}</section>
+    <section class="card" style="margin-top:1rem"><h2>Active</h2>${table(['Match','Time / status','Arena positions','Fill','Controls'],matchRows(active,true),'No active matches.')}</section>
+    <section class="card" style="margin-top:1rem"><div class="section-title"><h2>Future matches</h2><div class="actions"><button class="secondary" data-action="delay-all" ${future.length?'':'disabled'}>Delay all upcoming…</button><button class="secondary" data-action="undelay-all" ${future.some(match=>new Date(match.effective_start)>new Date(match.scheduled_start))?'':'disabled'}>Undelay all future matches</button></div></div>
+      <p class="subtle">Delays push later matches and playoff heats automatically, including heats waiting on a delayed result. <strong>Undelay all</strong> restores unstarted league matches and active playoff heats to their original future start times; matches with a countdown, an arena, schedule or event conflict, or an original start in the past are left unchanged.</p>
       ${table(['Match','Time / status','Arena positions','Fill','Controls'],matchRows(future,true),'No future matches.')}</section>
     <section class="card" style="margin-top:1rem"><h2>Past matches</h2>${table(['Match','Time / status','Arena positions','Fill','Controls'],matchRows(past,true),'No past matches.')}</section>`;
 }
@@ -887,6 +1041,7 @@ async function render() {
   if(revision!==renderRevision||pageToRender!==page)return;
   $('view').innerHTML=content;
   if(pageToRender==='displays')updateDisplayOptionVisibility($('display-form'));
+  if(pageToRender==='schedule'&&$('playoff-form'))updatePlayoffPreview($('playoff-form'));
 }
 async function postMatch(action,id,body={}) {
   const result=await api(`/api/admin/matches/${id}/${action}`,{method:'POST',body:JSON.stringify(body)});
@@ -911,70 +1066,40 @@ async function startMatchCountdown(button,id) {
 function formData(form) { return Object.fromEntries(new FormData(form).entries()); }
 function displayOptionsFromForm(form) {
   const displayType=form.elements.type?.value||form.dataset.displayType;
-  const isSrOutside=displayType==='sr-outside';
-  const isSrShepherding=displayType==='sr-shepherding';
-  const isSrStaging=displayType==='sr-staging';
-  const srHideOutsidePages=isSrOutside?['leaderboard','schedule','knockout']
-    .filter(page=>form.elements[`srHide${page[0].toUpperCase()}${page.slice(1)}`].checked):[];
-  if(isSrOutside&&srHideOutsidePages.includes('leaderboard')&&srHideOutsidePages.includes('schedule')){
+  const options={};
+  for(const field of DISPLAY_OPTION_FIELDS){
+    if(field.special)continue;
+    const element=form.elements[field.name];
+    if(field.kind==='check')options[field.name]=element.checked;
+    else if(field.kind==='number'||field.kind==='select')options[field.name]=Number(element.value);
+    else options[field.name]=element.value.trim();
+  }
+  if(displayType==='corner')options.darkTheme=false;
+  options.srHideOutsidePages=displayType==='sr-outside'
+    ?['leaderboard','schedule','knockout'].filter(page=>form.elements[`srHide${page[0].toUpperCase()}${page.slice(1)}`].checked):[];
+  if(options.srHideOutsidePages.includes('leaderboard')&&options.srHideOutsidePages.includes('schedule')){
     throw new Error('Keep either the schedule or leaderboard visible on the SR Outside display.');
   }
-  const srStagingCornerOrder=displayType==='sr-staging'
+  options.srStagingCornerOrder=displayType==='sr-staging'
     ?form.elements.srStagingCornerOrder.value.split(',').map(value=>Number(value.trim()))
     :[0,3,2,1];
-  if(displayType==='sr-staging'&&(srStagingCornerOrder.length!==4||srStagingCornerOrder.some(value=>!Number.isInteger(value)||value<0||value>3)||new Set(srStagingCornerOrder).size!==4)){
+  if(options.srStagingCornerOrder.length!==4||options.srStagingCornerOrder.some(value=>!Number.isInteger(value)||value<0||value>3)||new Set(options.srStagingCornerOrder).size!==4){
     throw new Error('Staging corner order must contain 0, 1, 2 and 3 exactly once.');
   }
-  return {
-    showTitle:form.elements.showTitle.checked,
-    showArena:form.elements.showArena.checked,
-    fillCorners:form.elements.fillCorners.checked,
-    showTeamNames:form.elements.showTeamNames.checked,
-    showPositionNumbers:form.elements.showPositionNumbers.checked,
-    fillCornerDisplay:form.elements.fillCornerDisplay.checked,
-    showCornerTeamName:form.elements.showCornerTeamName.checked,
-    showCornerPositionNumber:form.elements.showCornerPositionNumber.checked,
-    showStartCue:form.elements.showStartCue.checked,
-    showEndCue:form.elements.showEndCue.checked,
-    showEndCountdown:form.elements.showEndCountdown.checked,
-    showPreviousResults:form.elements.showPreviousResults.checked,
-    flashCountdownNumbers:form.elements.flashCountdownNumbers.checked,
-    darkTheme:displayType==='corner'?false:form.elements.darkTheme.checked,
-    hideCompletedEvents:form.elements.hideCompletedEvents.checked,
-    hideCompletedMatches:form.elements.hideCompletedMatches.checked,
-    enableTeamFilter:form.elements.enableTeamFilter.checked,
-    relativeTime:form.elements.relativeTime.checked,
-    hideScheduleArena:form.elements.hideScheduleArena.checked,
-    cornerPosition:Number(form.elements.cornerPosition.value),
-    countdownBackgroundColor:form.elements.countdownBackgroundColor.value,
-    countdownFlashColor:form.elements.countdownFlashColor.value,
-    goBackgroundColor:form.elements.goBackgroundColor.value,
-    endBackgroundColor:form.elements.endBackgroundColor.value,
-    endCountdownSeconds:Number(form.elements.endCountdownSeconds.value),
-    cueDurationSeconds:Number(form.elements.cueDurationSeconds.value),
-    endCueDurationSeconds:Number(form.elements.endCueDurationSeconds.value),
-    srArenaName:form.elements.srArenaName.value.trim(),
-    srMaxTeams:isSrOutside?Number(form.elements.srMaxTeams.value):6,
-    srMaxKnockoutRounds:isSrOutside?Number(form.elements.srMaxKnockoutRounds.value):5,
-    srHideOutsidePages,
-    srStagingCornerOrder,
-    srShepherdingPastMatches:isSrShepherding?Number(form.elements.srShepherdingPastMatches.value):1,
-    srStagingCloseOffsetMinutes:isSrShepherding||isSrStaging?Number(form.elements.srStagingCloseOffsetMinutes.value):5,
-    srRotationSeconds:isSrOutside?Number(form.elements.srRotationSeconds.value):15,
-    srExternalUrl:isSrOutside?form.elements.srExternalUrl.value.trim():''
-  };
+  return options;
 }
 function updateDisplayOptionVisibility(form) {
+  if(!form)return;
   const type=form.elements.type?.value||form.dataset.displayType;
-  form.querySelectorAll('[data-option-for]').forEach(label=>{
-    label.classList.toggle('hidden',!label.dataset.optionFor.split(',').includes(type));
-  });
-  form.querySelectorAll('[data-option-except]').forEach(label=>{
-    label.classList.toggle('hidden',label.dataset.optionExcept.split(',').includes(type));
-  });
   form.querySelectorAll('[data-option-types]').forEach(label=>{
     label.classList.toggle('hidden',!label.dataset.optionTypes.split(',').includes(type));
   });
+  form.querySelectorAll('[data-option-group]').forEach(group=>{
+    group.classList.toggle('hidden',!group.querySelector('[data-option-types]:not(.hidden)'));
+  });
+  const description=DISPLAY_TYPES.find(([value])=>value===type)?.[2]||'';
+  const descriptionNode=form.querySelector('.type-description');
+  if(descriptionNode)descriptionNode.textContent=description;
 }
 function updateMatchClocks() {
   const now=performance.timeOrigin+performance.now()+serverClockOffset;
@@ -1134,6 +1259,25 @@ document.addEventListener('click',async(event)=>{
       form.elements.scheduledStart.value=toLocalDate(new Date(match.effective_start));
       form.elements.plannedGapMinutes.value=String(Math.ceil(Number(match.planned_gap_seconds||0)/60));
       $('playoff-schedule-dialog').showModal();
+    }else if(action==='heat-delay'){
+      const form=$('delay-form');
+      form.dataset.matchId=id;form.dataset.kind='playoff';
+      $('delay-dialog').showModal();
+    }else if(action==='heat-undelay'){
+      const match=matches.find(item=>item.id===id&&item.isPlayoff);
+      if(!match)throw new Error('Playoff heat not found');
+      const form=$('undelay-form');
+      form.dataset.matchId=id;form.dataset.kind='playoff';
+      $('undelay-current').textContent=`Current delay: ${formatDelay(match.delay_seconds)} beyond the scheduled start.`;
+      form.elements.minutes.value='5';
+      form.elements.reason.value='Delay reduced by admin';
+      $('undelay-dialog').showModal();
+    }else if(action==='delay-all'){
+      const form=$('delay-all-form');
+      const arenas=[...new Set(matches.filter(match=>!['complete','cancelled'].includes(match.state)).map(match=>match.arena_name))].sort();
+      form.elements.arenaName.innerHTML=`<option value="">All arenas</option>${arenas.map(arena=>`<option value="${h(arena)}">${h(arena)}</option>`).join('')}`;
+      form.elements.reason.value='';
+      $('delay-all-dialog').showModal();
     }else if(action.startsWith('playoff-')&&action!=='playoff-score'){
       const control=action.slice('playoff-'.length).replace('cancel-start','cancel-countdown');
       if(control==='reset-timer'){
@@ -1172,11 +1316,11 @@ document.addEventListener('click',async(event)=>{
     }else if(['finish','pause','resume'].includes(action)){
       await postMatch(action,id);
     }else if(action==='delay'){
-      $('delay-form').dataset.matchId=id;$('delay-dialog').showModal();
+      $('delay-form').dataset.matchId=id;$('delay-form').dataset.kind='league';$('delay-dialog').showModal();
     }else if(action==='undelay'){
       const match=matches.find(item=>item.id===id);
       if(!match)throw new Error('Match not found');
-      $('undelay-form').dataset.matchId=id;
+      $('undelay-form').dataset.matchId=id;$('undelay-form').dataset.kind='league';
       $('undelay-current').textContent=`Current delay: ${formatDelay(match.delay_seconds)} beyond the scheduled start.`;
       $('undelay-form').elements.minutes.value='5';
       $('undelay-form').elements.reason.value='Delay reduced by admin';
@@ -1185,8 +1329,8 @@ document.addEventListener('click',async(event)=>{
       const form=$('undelay-form');
       const match=matches.find(item=>item.id===form.dataset.matchId);
       if(!match)throw new Error('Match not found');
-      if(!confirm(`Restore match #${match.match_number} to its original scheduled start time?`))return;
-      const result=await api(`/api/admin/matches/${match.id}/undelay`,{
+      if(!confirm(`Restore ${match.isPlayoff?'heat':'match'} #${match.match_number} to its original scheduled start time?`))return;
+      const result=await api(`/api/admin/${match.isPlayoff?'playoff-matches':'matches'}/${match.id}/undelay`,{
         method:'POST',
         body:JSON.stringify({restoreScheduled:true,reason:'Restored to original scheduled time'})
       });
@@ -1244,30 +1388,8 @@ document.addEventListener('click',async(event)=>{
       form.dataset.displayId=id;
       form.dataset.displayType=display.display_type;
       form.elements.title.value=display.title;
-      const defaults={showTitle:true,showArena:true,fillCorners:false,showTeamNames:true,showPositionNumbers:true,fillCornerDisplay:true,showCornerTeamName:true,showCornerPositionNumber:true,showStartCue:false,showEndCue:false,showEndCountdown:false,showPreviousResults:false,flashCountdownNumbers:false,darkTheme:false,hideCompletedEvents:false,hideCompletedMatches:false,enableTeamFilter:false,relativeTime:false,hideScheduleArena:false,cornerPosition:0,countdownBackgroundColor:'#a21f24',countdownFlashColor:'#ffffff',goBackgroundColor:'#167847',endBackgroundColor:'#b3131b',endCountdownSeconds:10,cueDurationSeconds:2,endCueDurationSeconds:3,srArenaName:'',srMaxTeams:6,srMaxKnockoutRounds:5,srShepherdingPastMatches:1,srStagingCloseOffsetMinutes:5,srHideOutsidePages:[],srStagingCornerOrder:[0,3,2,1],srRotationSeconds:15,srExternalUrl:''};
-      const options={...defaults,...(display.options||{})};
-      for(const key of ['showTitle','showArena','fillCorners','showTeamNames','showPositionNumbers','fillCornerDisplay','showCornerTeamName','showCornerPositionNumber','showStartCue','showEndCue','showEndCountdown','showPreviousResults','flashCountdownNumbers','darkTheme','hideCompletedEvents','hideCompletedMatches','enableTeamFilter','relativeTime','hideScheduleArena']){
-        form.elements[key].checked=Boolean(options[key]);
-      }
-      for(const page of ['leaderboard','schedule','knockout']){
-        form.elements[`srHide${page[0].toUpperCase()}${page.slice(1)}`].checked=options.srHideOutsidePages.includes(page);
-      }
-      form.elements.cornerPosition.value=String(options.cornerPosition);
-      form.elements.countdownBackgroundColor.value=options.countdownBackgroundColor;
-      form.elements.countdownFlashColor.value=options.countdownFlashColor;
-      form.elements.goBackgroundColor.value=options.goBackgroundColor;
-      form.elements.endBackgroundColor.value=options.endBackgroundColor;
-      form.elements.endCountdownSeconds.value=String(options.endCountdownSeconds);
-      form.elements.cueDurationSeconds.value=String(options.cueDurationSeconds);
-      form.elements.endCueDurationSeconds.value=String(options.endCueDurationSeconds);
-      form.elements.srArenaName.value=options.srArenaName;
-      form.elements.srMaxTeams.value=String(options.srMaxTeams);
-      form.elements.srMaxKnockoutRounds.value=String(options.srMaxKnockoutRounds);
-      form.elements.srRotationSeconds.value=String(options.srRotationSeconds);
-      form.elements.srStagingCornerOrder.value=options.srStagingCornerOrder.join(',');
-      form.elements.srShepherdingPastMatches.value=String(options.srShepherdingPastMatches);
-      form.elements.srStagingCloseOffsetMinutes.value=String(options.srStagingCloseOffsetMinutes);
-      form.elements.srExternalUrl.value=options.srExternalUrl;
+      $('display-config-options').innerHTML=displayOptionFieldsHtml();
+      fillDisplayOptionForm(form,display.options||{});
       updateDisplayOptionVisibility(form);
       $('display-config-dialog').showModal();
     }else if(action==='delete-display'){
@@ -1286,10 +1408,18 @@ $('competition').addEventListener('change',async()=>{
 });
 $('view').addEventListener('input',(event)=>{
   if(event.target.closest('form'))viewDirty=true;
+  const form=event.target.form;
+  if(form?.id==='display-form'){
+    if(event.target.name==='slug')form.elements.slug.dataset.edited='true';
+    if(event.target.name==='title'&&!form.elements.slug.dataset.edited){
+      form.elements.slug.value=event.target.value.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,80);
+    }
+  }
 });
 $('view').addEventListener('change',(event)=>{
   if(event.target.closest('form'))viewDirty=true;
   if(event.target.name==='type')updateDisplayOptionVisibility(event.target.form);
+  if(event.target.form?.id==='playoff-form')updatePlayoffPreview(event.target.form);
 });
 $('view').addEventListener('submit',async(event)=>{
   event.preventDefault();
@@ -1381,16 +1511,22 @@ async function handleFormSubmit(event){
         :new Date(Math.ceil(Math.max(Date.now()+60000,...matches.map(match=>
           new Date(match.effective_start).getTime()+Number(match.duration_seconds||120)*1000))/60000)*60000);
       if(!Number.isFinite(requestedStart.getTime()))throw new Error('Choose a valid first playoff heat time.');
+      const arenaNames=values.arenaNames.split(',').map(name=>name.trim()).filter(Boolean);
+      if(!arenaNames.length)throw new Error('Enter at least one arena for the playoff heats.');
+      if(form.dataset.replace==='true'&&!confirm('Replace the current playoff bracket? Its heats, progression and playoff scores will be archived.'))return;
       const result=await api(`/api/admin/competitions/${encodeURIComponent(slug())}/playoffs`,{method:'POST',body:JSON.stringify({
         fieldSize:Number(values.fieldSize),replaceExisting:form.dataset.replace==='true',
+        format:values.format,finalSize:Number(values.finalSize),finalByes:Number(values.finalByes),
         scheduledStart:requestedStart.toISOString(),
-        intervalMinutes,finalDelayMinutes:Number(values.finalDelayMinutes),arenaName:values.arenaName
+        intervalMinutes,finalDelayMinutes:Number(values.finalDelayMinutes),arenaNames
       })});
+      viewDirty=false;
       await loadData();
       const moved=result.shiftedMatchIds?.length||0;
-      notify(`Four-robot playoff heats scheduled${moved?`; ${moved} conflicting match(es) moved`:''}.`);
+      notify(`${playoffFormatLabel(values.format)} playoffs scheduled · ${result.matchCount} heat(s)${moved?`; ${moved} match(es) moved to avoid conflicts`:''}.`);
     }else if(form.id==='display-form'){
       const result=await api(`/api/admin/competitions/${encodeURIComponent(slug())}/displays`,{method:'POST',body:JSON.stringify({slug:values.slug,title:values.title,type:values.type,options:displayOptionsFromForm(form)})});
+      viewDirty=false;
       await render();notify(`Display created: ${location.origin}${result.htmlUrl}`);
     }else if(form.id==='display-config-form'){
       await api(`/api/admin/displays/${form.dataset.displayId}`,{method:'PATCH',body:JSON.stringify({title:values.title,options:displayOptionsFromForm(form)})});
@@ -1436,10 +1572,19 @@ async function handleFormSubmit(event){
       }
     }else if(form.id==='delay-form'){
       const matchId=form.dataset.matchId;
-      await api(`/api/admin/matches/${matchId}/delay`,{method:'POST',body:JSON.stringify({delaySeconds:Number(values.minutes)*60,reason:values.reason})});
-      $('delay-dialog').close();await loadData();notify('Delay applied.');
+      const kind=form.dataset.kind==='playoff'?'playoff-matches':'matches';
+      const result=await api(`/api/admin/${kind}/${matchId}/delay`,{method:'POST',body:JSON.stringify({delaySeconds:Number(values.minutes)*60,reason:values.reason})});
+      form.reset();
+      $('delay-dialog').close();await loadData();
+      notify(`Delay applied.${result?.shiftedMatchIds?.length?` ${result.shiftedMatchIds.length} later match(es) or heat(s) moved to keep their spacing.`:''}`);
+    }else if(form.id==='delay-all-form'){
+      const result=await api(`/api/admin/competitions/${encodeURIComponent(slug())}/delay-all`,{method:'POST',body:JSON.stringify({
+        delaySeconds:Number(values.minutes)*60,reason:values.reason,arenaName:values.arenaName||undefined
+      })});
+      $('delay-all-dialog').close();await loadData();
+      notify(`Delayed ${result.delayedMatches} league match(es) and ${result.delayedHeats} playoff heat(s) by ${values.minutes} min${values.arenaName?` in ${values.arenaName}`:''}.${result.shiftedMatchIds.length?` ${result.shiftedMatchIds.length} also moved around events.`:''}`);
     }else if(form.id==='undelay-form'){
-      const result=await api(`/api/admin/matches/${form.dataset.matchId}/undelay`,{
+      const result=await api(`/api/admin/${form.dataset.kind==='playoff'?'playoff-matches':'matches'}/${form.dataset.matchId}/undelay`,{
         method:'POST',
         body:JSON.stringify({
           delaySeconds:Number(values.minutes)*60,
