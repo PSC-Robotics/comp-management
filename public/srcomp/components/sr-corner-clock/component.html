@@ -69,6 +69,9 @@
                 var gameEndTime = this.currentGameEnd;
                 var options = this.displayOptions || {};
                 this.backgroundColor = '';
+                // Only a real start (or countdown) runs the match clock; a passed slot time does not.
+                var started = !!(this.match && ['running', 'paused', 'awaiting_score', 'complete'].indexOf(this.match.state) !== -1);
+
 
                 if (options.showEndCue && this.match && this.match.actual_end) {
                     var endedAt = new Date(this.match.actual_end);
@@ -80,7 +83,7 @@
                     }
                 }
 
-                if (options.showEndCountdown && gameEndTime) {
+                if (options.showEndCountdown && started && gameEndTime) {
                     var endRemaining = gameEndTime - currentTime;
                     var endCountdownSeconds = options.endCountdownSeconds || 10;
                     if (endRemaining > 0 && endRemaining <= endCountdownSeconds * 1000) {
@@ -119,6 +122,8 @@
 
                 if (gameStartTime == null || gameEndTime == null) {
                     this.text = '';
+                } else if (!started && currentTime >= gameStartTime) {
+                    this.text = 'Waiting to start';
                 } else if (currentTime >= gameEndTime) {
                     // next slot starting in 0-30 seconds
                     this.text = 'Finished';

@@ -70,6 +70,8 @@
                     : new Date(e.detail.getTime() + clockOffsetMs);
                 var options = this.displayOptions || {};
                 this.backgroundColor = 'black';
+                var started = !!(this.match && ['running', 'paused', 'awaiting_score', 'complete'].indexOf(this.match.state) !== -1);
+
 
                 if (options.showEndCue && this.match && this.match.actual_end) {
                     var endedAt = new Date(this.match.actual_end);
@@ -81,7 +83,7 @@
                     }
                 }
 
-                if (options.showEndCountdown && this.currentGameEnd) {
+                if (options.showEndCountdown && started && this.currentGameEnd) {
                     var endRemaining = this.currentGameEnd - now;
                     var endCountdownSeconds = options.endCountdownSeconds || 10;
                     if (endRemaining > 0 && endRemaining <= endCountdownSeconds * 1000) {
@@ -120,7 +122,10 @@
                     return;
                 }
 
-                if (now <= this.currentGameStart) {
+                // Without a countdown an unstarted match must not flash "Begin!" at its slot time.
+                if (!started) {
+                    this.text = null;
+                } else if (now <= this.currentGameStart) {
                     var t = (this.currentGameStart - now) / 1000;
                     if (t <= 1) {
                         this.text = 'Begin!'
