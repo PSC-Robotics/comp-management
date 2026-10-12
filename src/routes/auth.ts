@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import * as oidc from 'openid-client';
+import { identityFromClaims } from '../auth/identity.js';
 import { getOidcClient, oidcState } from '../auth/oidc.js';
 import { passkeyRelyingParty } from '../auth/passkey-config.js';
 import { rateLimitSignIn } from '../auth/security.js';
@@ -75,9 +76,12 @@ export function registerAuthRoutes(app: FastifyInstance): void {
       return reply.redirect(signInError('idp_error'));
     }
     if (!claims) return reply.redirect(signInError('idp_error'));
-    // Only a verified email identifies an administrator; anything else could be spoofed at the provider.
-    const email = typeof claims.email === 'string' ? claims.email.trim().toLowerCase() : '';
-    if (!email || claims.email_verified === false) return reply.redirect(signInError('email_unverified'));
+    const result = identityFromClaims(claims, env.OIDC_REQUIRE_VERIFIED_EMAIL === 'true');
+    if (!result.ok) {
+      request.log.warn({ emailVerified: claims.email_verified ?? null }, 'OIDC sign-in refused: verified email required');
+      return reply.redirect(signInError(result.reason));
+    }
+    const email = result.identity;
     if (!emailAllowed(email)) return reply.redirect(signInError('not_allowed'));
     const displayName = typeof claims.name === 'string' ? claims.name : '';
     const user = await upsertAdminUser(pool, email, displayName);

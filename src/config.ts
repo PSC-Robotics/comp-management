@@ -14,6 +14,8 @@ const schema = z.object({
   OIDC_CLIENT_ID: optionalText,
   OIDC_CLIENT_SECRET: optionalText,
   OIDC_REDIRECT_URI: optionalUrl,
+  /** "true" refuses accounts whose provider does not mark the email verified (off: Authentik reports false by default). */
+  OIDC_REQUIRE_VERIFIED_EMAIL: z.enum(['true', 'false']).default('false'),
   /** Comma-separated emails allowed to sign in with OIDC. Empty: any account the identity provider accepts. */
   ADMIN_EMAILS: z.string().default(''),
   /** Proxy trust for client IPs: "true", "false", or comma-separated addresses/CIDRs. */

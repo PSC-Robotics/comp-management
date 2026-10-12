@@ -78,7 +78,7 @@ Sessions use HttpOnly, SameSite=Lax cookies; use `COOKIE_SECURE=true` behind HTT
 
 ## Sign-in and security
 
-- **Organisation sign-in (OIDC)** is the normal way in. Only accounts with a *verified* email are accepted. Set `ADMIN_EMAILS` (comma-separated) to restrict sign-in to named people; leave it empty to allow any account the identity provider accepts. Every allowed administrator has full access.
+- **Organisation sign-in (OIDC)** is the normal way in. The account's email identifies the administrator (falling back to the username). Set `ADMIN_EMAILS` (comma-separated) to restrict sign-in to named people; leave it empty to allow any account the identity provider accepts. Every allowed administrator has full access. If your identity provider lets people register themselves, also set `OIDC_REQUIRE_VERIFIED_EMAIL=true` so only emails the provider has verified are accepted (it is off by default because Authentik's standard email mapping reports every email as unverified).
 - **Passkeys are the fallback, and the only one** (there are no passwords). Each administrator can add passkeys under **Admin → Access & passkeys**; they then sign in with their device's fingerprint, face or PIN even when the identity provider is down. Passkeys require HTTPS at `PUBLIC_BASE_URL` (they are bound to that host name) and always require user verification.
 - **If the identity provider is down when the app starts**, the app still starts; passkey sign-in works and discovery retries in the background.
 - **Break-glass enrollment**: someone with shell access on the server can create a one-time passkey link (valid 30 minutes by default) for an administrator who has no passkey yet:
