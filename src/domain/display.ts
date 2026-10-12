@@ -72,13 +72,30 @@ export const cornerColoursSchema = z.array(z.string().regex(/^#[0-9a-fA-F]{6}$/)
 
 export type DisplayOptions = z.infer<typeof displayOptionsSchema>;
 
-export function publicMatchPriority(state: string, hasCountdown: boolean): number {
+/** How long a match that just finished stays on live screens (END cue plus a moment to read it). */
+export const JUST_FINISHED_SECONDS = 15;
+
+/**
+ * Which match a live screen shows, lowest first: a start countdown, then a
+ * running or paused match, then one that finished moments ago (scored or not,
+ * so the END cue always shows), then the next scheduled match. Older finished
+ * matches come last. Every live screen uses this order so they never disagree.
+ */
+export function publicMatchPriority(
+  state: string,
+  hasCountdown: boolean,
+  actualEnd: Date | string | number | null = null,
+  now = Date.now(),
+  justFinishedSeconds = JUST_FINISHED_SECONDS
+): number {
   if (hasCountdown) return 0;
   if (state === 'running') return 1;
   if (state === 'paused') return 2;
-  if (state === 'awaiting_score') return 4;
-  if (state === 'complete') return 5;
-  return 3;
+  if (state === 'awaiting_score' || state === 'complete') {
+    const ended = actualEnd === null ? Number.NaN : new Date(actualEnd).getTime();
+    return Number.isFinite(ended) && now - ended < justFinishedSeconds * 1000 ? 3 : 5;
+  }
+  return 4;
 }
 
 export function formatCompetitionTime(value: Date | string | number, timeZone: string): string {

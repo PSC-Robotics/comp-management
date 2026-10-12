@@ -15,12 +15,20 @@ import {
   readableTextColour
 } from './display.js';
 
-test('public current-match selection prioritizes running timers over awaiting-score matches', () => {
-  assert.ok(publicMatchPriority('running', false) < publicMatchPriority('awaiting_score', false));
-  assert.ok(publicMatchPriority('paused', false) < publicMatchPriority('awaiting_score', false));
-  assert.ok(publicMatchPriority('scheduled', false) < publicMatchPriority('awaiting_score', false));
-  assert.ok(publicMatchPriority('awaiting_score', false) < publicMatchPriority('complete', false));
-  assert.ok(publicMatchPriority('running', true) < publicMatchPriority('running', false));
+test('live screens show countdown, then running, then just-finished, then the next match', () => {
+  const now = Date.parse('2026-10-12T10:00:00Z');
+  const justEnded = now - 3_000;
+  const longAgo = now - 120_000;
+  assert.ok(publicMatchPriority('scheduled', true) < publicMatchPriority('running', false));
+  assert.ok(publicMatchPriority('running', false) < publicMatchPriority('paused', false));
+  // A match that just ended outranks the next one whether or not scores were entered (END cue).
+  for (const state of ['awaiting_score', 'complete']) {
+    assert.ok(publicMatchPriority('paused', false) < publicMatchPriority(state, false, justEnded, now));
+    assert.ok(publicMatchPriority(state, false, justEnded, now) < publicMatchPriority('scheduled', false, null, now));
+    // Afterwards the next match takes over.
+    assert.ok(publicMatchPriority('scheduled', false, null, now) < publicMatchPriority(state, false, longAgo, now));
+  }
+  assert.equal(publicMatchPriority('awaiting_score', false, null, now), publicMatchPriority('complete', false, longAgo, now));
 });
 
 test('formats schedule timestamps in the competition timezone including daylight saving', () => {

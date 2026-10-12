@@ -246,3 +246,22 @@ test('rejects malformed scheduled times rather than emitting a broken public mat
     effective_start: 'invalid-time'
   }), RangeError);
 });
+
+test('keeps a just-finished match on screen even without scores, then moves on', () => {
+  const ended = new Date('2026-04-10T10:00:00.000Z');
+  const finished = { ...baseMatch, match_number: 1, state: 'awaiting_score', actual_end: ended.toISOString() };
+  const next = { ...baseMatch, match_number: 2, effective_start: '2026-04-10T10:01:00Z' };
+  const at = (seconds: number) => selectSrDisplayMatches([finished, next], new Date(ended.getTime() + seconds * 1000))
+    .map((match) => match.match_number);
+  assert.deepEqual(at(5), [1], 'END is shown');
+  assert.deepEqual(at(30), [2], 'then the next match');
+});
+
+test('an overdue match stays current until someone starts it', () => {
+  const overdue = { ...baseMatch, match_number: 5, effective_start: '2026-04-10T09:00:00Z' };
+  const later = { ...baseMatch, match_number: 6, effective_start: '2026-04-10T10:30:00Z' };
+  assert.deepEqual(
+    selectSrDisplayMatches([later, overdue], new Date('2026-04-10T10:00:00Z')).map((match) => match.match_number),
+    [5]
+  );
+});

@@ -1,4 +1,5 @@
 import {
+  JUST_FINISHED_SECONDS,
   MATCH_COUNTDOWN_TOTAL_SECONDS,
   type DisplayOptions
 } from './display.js';
@@ -115,32 +116,35 @@ export function selectSrDisplayMatches<T extends SrMatchInput>(
       nowMs >= countdownStart &&
       nowMs < countdownStart + MATCH_COUNTDOWN_TOTAL_SECONDS * 1000 &&
       ['scheduled', 'ready', 'delayed'].includes(match.state);
-    const slotActive = ['scheduled', 'ready', 'delayed'].includes(match.state) &&
-      nowMs >= effectiveStart &&
-      nowMs < effectiveStart + (match.duration_seconds + match.planned_gap_seconds) * 1000;
+    // A match whose time has come stays the current one until it is started, however late.
+    const due = ['scheduled', 'ready', 'delayed'].includes(match.state) && nowMs >= effectiveStart;
     const upcoming = ['scheduled', 'ready', 'delayed'].includes(match.state) &&
       effectiveStart > nowMs;
-    const completed = match.state === 'complete' && match.actual_end !== null;
+    // Unscored matches count as finished too, so the screen does not skip their END.
+    const completed = ['complete', 'awaiting_score'].includes(match.state) && match.actual_end !== null;
+    const justFinished = completed && nowMs - date(match.actual_end!).getTime() < JUST_FINISHED_SECONDS * 1000;
 
     const priority = countdownActive ? 0
       : match.state === 'running' ? 1
         : match.state === 'paused' ? 2
-          : slotActive ? 3
-            : upcoming ? 4
-              : completed ? 5
+          : justFinished ? 2.5
+            : due ? 3
+              : upcoming ? 4
+                : completed ? 5
                 : Number.POSITIVE_INFINITY;
     if (!Number.isFinite(priority)) continue;
 
     const current = selected.get(match.arena_name);
-    const matchTime = priority === 5 ? date(match.actual_end!).getTime() : effectiveStart;
+    const byEnd = priority === 5 || priority === 2.5;
+    const matchTime = byEnd ? date(match.actual_end!).getTime() : effectiveStart;
     const currentTime = current
-      ? current.priority === 5
+      ? current.priority === 5 || current.priority === 2.5
         ? date(current.match.actual_end!).getTime()
         : date(current.match.effective_start).getTime()
       : Number.POSITIVE_INFINITY;
     if (!current || priority < current.priority ||
         (priority === current.priority &&
-          (priority === 5 ? matchTime > currentTime : matchTime < currentTime))) {
+          (byEnd ? matchTime > currentTime : matchTime < currentTime))) {
       selected.set(match.arena_name, { match, priority });
     }
   }
