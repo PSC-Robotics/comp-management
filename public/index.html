@@ -4,6 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Competition Control</title>
+  <link rel="icon" type="image/png" href="/assets/favicon.png">
+  <link rel="apple-touch-icon" href="/assets/psc-robotics-logo.png">
   <style>
     /* ---------- Design tokens (themes override the first seven via applyBranding) ---------- */
     :root {
@@ -71,7 +73,8 @@
     aside { height: 100vh; height: 100dvh; overflow-y: auto; background: var(--nav); color: var(--nav-ink); padding: 1rem .7rem; display: flex; flex-direction: column; gap: 1rem; }
     .brand { display: flex; align-items: center; gap: .55rem; padding: .25rem .55rem; color: #fff; font-size: 1rem; font-weight: 740; letter-spacing: -.02em; }
     .brand img { max-width: 100%; max-height: 40px; object-fit: contain; display: block; }
-    .brand-mark { width: 26px; height: 26px; border-radius: 7px; background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 40%, #19c3a6)); display: grid; place-items: center; font-size: .8rem; color: #fff; flex: 0 0 26px; }
+    .brand-mark { width: 32px; height: 32px; border-radius: 8px; object-fit: cover; flex: 0 0 32px; display: block; box-shadow: 0 0 0 1px rgb(255 255 255 / 12%); }
+    .auth-card .brand-mark { width: 44px; height: 44px; flex-basis: 44px; border-radius: 10px; box-shadow: none; }
     nav { display: grid; gap: .1rem; }
     .nav-group { margin-top: .55rem; }
     .nav-label { padding: .2rem .65rem; color: var(--nav-muted); font-size: .66rem; font-weight: 750; letter-spacing: .1em; text-transform: uppercase; }
@@ -288,6 +291,7 @@
       aside { height: auto; flex-direction: row; flex-wrap: wrap; align-items: center; padding: .45rem .55rem .5rem; gap: .35rem .6rem; overflow: visible; }
       .brand { font-size: .9rem; flex: 1 1 auto; }
       .brand img { max-height: 26px; }
+      .brand img.brand-mark { width: 28px; height: 28px; max-height: none; flex-basis: 28px; }
       .nav-label, .aside-bottom { display: none; }
       .nav-group { margin: 0; display: contents; }
       nav { flex: 1 1 100%; display: flex; gap: .3rem; overflow-x: auto; scrollbar-width: none; -webkit-mask-image: linear-gradient(90deg,#000 88%,transparent); mask-image: linear-gradient(90deg,#000 88%,transparent); scroll-padding-inline: 1rem; }
@@ -351,7 +355,7 @@
 <body>
   <div id="login" class="auth-screen hidden">
     <div class="auth-card">
-      <div class="brand"><span class="brand-mark">CC</span>Competition Control</div>
+      <div class="brand"><img class="brand-mark" src="/assets/psc-robotics-logo.png" alt="PSC Robotics" width="32" height="32">Competition Control</div>
       <div id="auth-panel-signin" class="stack">
         <div><h1 style="font-size:1.35rem">Sign in</h1><p class="subtle" style="margin:0">Use your organisation account, or a passkey saved on this device.</p></div>
         <div id="auth-message" class="callout warn hidden" role="alert"></div>
@@ -370,7 +374,7 @@
   </div>
   <div id="app" class="shell hidden">
     <aside>
-      <div id="brand" class="brand"><span class="brand-mark">CC</span>Competition Control</div>
+      <div id="brand" class="brand"><img class="brand-mark" src="/assets/psc-robotics-logo.png" alt="PSC Robotics" width="32" height="32">Competition Control</div>
       <nav id="nav" aria-label="Sections"></nav>
       <button id="logout-mobile" class="ghost mobile-signout hidden" type="button" style="color:var(--nav-ink)">Sign out</button>
       <div class="aside-bottom">
@@ -698,7 +702,7 @@ async function applyBranding() {
   };
   const colors = themes[document.body.dataset.theme] || themes.paper;
   ['--paper','--surface','--ink','--accent','--line','--raised','--muted'].forEach((name,index)=>document.documentElement.style.setProperty(name,colors[index]));
-  $('brand').innerHTML = result.settings?.logo_data_url ? `<img src="${h(result.settings.logo_data_url)}" alt="Competition logo">` : '<span class="brand-mark">CC</span>Competition Control';
+  $('brand').innerHTML = result.settings?.logo_data_url ? `<img src="${h(result.settings.logo_data_url)}" alt="Competition logo">` : '<img class="brand-mark" src="/assets/psc-robotics-logo.png" alt="PSC Robotics" width="32" height="32">Competition Control';
 }
 function teamRows() {
   return teams.map(t => `<tr><td><strong>${h(t.code)}</strong></td><td><input data-team-name="${h(t.id)}" value="${h(t.name)}" maxlength="160"></td><td><span class="badge ${t.active?'good':'warn'}">${t.active?'Active':'Inactive'}</span></td><td><div class="actions"><button class="secondary" data-action="save-team" data-id="${h(t.id)}">Save</button><button class="secondary" data-action="toggle-team" data-id="${h(t.id)}" data-active="${t.active}">${t.active?'Deactivate':'Activate'}</button><button class="danger" data-action="delete-team" data-id="${h(t.id)}">Delete</button></div></td></tr>`);
