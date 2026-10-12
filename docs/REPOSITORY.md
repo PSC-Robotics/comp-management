@@ -5,32 +5,42 @@ run PSC Robotics competitions.
 
 ## Project layout
 
-- `src/server.ts` - Fastify server: schema setup, admin API, live match clock
-  loop, public display rendering and the SRComp-compatible API.
-- `src/scheduler.ts` - pure scheduling logic: balanced league generation,
-  delay cascades, moving matches around timed events, and playoff heat timing
-  (dependency- and arena-aware).
-- `src/playoffs.ts` - pure playoff logic: bracket plans for every route to the
-  final (double elimination, single elimination, straight to the final, final
-  size, seeded byes), seeding, heat ranking, advancement and loss tracking.
-- `src/display.ts` - public display option schema and shared clock/cue helpers.
-- `src/bracket-diagram.ts` - renders a playoff bracket as a self-contained SVG
-  (used by the admin portal, the format preview and the public bracket display).
-- `src/srcomp.ts` - adapters from Competition Control data to SRComp shapes.
-- `src/*.test.ts` - unit tests for the modules above (`npm test`).
-- `public/index.html` - the admin portal (single page, no build step).
-- `public/srcomp/` - vendored SRComp screens, Polymer components and
-  polyfills (MIT, see `public/srcomp/LICENSE`). `public/srcomp/node_modules/`
-  holds the two vendored scripts the screens load (`moment` 2.29.4 and
-  `moment-duration-format`); it is deliberately committed even though other
-  `node_modules/` folders are ignored.
-- `docs/` - operations guide, this file, and the original system plan.
-- `compose.yaml` - Docker Compose services (PostgreSQL 17 + app).
-- `Dockerfile` - production image; compiles TypeScript inside the build stage.
-- `.env.example` - required environment variable template. Never commit `.env`.
+```
+src/
+  server.ts          entry point: schema upgrade, start-up, background jobs, graceful shutdown
+  app.ts             buildApp(): the Fastify app with every route (no listening, so tests can drive it)
+  config.ts          environment variables (validated)
+  cli.ts             server-side admin commands (passkey invites, list users)
+  auth/              sessions, OIDC client (lazy, retrying), passkey relying party, security hooks
+  db/                connection pool and transactions, audit log, schema and migrations
+  domain/            pure logic with unit tests: scheduler, playoffs, standings, displays,
+                     SR adapters, bracket diagram
+  services/          database-backed logic shared by routes: league standings, schedule re-flow,
+                     match clock, conflicts, playoffs, public display data, SR data, change feed
+  routes/            one file per area of the API (live, scores, delays, schedule, playoffs, ...)
+  lib/               small helpers (HTML escaping, paths)
+test/                integration tests against a real PostgreSQL (fuzz, auth, passkeys, live, chaos)
+public/index.html    the admin portal (single page, no build step)
+public/srcomp/       vendored SRComp screens, Polymer components and polyfills (MIT; see
+                     public/srcomp/LICENSE). public/srcomp/node_modules/ holds the two scripts
+                     they load (moment 2.29.4, moment-duration-format) and is committed on purpose.
+docs/                operations guide, this file, original system plan
+compose.yaml         PostgreSQL 17 + app
+Dockerfile           production image; compiles TypeScript in the build stage
+.env.example         configuration checklist (never commit .env)
+```
 
-`dist/` is build output (`npm run build`) and is not committed; the Docker
-build produces its own.
+`dist/` is build output (`npm run build`) and is not committed; the Docker build produces its own.
+
+### How requests flow
+
+Routes validate input with zod, then do their work inside `transaction()`, which locks the
+competition row first so concurrent operations on the same competition run one at a time.
+Anything that changes the timetable calls `reflowSchedule()` (services/reflow.ts), which keeps
+same-arena order and spacing, makes playoff heats follow their feeder heats, and moves everything
+around timed events. Writing an audit record marks the transaction as a data change; after commit
+the change feed (services/changes.ts) notifies connected dashboards and displays. The match clock
+(services/clock.ts) runs every second in services/background.ts.
 
 ## Local development
 
@@ -40,6 +50,16 @@ cp .env.example .env
 npm test
 npm run typecheck
 ```
+
+Integration tests need a throwaway PostgreSQL:
+
+```sh
+docker run -d --name cc-test-db -e POSTGRES_DB=competition -e POSTGRES_USER=competition \
+  -e POSTGRES_PASSWORD=testpw -p 55432:5432 postgres:17-alpine
+TEST_DATABASE_URL=postgres://competition:testpw@127.0.0.1:55432/competition npm run test:integration
+```
+
+They are skipped when `TEST_DATABASE_URL` is not set. Never point them at a real database.
 
 The application requires PostgreSQL and, for sign-in, OIDC settings. For a
 complete local stack, configure `.env` and run:

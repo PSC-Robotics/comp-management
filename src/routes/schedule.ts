@@ -240,6 +240,9 @@ export function registerScheduleRoutes(app: FastifyInstance): void {
               m.paused_at, m.paused_seconds, m.countdown_started_at,
               count(mp.team_id)::int AS team_count,
               EXISTS (SELECT 1 FROM match_scores ms WHERE ms.match_id = m.id) AS has_scores,
+              (SELECT jsonb_agg(jsonb_build_object('teamCode', scored.code, 'points', ms.league_points)
+                 ORDER BY ms.league_points DESC, scored.code)
+               FROM match_scores ms JOIN teams scored ON scored.id = ms.team_id WHERE ms.match_id = m.id) AS scores,
               (SELECT count(*)::int FROM match_delays d WHERE d.match_id = m.id) AS delay_count,
               greatest(0, ceil(extract(epoch FROM (m.effective_start - m.scheduled_start))))::int
                 AS delay_seconds,

@@ -151,6 +151,34 @@ Start. With **competition auto-run** on, league matches and ready playoff heats 
 on their own at their effective time. A heat whose teams or arena are still in
 another match waits until they are free and then gets a fresh countdown.
 
+## Running matches and scores
+
+Live control shows one console per arena. The big panel is always the match that needs you:
+a countdown, the running or paused match (with Pause, Finish now and Reset timer), or the next
+match with a large **Start** button and **Delay**. Its queue is listed underneath.
+
+When a match's timer ends, every screen shows END and then moves on to the next match, whether
+or not anyone has entered scores. The finished match appears as a slim strip at the top of its
+arena and on the **Scores** page, where scores are typed straight into a card. Use **No score**
+for practice runs or void matches; scores can still be added later from Recent results. The
+sidebar counts matches that are due to start and matches waiting for scores.
+
+Everything updates live on every open dashboard and display, so several people can run arenas
+and enter scores at the same time.
+
+## Signing in during an outage
+
+If the organisation sign-in (identity provider) is down, use **Sign in with a passkey** on the
+sign-in page. Add a passkey before the event under **Admin → Access & passkeys** on each device
+you will use (phones and laptops both work). If someone has no passkey and the provider is down,
+run on the server:
+
+```sh
+docker compose exec app node dist/cli.js invite person@example.com
+```
+
+and send them the printed link; it works once, for 30 minutes.
+
 ## Choosing displays
 
 | Screen | Display type | Notes |

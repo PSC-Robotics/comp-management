@@ -5,227 +5,327 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Competition Control</title>
   <style>
+    /* ---------- Design tokens (themes override the first seven via applyBranding) ---------- */
     :root {
       color-scheme: light;
+      --paper: #f3f4f7; --surface: #ffffff; --ink: #161b26; --accent: #3b5bdb; --line: #e3e6ec;
+      --raised: #f8f9fb; --muted: #667085;
+      --nav: #10151f; --nav-ink: #c9d1dc; --nav-muted: #7d8899; --nav-hover: #1c2433;
+      --good: #12805c; --warn: #b54708; --bad: #c0362c; --info: #3b5bdb;
+      --good-soft: color-mix(in srgb, var(--good) 13%, var(--surface));
+      --warn-soft: color-mix(in srgb, var(--warn) 13%, var(--surface));
+      --bad-soft: color-mix(in srgb, var(--bad) 12%, var(--surface));
+      --accent-soft: color-mix(in srgb, var(--accent) 11%, var(--surface));
+      --radius: 10px; --radius-sm: 7px;
+      --shadow: 0 1px 2px rgb(16 24 40 / 5%), 0 1px 3px rgb(16 24 40 / 4%);
+      --shadow-lg: 0 12px 32px rgb(16 24 40 / 14%);
+      --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
       font: 14px/1.5 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      --paper: #f4f5f7; --surface: #fff; --ink: #19212c; --muted: #687384;
-      --line: #e1e5eb; --raised: #f7f8fa; --nav: #17212d; --nav-hover: #263545; --accent: #3267d5;
-      --accent-soft: #edf3ff; --green: #19875b; --warning: #a44b12;
-      --shadow: 0 6px 18px rgb(22 34 51 / 7%);
+      font-feature-settings: "cv11", "ss01";
     }
+    body[data-theme="night"] { color-scheme: dark; --shadow: 0 1px 2px rgb(0 0 0 / 30%); }
     * { box-sizing: border-box; }
-    body { margin: 0; background: var(--paper); color: var(--ink); }
-    button, input, select, textarea { font: inherit; }
-    button { border: 0; border-radius: 2px; background: var(--accent); color: white; padding: .65rem .9rem; font-weight: 650; cursor: pointer; }
-    button:hover { filter: brightness(.94); }
-    button:disabled { opacity: .48; cursor: not-allowed; }
-    button.secondary { background: var(--surface); color: var(--ink); border: 1px solid var(--line); }
-    button.danger { background: #b64040; }
-    a { color: var(--accent); }
-    input, select, textarea { width: 100%; min-height: 39px; border: 1px solid var(--line); border-radius: 2px; background: var(--surface); color: var(--ink); padding: .5rem .65rem; }
-    textarea { min-height: 80px; resize: vertical; }
-    input:focus, select:focus, textarea:focus { outline: 2px solid #acc4ff; border-color: var(--accent); }
-    label { display: grid; gap: .35rem; min-width: 0; color: var(--muted); font-weight: 580; }
+    body { margin: 0; background: var(--paper); color: var(--ink); -webkit-font-smoothing: antialiased; }
     h1, h2, h3, p { margin-top: 0; }
-    h1 { font-size: 1.65rem; letter-spacing: -.035em; margin-bottom: .2rem; }
-    h2 { font-size: 1.05rem; margin-bottom: 1rem; }
-    .shell { height: 100vh; min-height: 0; display: grid; grid-template-columns: 248px minmax(0, 1fr); overflow: hidden; }
-    aside { position: sticky; top: 0; height: 100vh; overflow-y: auto; background: var(--nav); color: #f1f4f8; padding: 1.25rem .85rem; display: flex; flex-direction: column; gap: 1.3rem; }
-    .brand { padding: 0 .65rem; font-size: 1.05rem; font-weight: 750; letter-spacing: -.025em; }
-    .brand img { max-width: 100%; max-height: 48px; object-fit: contain; display: block; margin-bottom: .65rem; }
-    .nav-label { padding: 0 .65rem; color: #8795a5; font-size: .68rem; font-weight: 750; letter-spacing: .1em; text-transform: uppercase; margin: .3rem 0 .4rem; }
-    nav { display: grid; gap: .2rem; }
-    nav button { text-align: left; background: transparent; color: #c7d0da; font-weight: 570; padding: .62rem .7rem; border-radius: 2px; }
-    nav button:hover, nav button.active { background: var(--nav-hover); color: white; filter: none; }
-    nav button.active { box-shadow: inset 3px 0 #6f9aff; }
-    .aside-bottom { margin-top: auto; border-top: 1px solid #354251; padding: 1rem .65rem 0; color: #aeb9c6; font-size: .82rem; }
-    .aside-bottom button { width: 100%; margin-top: .8rem; }
-    main { min-width: 0; min-height: 0; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
-    .topbar { min-height: 70px; display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .8rem clamp(1rem, 3vw, 2.5rem); background: var(--surface); border-bottom: 1px solid var(--line); }
-    .topbar strong { font-size: 1.05rem; letter-spacing: -.02em; }
-    .topbar label { width: min(390px, 50vw); font-size: .72rem; }
-    .topbar select { min-height: 36px; }
-    .main-content { width: 100%; max-width: 1500px; margin: 0 auto; padding: 1.8rem clamp(1rem, 3vw, 2.5rem) 3rem; flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
-    .page-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1.4rem; }
-    .page-head p { color: var(--muted); margin: .25rem 0 0; }
+    h1 { font-size: 1.6rem; font-weight: 720; letter-spacing: -.025em; margin-bottom: .15rem; }
+    h2 { font-size: 1rem; font-weight: 680; letter-spacing: -.01em; margin-bottom: .85rem; }
+    h3 { font-size: .9rem; font-weight: 680; margin-bottom: .5rem; }
+    a { color: var(--accent); text-underline-offset: 2px; }
+    code { font-family: var(--mono); font-size: .85em; background: var(--raised); border: 1px solid var(--line); border-radius: 4px; padding: 0 .3em; }
+    .subtle { color: var(--muted); }
+    .hidden { display: none !important; }
+    .empty { text-align: center; color: var(--muted); padding: 1.6rem 1rem; border: 1px dashed var(--line); border-radius: var(--radius-sm); background: var(--raised); }
+
+    /* ---------- Controls ---------- */
+    button, input, select, textarea { font: inherit; }
+    button { display: inline-flex; align-items: center; justify-content: center; gap: .4rem; border: 1px solid transparent; border-radius: var(--radius-sm); background: var(--accent); color: #fff; padding: .55rem .9rem; font-weight: 620; cursor: pointer; line-height: 1.2; transition: filter .12s, background-color .12s, box-shadow .12s; }
+    button:hover { filter: brightness(1.06); }
+    button:active { filter: brightness(.95); }
+    button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, summary:focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 35%, transparent); outline-offset: 1px; }
+    button:disabled { opacity: .45; cursor: not-allowed; filter: none; }
+    button.secondary { background: var(--surface); color: var(--ink); border-color: var(--line); box-shadow: var(--shadow); }
+    button.secondary:hover { background: var(--raised); filter: none; }
+    button.ghost { background: transparent; color: var(--muted); border-color: transparent; }
+    button.ghost:hover { background: var(--raised); color: var(--ink); filter: none; }
+    button.danger { background: var(--bad); }
+    button.success { background: var(--good); }
+    button.big { padding: .85rem 1.3rem; font-size: 1.05rem; }
+    .button-link { display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--line); background: var(--surface); color: var(--ink); padding: .55rem .9rem; font-weight: 620; border-radius: var(--radius-sm); text-decoration: none; box-shadow: var(--shadow); line-height: 1.2; }
+    .button-link:hover { background: var(--raised); }
+    input, select, textarea { width: 100%; min-height: 38px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); color: var(--ink); padding: .45rem .65rem; transition: border-color .12s, box-shadow .12s; }
+    input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
+    textarea { min-height: 80px; resize: vertical; }
+    input[type=color] { padding: 3px; min-height: 36px; height: 36px; }
+    input[type=checkbox] { width: 17px; min-height: 17px; height: 17px; accent-color: var(--accent); }
+    label { display: grid; gap: .3rem; min-width: 0; color: var(--muted); font-weight: 560; font-size: .86rem; }
+    fieldset { border: 1px solid var(--line); border-radius: var(--radius-sm); }
+    .toggle-control { display: flex; align-items: center; gap: .55rem; color: var(--ink); font-weight: 520; }
+    .switch { position: relative; display: inline-flex; align-items: center; gap: .6rem; cursor: pointer; color: var(--ink); font-weight: 600; }
+    .switch input { appearance: none; width: 38px; height: 22px; min-height: 22px; border-radius: 999px; background: var(--line); border: 0; padding: 0; position: relative; cursor: pointer; transition: background .15s; }
+    .switch input::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgb(0 0 0 / 30%); transition: transform .15s; }
+    .switch input:checked { background: var(--good); }
+    .switch input:checked::after { transform: translateX(16px); }
+
+    /* ---------- Layout shell ---------- */
+    .shell { height: 100vh; height: 100dvh; display: grid; grid-template-columns: 236px minmax(0, 1fr); overflow: hidden; }
+    aside { height: 100vh; height: 100dvh; overflow-y: auto; background: var(--nav); color: var(--nav-ink); padding: 1rem .7rem; display: flex; flex-direction: column; gap: 1rem; }
+    .brand { display: flex; align-items: center; gap: .55rem; padding: .25rem .55rem; color: #fff; font-size: 1rem; font-weight: 740; letter-spacing: -.02em; }
+    .brand img { max-width: 100%; max-height: 40px; object-fit: contain; display: block; }
+    .brand-mark { width: 26px; height: 26px; border-radius: 7px; background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 40%, #19c3a6)); display: grid; place-items: center; font-size: .8rem; color: #fff; flex: 0 0 26px; }
+    nav { display: grid; gap: .1rem; }
+    .nav-group { margin-top: .55rem; }
+    .nav-label { padding: .2rem .65rem; color: var(--nav-muted); font-size: .66rem; font-weight: 750; letter-spacing: .1em; text-transform: uppercase; }
+    nav button { justify-content: flex-start; width: 100%; background: transparent; color: var(--nav-ink); font-weight: 540; padding: .5rem .65rem; border-radius: 7px; gap: .6rem; }
+    nav button svg { width: 17px; height: 17px; flex: 0 0 17px; opacity: .8; }
+    nav button:hover { background: var(--nav-hover); color: #fff; filter: none; }
+    nav button.active { background: color-mix(in srgb, var(--accent) 26%, var(--nav)); color: #fff; }
+    nav button.active svg { opacity: 1; }
+    .nav-count { margin-left: auto; min-width: 20px; padding: 0 .4rem; border-radius: 999px; background: var(--warn); color: #fff; font-size: .7rem; font-weight: 750; line-height: 18px; text-align: center; }
+    .aside-bottom { margin-top: auto; border-top: 1px solid #263042; padding: .9rem .55rem 0; color: var(--nav-muted); font-size: .8rem; display: grid; gap: .55rem; }
+    .aside-bottom .who { color: var(--nav-ink); overflow-wrap: anywhere; }
+    .aside-bottom button { width: 100%; background: transparent; border: 1px solid #2d384b; color: var(--nav-ink); }
+    main { min-width: 0; min-height: 0; height: 100vh; height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
+    .topbar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .7rem clamp(1rem, 3vw, 2.25rem); background: var(--surface); border-bottom: 1px solid var(--line); }
+    .topbar strong { font-size: .95rem; }
+    .topbar-right { display: flex; align-items: center; gap: .9rem; min-width: 0; }
+    .topbar label { width: min(360px, 42vw); display: flex; align-items: center; gap: .5rem; font-size: .75rem; white-space: nowrap; }
+    .topbar select { min-height: 34px; }
+    .live-indicator { display: inline-flex; align-items: center; gap: .4rem; font-size: .75rem; font-weight: 650; color: var(--muted); white-space: nowrap; }
+    .live-indicator::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+    .live-indicator.connected { color: var(--good); }
+    .live-indicator.connected::before { background: var(--good); box-shadow: 0 0 0 3px color-mix(in srgb, var(--good) 22%, transparent); }
+    .live-indicator.lost { color: var(--warn); }
+    .live-indicator.lost::before { background: var(--warn); }
+    .main-content { width: 100%; max-width: 1440px; margin: 0 auto; padding: 1.6rem clamp(1rem, 3vw, 2.25rem) 3rem; flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+
+    /* ---------- Page structure ---------- */
+    .page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 1rem; margin-bottom: 1.25rem; flex-wrap: wrap; }
+    .page-head p { color: var(--muted); margin: .2rem 0 0; }
+    .eyebrow { color: var(--accent); font-size: .72rem; font-weight: 750; letter-spacing: .09em; text-transform: uppercase; margin-bottom: .2rem; }
+    .stack { display: grid; gap: 1rem; }
     .grid { display: grid; gap: 1rem; }
     .grid.cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .grid.cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     .grid.cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-    .card { background: var(--surface); border: 1px solid var(--line); border-top: 2px solid var(--nav); border-radius: 8px; padding: 1.15rem; box-shadow: var(--shadow); min-width: 0; }
+    .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 1.15rem 1.2rem; box-shadow: var(--shadow); min-width: 0; }
+    .card + .card, .card + section, section + .card { margin-top: 1rem; }
     .card h2:last-child { margin-bottom: 0; }
-    .metric-card { position: relative; overflow: hidden; }
-    .metric-card::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 4px; background: var(--accent); }
-    .metric-card:nth-child(2)::before { background: var(--green); }
-    .metric-card:nth-child(3)::before { background: #9a6bda; }
-    .metric-card:nth-child(4)::before { background: var(--warning); }
-    .metric { font-size: clamp(1.65rem, 3vw, 2.15rem); font-weight: 780; letter-spacing: -.05em; }
-    .metric-label { color: var(--muted); font-size: .82rem; }
+    .card.flush { padding: 0; overflow: hidden; }
+    .danger-card { border-color: color-mix(in srgb, var(--bad) 35%, var(--line)); }
+    .danger-card h2 { color: var(--bad); }
+    .section-title { display: flex; justify-content: space-between; align-items: center; gap: .75rem; flex-wrap: wrap; margin-bottom: .85rem; }
+    .section-title h2 { margin: 0; }
+    .actions { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
     .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .85rem; }
     .form-grid.cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     .form-grid .wide { grid-column: 1 / -1; }
-    .actions { display: flex; flex-wrap: wrap; gap: .55rem; align-items: center; }
-    .section-title { display: flex; justify-content: space-between; align-items: center; gap: .75rem; }
-    .section-title h2 { margin: 0 0 1rem; }
-    .toggle-control { display: flex; grid-template-columns: auto 1fr; align-items: center; gap: .55rem; }
-    .toggle-control input { width: 18px; min-height: 18px; }
-    .table-wrap { overflow-x: auto; }
-    table { width: 100%; border-collapse: collapse; margin-top: .5rem; white-space: nowrap; }
-    th { color: var(--muted); font-size: .7rem; font-weight: 750; letter-spacing: .055em; text-align: left; text-transform: uppercase; background: var(--raised); }
-    th, td { padding: .72rem .65rem; border-bottom: 1px solid var(--line); vertical-align: middle; }
+    .callout { border: 1px solid var(--line); border-left: 4px solid var(--accent); background: var(--accent-soft); border-radius: var(--radius-sm); padding: .75rem .95rem; }
+    .callout.warn { border-left-color: var(--warn); background: var(--warn-soft); }
+    .callout.bad { border-left-color: var(--bad); background: var(--bad-soft); }
+    .callout.good { border-left-color: var(--good); background: var(--good-soft); }
+    details > summary { cursor: pointer; font-weight: 650; padding: .35rem 0; }
+
+    /* Tabs */
+    .tabs { display: flex; gap: .25rem; border-bottom: 1px solid var(--line); margin: -.25rem 0 1.1rem; overflow-x: auto; scrollbar-width: none; }
+    .tabs button { background: transparent; color: var(--muted); border: 0; border-bottom: 2px solid transparent; border-radius: 0; padding: .6rem .85rem; font-weight: 620; white-space: nowrap; }
+    .tabs button:hover { color: var(--ink); filter: none; }
+    .tabs button.active { color: var(--accent); border-bottom-color: var(--accent); }
+    .tab-count { margin-left: .35rem; padding: 0 .4rem; border-radius: 999px; background: var(--raised); border: 1px solid var(--line); font-size: .72rem; }
+
+    /* Metrics */
+    .metric-card { position: relative; overflow: hidden; display: grid; gap: .1rem; }
+    .metric { font-size: clamp(1.5rem, 2.6vw, 2rem); font-weight: 760; letter-spacing: -.04em; line-height: 1.1; }
+    .metric-label { color: var(--muted); font-size: .8rem; }
+    .metric-card .metric-icon { position: absolute; top: .9rem; right: .95rem; width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); }
+    .metric-card .metric-icon svg { width: 17px; height: 17px; }
+
+    /* Tables */
+    .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius-sm); }
+    table { width: 100%; border-collapse: collapse; white-space: nowrap; }
+    th { color: var(--muted); font-size: .7rem; font-weight: 720; letter-spacing: .05em; text-align: left; text-transform: uppercase; background: var(--raised); position: sticky; top: 0; z-index: 1; }
+    th, td { padding: .62rem .75rem; border-bottom: 1px solid var(--line); vertical-align: middle; }
     tbody tr:last-child td { border-bottom: 0; }
-    .badge { display: inline-flex; border-radius: 2px; padding: .16rem .5rem; background: #edf0f4; color: #4f5b6a; font-size: .72rem; font-weight: 700; text-transform: capitalize; }
-    .badge.good { background: #e5f5ec; color: #167549; }
-    .badge.warn { background: #fff0e2; color: #9b4a0c; }
-    .match-clock { display: inline-block; margin-top: .2rem; font: 700 .9rem/1.3 ui-monospace, SFMono-Regular, Consolas, monospace; font-variant-numeric: tabular-nums; }
-    .vacant { color: #a43b30; font-weight: 750; }
-    .pos-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .4rem; }
-    .pos { border-left: 5px solid; padding: .5rem; background: var(--raised); white-space: normal; }
-    .live-position-list { display: flex; flex-wrap: wrap; gap: .35rem; min-width: 180px; }
-    .live-position { display: inline-flex; align-items: center; gap: .35rem; padding: .24rem .42rem; border: 1px solid var(--line); background: var(--raised); font: 700 .75rem/1.2 ui-monospace, SFMono-Regular, Consolas, monospace; }
-    .live-position-dot { width: .65rem; height: .65rem; border-radius: 50%; flex: 0 0 .65rem; }
+    tbody tr:hover td { background: color-mix(in srgb, var(--raised) 70%, transparent); }
+
+    /* Badges and pills */
+    .badge { display: inline-flex; align-items: center; gap: .3rem; border-radius: 999px; padding: .12rem .55rem; background: var(--raised); border: 1px solid var(--line); color: var(--muted); font-size: .72rem; font-weight: 650; white-space: nowrap; }
+    .badge.good { background: var(--good-soft); border-color: color-mix(in srgb, var(--good) 30%, transparent); color: var(--good); }
+    .badge.warn { background: var(--warn-soft); border-color: color-mix(in srgb, var(--warn) 30%, transparent); color: var(--warn); }
+    .badge.bad { background: var(--bad-soft); border-color: color-mix(in srgb, var(--bad) 30%, transparent); color: var(--bad); }
+    .badge.info { background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 30%, transparent); color: var(--accent); }
+    .badge.live { background: var(--good); border-color: var(--good); color: #fff; }
+    .schedule-health { display: flex; flex-wrap: wrap; gap: .5rem; }
+    .health-pill { display: inline-flex; align-items: center; gap: .45rem; border: 1px solid var(--line); border-radius: 999px; padding: .35rem .75rem; font-weight: 620; font-size: .82rem; background: var(--surface); }
+    .health-pill::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+    .health-pill.late { background: var(--warn-soft); color: var(--warn); border-color: color-mix(in srgb, var(--warn) 30%, transparent); }
+    .health-pill.ok { background: var(--good-soft); color: var(--good); border-color: color-mix(in srgb, var(--good) 30%, transparent); }
+
+    /* Match positions */
+    .match-clock { display: inline-block; font: 700 .9rem/1.3 var(--mono); font-variant-numeric: tabular-nums; }
+    .live-position-list { display: flex; flex-wrap: wrap; gap: .3rem; }
+    .live-position { display: inline-flex; align-items: center; gap: .3rem; padding: .2rem .45rem; border: 1px solid var(--line); border-radius: 6px; background: var(--raised); font: 700 .78rem/1.2 var(--mono); }
+    .live-position-dot { width: .6rem; height: .6rem; border-radius: 50%; flex: 0 0 .6rem; }
     .live-position-number { color: var(--muted); font-size: .65rem; }
-    .colour-control { display: grid; grid-template-columns: 1fr 42px; align-items: center; gap: .5rem; }
-    input[type=color] { padding: 3px; min-height: 34px; height: 34px; }
-    .subtle { color: var(--muted); }
-    .empty { text-align: center; color: var(--muted); padding: 2rem 1rem; }
-    .overview-intro { display: flex; align-items: end; justify-content: space-between; gap: 1rem; margin-bottom: 1.5rem; }
-    .overview-intro h1 { margin-bottom: .3rem; }
-    .overview-intro p { margin: 0; color: var(--muted); }
-    .overview-section { margin-top: 1.25rem; }
-    .overview-section .card { height: 100%; }
-    .overview-section h2 { display: flex; align-items: center; gap: .5rem; }
-    .overview-section h2::before { content: ""; width: .45rem; height: .45rem; border-radius: 50%; background: var(--accent); }
-    .status { position: fixed; bottom: 1rem; right: 1rem; max-width: min(480px, calc(100vw - 2rem)); z-index: 10; background: #17212d; color: white; padding: .75rem 1rem; border-radius: 7px; box-shadow: 0 8px 30px #16223333; }
-    .status.error { background: #a83333; }
-    .hidden { display: none !important; }
-    .theme-choices { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: .7rem; }
-    .theme-option { border: 1px solid var(--line); border-radius: 0; padding: .7rem; cursor: pointer; background: var(--surface); color: var(--ink); }
-    .theme-option.selected { border: 2px solid var(--accent); }
-    .swatches { display: flex; gap: 4px; margin-bottom: .5rem; }
-    .swatches i { height: 24px; flex: 1; border-radius: 3px; }
-    .preview-logo { max-width: 180px; max-height: 80px; object-fit: contain; display: block; margin-top: .8rem; }
-    .inline-form { display: flex; flex-wrap: wrap; align-items: end; gap: .7rem; }
-    .inline-form label { flex: 1 1 150px; }
-    .bracket-group { margin-bottom: 1.2rem; }
-    .bracket-group h3 { font-size: .9rem; text-transform: capitalize; }
-    .arena-square { width: min(100%, 560px); aspect-ratio: 1; margin: 1.25rem auto; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 3px; background: var(--ink); border: 3px solid var(--ink); }
-    .arena-cell { min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: clamp(.4rem, 2vw, 1.2rem); border: 5px solid; }
+    .schedule-position-code { font: 800 1rem/1 var(--mono); }
+    .match-actions { display: flex; flex-wrap: wrap; gap: .35rem; }
+    .match-actions button, .match-actions .button-link { padding: .38rem .6rem; font-size: .78rem; }
+    .vacant { color: var(--bad); font-weight: 700; }
+
+    /* Live control console */
+    .console-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 430px), 1fr)); gap: 1rem; }
+    .arena-console { display: grid; gap: .9rem; align-content: start; }
+    .arena-console > header { display: flex; align-items: center; justify-content: space-between; gap: .6rem; }
+    .arena-console > header h2 { margin: 0; display: flex; align-items: center; gap: .5rem; }
+    .now-panel { border: 1px solid var(--line); border-radius: var(--radius); padding: 1rem; background: var(--raised); display: grid; gap: .7rem; }
+    .now-panel.running { border-color: color-mix(in srgb, var(--good) 45%, var(--line)); background: var(--good-soft); }
+    .now-panel.countdown { border-color: color-mix(in srgb, var(--bad) 45%, var(--line)); background: var(--bad-soft); }
+    .now-panel.paused, .now-panel.due { border-color: color-mix(in srgb, var(--warn) 45%, var(--line)); background: var(--warn-soft); }
+    .now-panel.finished { border-color: color-mix(in srgb, var(--accent) 35%, var(--line)); background: var(--accent-soft); }
+    .now-label { font-size: .72rem; font-weight: 760; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); }
+    .now-title { display: flex; align-items: baseline; justify-content: space-between; gap: .75rem; flex-wrap: wrap; }
+    .now-title strong { font-size: 1.15rem; }
+    .big-clock { font: 800 clamp(2.4rem, 6vw, 3.6rem)/1 var(--mono); font-variant-numeric: tabular-nums; letter-spacing: -.04em; }
+    .now-teams { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .4rem; }
+    .team-chip { border: 2px solid var(--chip, var(--line)); border-radius: 8px; padding: .35rem .45rem; background: var(--surface); min-width: 0; }
+    .team-chip strong { display: block; font: 800 1rem/1.15 var(--mono); }
+    .team-chip span { display: block; font-size: .72rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .team-chip small { color: var(--muted); font-size: .65rem; font-weight: 700; }
+    .now-controls { display: flex; flex-wrap: wrap; gap: .5rem; }
+    .now-controls button { flex: 1 1 auto; }
+    .queue { display: grid; gap: .35rem; }
+    .queue-row { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: .6rem; padding: .45rem .6rem; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); }
+    .queue-row .when { font: 650 .82rem/1.2 var(--mono); }
+
+    /* Scores */
+    .score-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 360px), 1fr)); gap: 1rem; }
+    .score-card form { display: grid; gap: .65rem; }
+    .score-row { display: grid; grid-template-columns: 1fr 120px; align-items: center; gap: .6rem; padding: .35rem .5rem; border-left: 4px solid var(--chip, var(--line)); background: var(--raised); border-radius: 6px; }
+    .score-row strong { font-family: var(--mono); }
+    .score-row input { text-align: right; font: 700 1rem var(--mono); }
+
+    /* Arena diagram */
+    .arena-square { width: min(100%, 520px); aspect-ratio: 1; margin: 1rem auto; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 3px; background: var(--ink); border: 3px solid var(--ink); border-radius: 6px; overflow: hidden; }
+    .arena-cell { position: relative; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: clamp(.4rem, 2vw, 1.2rem); border: 5px solid; }
     .arena-cell[data-spot="1"], .arena-cell[data-spot="2"] { grid-row: 1; }
     .arena-cell[data-spot="0"], .arena-cell[data-spot="3"] { grid-row: 2; }
     .arena-cell[data-spot="1"], .arena-cell[data-spot="0"] { grid-column: 1; }
     .arena-cell[data-spot="2"], .arena-cell[data-spot="3"] { grid-column: 2; }
-    .schedule-position-code { font: 900 1.1rem/1 ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .arena-spot { position: absolute; top: .55rem; left: .65rem; font: 850 clamp(1.5rem, 5vw, 3rem)/1 var(--mono); opacity: .3; }
+    .arena-code { position: relative; z-index: 1; margin: .35rem 0; font: 800 clamp(1.4rem, 5vw, 2.8rem)/1 var(--mono); }
+    .arena-team { position: relative; z-index: 1; font-weight: 650; }
+
+    /* Overview */
+    .overview-intro { display: flex; align-items: flex-end; justify-content: space-between; gap: 1rem; margin-bottom: 1.25rem; flex-wrap: wrap; }
+    .overview-intro p { margin: 0; color: var(--muted); }
+    .overview-section { margin-top: 1rem; }
+    .overview-section .card { height: 100%; }
+
+    /* Settings */
+    .theme-choices { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .7rem; }
+    .theme-option { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: .7rem; cursor: pointer; background: var(--surface); color: var(--ink); }
+    .theme-option.selected { border: 2px solid var(--accent); }
+    .swatches { display: flex; gap: 4px; margin-bottom: .5rem; }
+    .swatches i { height: 24px; flex: 1; border-radius: 4px; }
+    .preview-logo { max-width: 180px; max-height: 80px; object-fit: contain; display: block; margin-top: .8rem; }
+
+    /* Displays */
     .display-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .55rem 1rem; }
     .display-options .toggle-control { align-items: flex-start; }
-    .staging-config { margin-top: 1rem; border: 1px solid var(--line); background: var(--raised); }
-    body.cue-red { background: #a21f24 !important; color: #fff !important; transition: background-color .15s linear; }
-    body.cue-green { background: #167847 !important; color: #fff !important; transition: background-color .15s linear; }
-    .arena-cell { position: relative; }
-    .arena-spot { position: absolute; top: .55rem; left: .65rem; font: 850 clamp(1.5rem, 5vw, 3rem)/1 ui-monospace, SFMono-Regular, Consolas, monospace; opacity: .3; }
-    .arena-code { position: relative; z-index: 1; margin: .35rem 0; font: 800 clamp(1.4rem, 5vw, 3rem)/1 ui-monospace, SFMono-Regular, Consolas, monospace; }
-    .arena-team { position: relative; z-index: 1; }
-    .arena-team { font-weight: 650; }
-    .live-timer { font: 800 clamp(3rem, 12vw, 8rem)/1 ui-monospace, SFMono-Regular, Consolas, monospace; text-align: center; font-variant-numeric: tabular-nums; letter-spacing: -.06em; }
-    .match-actions { display: flex; flex-wrap: wrap; gap: .35rem; }
-    .match-actions button { padding: .42rem .6rem; font-size: .78rem; }
-    .setup { max-width: 560px; margin: 8vh auto; }
-    dialog { width: min(650px, calc(100vw - 2rem)); border: 1px solid var(--line); border-radius: 0; padding: 0; box-shadow: 0 18px 60px #101b2a40; }
-    dialog::backdrop { background: #0b1422a8; }
-    dialog form { padding: 1.25rem; }
-    @media(max-width:900px) {
-      .shell { grid-template-columns: 210px minmax(0, 1fr); }
-      .grid.cols-3 { grid-template-columns: repeat(2,minmax(0,1fr)); }
-      .grid.cols-4 { grid-template-columns: repeat(2,minmax(0,1fr)); }
-    }
-    @media(max-width:680px) {
-      .shell { display: flex; flex-direction: column; height: 100vh; }
-      aside { position: relative; z-index: 2; height: auto; max-height: 116px; padding: .55rem .7rem .65rem; gap: .45rem; overflow: hidden; box-shadow: 0 2px 12px rgb(22 34 51 / 12%); }
-      .brand { padding: .15rem .25rem; font-size: .95rem; }
-      .brand img { display: none; }
-      .nav-label, .aside-bottom { display: none; }
-      nav { display: flex; gap: .35rem; overflow-x: auto; padding: .05rem 0 .2rem; scrollbar-width: none; }
-      nav::-webkit-scrollbar { display: none; }
-      nav button { flex: 0 0 auto; text-align: center; padding: .48rem .7rem; font-size: .76rem; border: 1px solid transparent; }
-      nav button.active { border-color: #6f9aff; }
-      nav button.active { box-shadow: inset 0 -3px #6f9aff; }
-      .topbar { min-height: 58px; align-items: stretch; flex-direction: column; gap: .35rem; padding: .55rem .8rem .65rem; }
-      .topbar label { width: 100%; display: flex; align-items: center; gap: .5rem; font-size: .68rem; }
-      .topbar select { min-height: 34px; flex: 1; min-width: 0; }
-      main { height: 0; flex: 1; }
-      .main-content { padding: .9rem .75rem 2rem; }
-      .grid.cols-2, .grid.cols-3, .form-grid, .form-grid.cols-3 { grid-template-columns: 1fr; }
-      .grid.cols-4 { grid-template-columns: repeat(2,minmax(0,1fr)); gap: .65rem; }
-      .card { padding: .9rem; border-radius: 7px; }
-      .metric { font-size: 1.55rem; }
-      .metric-label { font-size: .72rem; line-height: 1.25; }
-      .form-grid .wide { grid-column: auto; }
-      .theme-choices { grid-template-columns: 1fr; }
-      .page-head { align-items: flex-start; margin-bottom: 1rem; }
-      .page-head h1 { font-size: 1.4rem; }
-      .overview-intro { display: block; margin-bottom: 1rem; }
-      .overview-section { margin-top: .85rem; }
-      .section-title { align-items: flex-start; }
-      .section-title .secondary { white-space: nowrap; }
-      table { font-size: .82rem; }
-      th, td { padding: .58rem .48rem; }
-      .table-wrap { margin-inline: -.15rem; }
-      .actions button { flex: 1 1 auto; }
-      dialog form { padding: 1rem; }
-    }
-    .option-group { border: 1px solid var(--line); background: var(--raised); padding: .8rem 1rem; margin: 1rem 0 0; min-width: 0; }
-    .option-group legend { font-weight: 750; padding: 0 .35rem; }
+    .option-group { border: 1px solid var(--line); background: var(--raised); padding: .8rem 1rem; margin: 1rem 0 0; min-width: 0; border-radius: var(--radius-sm); }
+    .option-group legend { font-weight: 720; padding: 0 .35rem; color: var(--ink); }
     .option-group > p { margin: 0 0 .6rem; }
     .type-description { margin: .4rem 0 0; }
+    .display-actions { max-width: 440px; }
+
+    /* Playoffs */
     .bracket-board { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(220px, 1fr); gap: .8rem; overflow-x: auto; padding-bottom: .5rem; }
-    .bracket-stage h3 { font-size: .75rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 .5rem; }
-    .heat-card { border: 1px solid var(--line); border-left: 4px solid var(--accent); background: var(--surface); padding: .55rem .7rem; margin-bottom: .6rem; font-size: .85rem; }
-    .heat-card[data-side="lower"] { border-left-color: var(--warning); }
-    .heat-card[data-side="final"] { border-left-color: var(--green); }
-    .heat-card header { display: flex; justify-content: space-between; gap: .5rem; font-weight: 750; }
+    .bracket-stage h3 { font-size: .72rem; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); margin: 0 0 .5rem; }
+    .heat-card { border: 1px solid var(--line); border-left: 4px solid var(--accent); background: var(--surface); padding: .55rem .7rem; margin-bottom: .6rem; font-size: .85rem; border-radius: 6px; }
+    .heat-card[data-side="lower"] { border-left-color: var(--warn); }
+    .heat-card[data-side="final"] { border-left-color: var(--good); }
+    .heat-card header { display: flex; justify-content: space-between; gap: .5rem; font-weight: 720; }
     .heat-card ol { margin: .4rem 0 .2rem; padding-left: 1.3rem; }
     .heat-card .source { color: var(--muted); }
-    .schedule-health { display: flex; flex-wrap: wrap; gap: .5rem; }
-    .health-pill { border: 1px solid var(--line); padding: .4rem .65rem; font-weight: 650; font-size: .85rem; }
-    .health-pill.late { background: #fff0e2; color: #9b4a0c; border-color: #f1c79f; }
-    .health-pill.ok { background: #e5f5ec; color: #167549; border-color: #b6e0c8; }
-    .button-link { display: inline-flex; align-items: center; border: 1px solid var(--line); background: var(--surface); color: var(--ink); padding: .65rem .9rem; font-weight: 650; border-radius: 2px; text-decoration: none; }
-    .match-actions .button-link, .actions .button-link { padding: .42rem .6rem; font-size: .78rem; }
-    .display-actions { max-width: 430px; }
-    .diagram-scroll { overflow: auto; -webkit-overflow-scrolling: touch; border: 1px solid var(--line); background: var(--raised); padding: .5rem; margin-top: .5rem; max-height: 75vh; }
+    .diagram-scroll { overflow: auto; -webkit-overflow-scrolling: touch; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--raised); padding: .5rem; margin-top: .5rem; max-height: 75vh; }
     .diagram-scroll svg { display: block; max-width: none; }
+    body[data-theme="night"] .diagram-scroll { --bd-surface: #1b2732; --bd-ink: #edf3f4; --bd-muted: #a6b4c2; --bd-line: #45525c; --bd-advance-bg: #163a26; --bd-drop-bg: #3a2a14; }
     .bracket-legend { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem .9rem; font-size: .8rem; margin: .5rem 0 0; }
     .legend-line { display: inline-block; width: 24px; border-top: 2px solid #3267d5; margin-right: -.5rem; }
     .legend-line.drop { border-top: 2px dashed #c76a10; }
     .legend-line.final { border-top-color: #19875b; }
     .bracket-details { margin-top: .75rem; }
-    .bracket-details summary { cursor: pointer; font-weight: 700; padding: .3rem 0; }
-    body[data-theme="night"] .diagram-scroll { --bd-surface: #1b2732; --bd-ink: #edf3f4; --bd-muted: #a6b4c2; --bd-line: #45525c; --bd-advance-bg: #163a26; --bd-drop-bg: #3a2a14; }
-    .tie-break { margin-top: 1rem; padding: .85rem 1rem; border: 2px solid var(--warning); background: #fff7ee; }
-    .tie-break h3 { margin: 0 0 .35rem; font-size: 1rem; color: var(--warning); }
+    .preview-box { border: 1px solid var(--line); border-left: 4px solid var(--accent); background: var(--raised); border-radius: var(--radius-sm); padding: .7rem .9rem; }
+    .preview-box.error { border-left-color: var(--bad); background: var(--bad-soft); color: var(--ink); }
+    .tie-break { margin-top: 1rem; padding: .85rem 1rem; border: 2px solid var(--warn); background: var(--warn-soft); border-radius: var(--radius-sm); }
+    .tie-break h3 { margin: 0 0 .35rem; color: var(--warn); }
     .tie-break .form-grid { margin-top: .6rem; }
-    body[data-theme="night"] .tie-break { background: #3a2a14; }
-    .preview-box { border-left: 4px solid var(--accent); background: var(--raised); padding: .7rem .9rem; }
-    .preview-box.error { border-left-color: #b64040; }
-    @media(max-width:680px) {
-      /* Compact chrome: the page heading already names the page, so the top bar only holds the competition picker. */
-      aside { max-height: none; flex-direction: row; flex-wrap: wrap; align-items: center; padding: .45rem .55rem .5rem; gap: .35rem .6rem; }
+
+    /* Dialogs and toasts */
+    dialog { width: min(640px, calc(100vw - 2rem)); border: 1px solid var(--line); border-radius: 14px; padding: 0; box-shadow: var(--shadow-lg); background: var(--surface); color: var(--ink); }
+    dialog::backdrop { background: rgb(10 15 25 / 55%); backdrop-filter: blur(2px); }
+    dialog form { padding: 1.3rem; }
+    dialog h2 { font-size: 1.15rem; }
+    .status { position: fixed; bottom: 1.1rem; right: 1.1rem; max-width: min(480px, calc(100vw - 2rem)); z-index: 50; background: #111827; color: #fff; padding: .75rem 1rem; border-radius: 10px; box-shadow: var(--shadow-lg); display: flex; align-items: center; gap: .6rem; }
+    .status.error { background: var(--bad); }
+    .status .secondary { background: transparent; color: #fff; border-color: rgb(255 255 255 / 40%); box-shadow: none; }
+
+    /* Sign-in */
+    .auth-screen { min-height: 100vh; min-height: 100dvh; display: grid; place-items: center; padding: 1.25rem; background:
+      radial-gradient(60rem 30rem at 15% -10%, color-mix(in srgb, var(--accent) 22%, transparent), transparent),
+      radial-gradient(40rem 30rem at 110% 110%, color-mix(in srgb, #19c3a6 18%, transparent), transparent), var(--paper); }
+    .auth-card { width: min(420px, 100%); background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 2rem; box-shadow: var(--shadow-lg); display: grid; gap: 1rem; }
+    .auth-card .brand { color: var(--ink); padding: 0; font-size: 1.1rem; }
+    .auth-card button, .auth-card .button-link { width: 100%; padding: .75rem 1rem; }
+    .divider { display: flex; align-items: center; gap: .75rem; color: var(--muted); font-size: .78rem; }
+    .divider::before, .divider::after { content: ""; flex: 1; border-top: 1px solid var(--line); }
+
+    @media (max-width: 1000px) {
+      .shell { grid-template-columns: 212px minmax(0, 1fr); }
+      .grid.cols-3, .grid.cols-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 680px) {
+      .shell { display: flex; flex-direction: column; }
+      aside { height: auto; flex-direction: row; flex-wrap: wrap; align-items: center; padding: .45rem .55rem .5rem; gap: .35rem .6rem; overflow: visible; }
       .brand { font-size: .9rem; flex: 1 1 auto; }
-      nav { flex: 1 1 100%; -webkit-mask-image: linear-gradient(90deg,#000 88%,transparent); mask-image: linear-gradient(90deg,#000 88%,transparent); scroll-padding-inline: 1rem; }
-      nav button { padding: .5rem .75rem; font-size: .8rem; }
+      .brand img { max-height: 26px; }
+      .nav-label, .aside-bottom { display: none; }
+      .nav-group { margin: 0; display: contents; }
+      nav { flex: 1 1 100%; display: flex; gap: .3rem; overflow-x: auto; scrollbar-width: none; -webkit-mask-image: linear-gradient(90deg,#000 88%,transparent); mask-image: linear-gradient(90deg,#000 88%,transparent); scroll-padding-inline: 1rem; }
+      nav::-webkit-scrollbar { display: none; }
+      nav button { width: auto; flex: 0 0 auto; padding: .45rem .7rem; font-size: .8rem; }
+      nav button svg { display: none; }
+      .mobile-signout { display: inline-flex !important; order: 2; margin-left: auto; padding: .3rem .65rem; font-size: .78rem; border: 1px solid #2d384b; }
+      .brand { order: 1; }
+      nav { order: 3; }
+      .queue-row { grid-template-columns: auto 1fr; }
+      .queue-row .match-actions { grid-column: 1 / -1; }
+      main { height: 0; flex: 1; }
+      .topbar { padding: .45rem .75rem; }
       #top-title { display: none; }
-      .topbar { min-height: 0; padding: .45rem .75rem; }
-      .topbar label > span, #competition-switcher-label { font-size: 0; gap: 0; }
+      .topbar-right { width: 100%; }
+      .topbar label { width: 100%; font-size: 0; gap: 0; }
       .topbar select { font-size: .85rem; }
+      .main-content { padding: .9rem .75rem 2rem; }
+      .grid.cols-2, .grid.cols-3, .form-grid, .form-grid.cols-3, .display-options { grid-template-columns: 1fr; }
+      .grid.cols-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .6rem; }
+      .card { padding: .9rem; }
+      .form-grid .wide { grid-column: auto; }
+      .theme-choices { grid-template-columns: 1fr; }
+      .page-head { margin-bottom: .9rem; }
+      .page-head h1, .overview-intro h1 { font-size: 1.35rem; }
       .page-head p, .overview-intro p { font-size: .85rem; }
+      .section-title { flex-direction: column; align-items: stretch; }
+      .section-title > button, .section-title > .badge, .section-title > a, .section-title > .switch { align-self: flex-start; }
+      .now-teams { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .big-clock { font-size: 2.6rem; }
       /* Tables become one card per row with the column name beside each value. */
-      .table-wrap { overflow: visible; margin-inline: 0; }
+      .table-wrap { overflow: visible; border: 0; }
       .table-wrap table, .table-wrap tbody, .table-wrap tr, .table-wrap td { display: block; width: 100%; }
-      .table-wrap table { white-space: normal; margin-top: .25rem; }
+      .table-wrap table { white-space: normal; }
       .table-wrap thead { display: none; }
-      .table-wrap tr { border: 1px solid var(--line); border-radius: 7px; background: var(--surface); margin-bottom: .6rem; padding: .35rem .7rem; box-shadow: 0 1px 3px rgb(22 34 51 / 6%); }
+      .table-wrap tr { border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); margin-bottom: .6rem; padding: .35rem .7rem; box-shadow: var(--shadow); }
       .table-wrap td { display: grid; grid-template-columns: minmax(5.5rem, 34%) minmax(0, 1fr); gap: .6rem; align-items: center; padding: .4rem 0; border-bottom: 1px solid var(--line); }
-      .table-wrap td::before { content: attr(data-label); color: var(--muted); font-size: .68rem; font-weight: 750; letter-spacing: .05em; text-transform: uppercase; }
+      .table-wrap td::before { content: attr(data-label); color: var(--muted); font-size: .66rem; font-weight: 750; letter-spacing: .05em; text-transform: uppercase; }
       .table-wrap td:not([data-label])::before, .table-wrap td[data-label=""]::before { display: none; }
       .table-wrap td:not([data-label]), .table-wrap td[data-label=""] { display: block; }
       .table-wrap td:last-child { border-bottom: 0; }
@@ -235,58 +335,56 @@
       .table-wrap td:first-child .cell-value { display: flex; flex-wrap: wrap; align-items: center; gap: .2rem .5rem; }
       .table-wrap td.cell-actions { display: block; padding-top: .55rem; }
       .table-wrap td.cell-actions::before { display: none; }
-      .match-actions { gap: .45rem; }
       .cell-value { min-width: 0; overflow-wrap: anywhere; }
-      .section-title { flex-direction: column; align-items: stretch; gap: .5rem; }
-      .section-title h2 { margin-bottom: .25rem; }
-      .section-title .actions { width: 100%; }
-      .section-title > button, .section-title > .badge, .section-title > a { align-self: flex-start; }
-      .match-actions button, .match-actions .button-link { flex: 1 1 calc(50% - .45rem); min-height: 42px; font-size: .85rem; justify-content: center; }
-      .live-position-list { min-width: 0; }
-      .display-actions { max-width: none; }
-      /* Dialogs open as bottom sheets. */
-      dialog { width: 100vw; max-width: 100vw; margin: auto 0 0; max-height: 92vh; border-radius: 12px 12px 0 0; }
-      dialog .actions { position: sticky; bottom: -1rem; background: var(--surface); padding: .6rem 0; margin-bottom: -1rem; }
+      .match-actions { gap: .45rem; }
+      .match-actions button, .match-actions .button-link { flex: 1 1 calc(50% - .45rem); min-height: 42px; font-size: .85rem; }
+      dialog { width: 100vw; max-width: 100vw; margin: auto 0 0; max-height: 92vh; border-radius: 16px 16px 0 0; }
+      dialog .actions { position: sticky; bottom: -1.3rem; background: var(--surface); padding: .6rem 0; margin-bottom: -1.3rem; }
       dialog .actions button { flex: 1 1 auto; min-height: 44px; }
       .status { left: .75rem; right: .75rem; bottom: .75rem; max-width: none; }
-      .display-options { grid-template-columns: 1fr; }
-      .option-group { padding: .7rem; }
       .bracket-board { grid-auto-columns: minmax(200px, 80vw); }
       .diagram-scroll { margin-inline: -.4rem; max-height: 70vh; }
     }
+    @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
   </style>
 </head>
 <body>
-  <div id="login" class="card setup hidden">
-    <h1>Competition Control</h1>
-    <p class="subtle">Sign in to manage the competition.</p>
-    <a id="login-link" href="/auth/login"><button>Sign in</button></a>
+  <div id="login" class="auth-screen hidden">
+    <div class="auth-card">
+      <div class="brand"><span class="brand-mark">CC</span>Competition Control</div>
+      <div id="auth-panel-signin" class="stack">
+        <div><h1 style="font-size:1.35rem">Sign in</h1><p class="subtle" style="margin:0">Use your organisation account, or a passkey saved on this device.</p></div>
+        <div id="auth-message" class="callout warn hidden" role="alert"></div>
+        <a id="login-link" class="button-link" href="/auth/login" style="background:var(--accent);color:#fff;border-color:var(--accent)">Continue with organisation sign-in</a>
+        <div class="divider">or</div>
+        <button id="passkey-signin" class="secondary" type="button">Sign in with a passkey</button>
+        <p id="passkey-note" class="subtle hidden" style="margin:0;font-size:.82rem">Passkey sign-in needs the site to be opened at its HTTPS address.</p>
+      </div>
+      <div id="auth-panel-enroll" class="stack hidden">
+        <div><h1 style="font-size:1.35rem">Set up a passkey</h1><p class="subtle" style="margin:0">This one-time link adds a passkey for <strong id="enroll-email">your account</strong>. You can then sign in with it even when the organisation sign-in is unavailable.</p></div>
+        <div id="enroll-message" class="callout warn hidden" role="alert"></div>
+        <label>Name this passkey<input id="enroll-name" maxlength="80" value="My device"></label>
+        <button id="enroll-button" type="button">Create passkey and sign in</button>
+      </div>
+    </div>
   </div>
   <div id="app" class="shell hidden">
     <aside>
-      <div id="brand" class="brand">Competition Control</div>
-      <div>
-        <div class="nav-label">Management</div>
-        <nav id="nav">
-          <button data-page="competitions">Competitions</button>
-          <button class="active" data-page="overview">Overview</button>
-          <button data-page="teams">Teams</button>
-          <button data-page="challenges">Challenges</button>
-          <button data-page="schedule">Schedule</button>
-          <button data-page="matches">Live control</button>
-          <button data-page="league">League table</button>
-          <button data-page="arena">Arena</button>
-          <button data-page="displays">Public displays</button>
-          <button data-page="settings">Settings</button>
-          <button data-page="activity">Activity</button>
-        </nav>
+      <div id="brand" class="brand"><span class="brand-mark">CC</span>Competition Control</div>
+      <nav id="nav" aria-label="Sections"></nav>
+      <button id="logout-mobile" class="ghost mobile-signout hidden" type="button" style="color:var(--nav-ink)">Sign out</button>
+      <div class="aside-bottom">
+        <div><div class="who" id="user-email"></div><div id="user-method"></div></div>
+        <button id="logout" type="button">Sign out</button>
       </div>
-      <div class="aside-bottom"><span id="user-email"></span><button id="logout" class="secondary">Sign out</button></div>
     </aside>
     <main>
       <div class="topbar">
-        <div><strong id="top-title">Overview</strong></div>
-        <label id="competition-switcher-label">Selected competition<select id="competition"></select></label>
+        <strong id="top-title">Overview</strong>
+        <div class="topbar-right">
+          <span id="live-indicator" class="live-indicator" title="Connection to live updates">Connecting</span>
+          <label id="competition-switcher-label">Competition<select id="competition" aria-label="Selected competition"></select></label>
+        </div>
       </div>
       <div class="main-content"><div id="view"></div></div>
     </main>
@@ -296,7 +394,7 @@
     <form id="score-form">
       <h2 id="score-title">Match score</h2>
       <div id="score-fields"></div>
-      <div id="tie-break-fields" class="tie-break hidden" role="group" aria-labelledby="tie-break-title"></div>
+      <div id="tie-break-fields" class="tie-break hidden" role="group" data-tie-section></div>
       <label id="score-reason-label" class="hidden">Correction reason<input id="score-reason" maxlength="500"></label>
       <div class="actions" style="justify-content:flex-end;margin-top:1rem">
         <button type="button" class="secondary" data-close="score-dialog">Cancel</button>
@@ -418,9 +516,17 @@ let scheduleEvents = [];
 let playoffData = { bracket: null, matches: [], teams: [] };
 let autoRunEnabled = false;
 let timer;
-let liveSignature = '';
 let competitionSignature = '';
-let viewDirty = false;
+const dirtyForms = new Set();
+const tabState = {};
+function currentTab(group,fallback){
+  if(!tabState[group]){try{tabState[group]=localStorage.getItem(`tab:${group}`)||fallback;}catch{tabState[group]=fallback;}}
+  return tabState[group];
+}
+function tabsHtml(group,tabs,active){
+  return `<div class="tabs" role="tablist">${tabs.map(([key,label,count])=>`<button type="button" role="tab" aria-selected="${key===active}" class="${key===active?'active':''}" data-action="tab" data-group="${group}" data-tab="${key}">${h(label)}${count!==undefined?`<span class="tab-count">${h(count)}</span>`:''}</button>`).join('')}</div>`;
+}
+let pendingRender = false;
 let polling = false;
 let renderRevision = 0;
 let serverClockOffset = 0;
@@ -428,7 +534,49 @@ let serverClockBestRoundTrip = Infinity;
 const MATCH_COUNTDOWN_TOTAL_MS = 5000;
 let displayRecords = [];
 let positionColours = ['#d1495b','#00798c','#edae49','#30638e'];
-const titles = { competitions:'Competitions', overview:'Overview', teams:'Teams', challenges:'Challenges', schedule:'Schedule', matches:'Live control', league:'League table', arena:'Arena', displays:'Public displays', settings:'Settings', activity:'Activity' };
+const ICONS={
+  overview:'<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
+  matches:'<circle cx="12" cy="12" r="9"/><path d="M10 8.5v7l6-3.5z"/>',
+  scores:'<path d="M8 4h8v3a4 4 0 0 1-8 0z"/><path d="M8 5H5a3 3 0 0 0 3 4M16 5h3a3 3 0 0 1-3 4M12 11v4M9 20h6M10 15h4v5h-4z"/>',
+  schedule:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
+  playoffs:'<path d="M4 5h5v4H4zM4 15h5v4H4zM9 7h3v10H9M12 12h4M16 10h4v4h-4z"/>',
+  teams:'<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><circle cx="17" cy="9" r="2.5"/><path d="M16 14.2a5 5 0 0 1 5.5 5.3"/>',
+  challenges:'<path d="M5 21V4M5 4h11l-2 4 2 4H5"/>',
+  arena:'<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M12 3v18M3 12h18"/>',
+  displays:'<rect x="2.5" y="4" width="19" height="13" rx="2"/><path d="M8 21h8M12 17v4"/>',
+  league:'<path d="M5 20V10M12 20V4M19 20v-7"/>',
+  competitions:'<path d="M12 3 2.5 8 12 13l9.5-5z"/><path d="m2.5 13 9.5 5 9.5-5"/>',
+  settings:'<path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/>',
+  access:'<circle cx="8" cy="15" r="4"/><path d="m11 12 9-9M17 6l3 3M14 9l2 2"/>',
+  activity:'<path d="M3 12h4l3-8 4 16 3-8h4"/>'
+};
+const NAV=[
+  ['Event day',[['overview','Overview'],['matches','Live control'],['scores','Scores']]],
+  ['Schedule',[['schedule','Schedule'],['playoffs','Playoffs']]],
+  ['Setup',[['teams','Teams'],['challenges','Challenges'],['arena','Arena'],['displays','Displays']]],
+  ['Results',[['league','League table']]],
+  ['Admin',[['competitions','Competitions'],['settings','Settings'],['access','Access & passkeys'],['activity','Activity']]]
+];
+const titles=Object.fromEntries(NAV.flatMap(([,items])=>items));
+function renderNav() {
+  $('nav').innerHTML=NAV.map(([group,items])=>`<div class="nav-group"><div class="nav-label">${h(group)}</div>${items.map(([key,label])=>
+    `<button type="button" data-page="${key}" class="${page===key?'active':''}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[key]||''}</svg><span>${h(label)}</span><span class="nav-count hidden" data-count="${key}"></span></button>`).join('')}</div>`).join('');
+}
+// Badges on the navigation for things that need attention right now.
+function updateNavCounts() {
+  const now=Date.now();
+  const due=matches.filter(match=>isDueToStart(match,now)).length;
+  const needScores=matches.filter(needsScore).length;
+  const set=(key,count,title)=>{
+    const node=document.querySelector(`[data-count="${key}"]`);
+    if(!node)return;
+    node.textContent=String(count);
+    node.title=title;
+    node.classList.toggle('hidden',!count);
+  };
+  set('matches',due,`${due} match(es) due to start`);
+  set('scores',needScores,`${needScores} match(es) waiting for scores`);
+}
 const h = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const slug = () => $('competition').value;
 function formatCompetitionDateTime(value) {
@@ -494,8 +642,9 @@ async function api(path, options={}) {
   return data;
 }
 function showError(error) { notify(error.message || 'Request failed', true); }
-function heading(title, subtitle='') {
-  return `<div class="page-head"><div><h1>${h(title)}</h1>${subtitle ? `<p>${h(subtitle)}</p>` : ''}</div></div>`;
+function heading(title, subtitle='', actions='') {
+  const group=NAV.find(([,items])=>items.some(([key])=>key===page))?.[0]||'';
+  return `<div class="page-head"><div>${group?`<div class="eyebrow">${h(group)}</div>`:''}<h1>${h(title)}</h1>${subtitle ? `<p>${h(subtitle)}</p>` : ''}</div>${actions}</div>`;
 }
 function table(headers, rows, empty='No records') {
   return rows.length
@@ -503,8 +652,10 @@ function table(headers, rows, empty='No records') {
     : `<div class="empty">${h(empty)}</div>`;
 }
 function setPage(next) {
+  if(!titles[next])next='overview';
   page = next;
-  viewDirty = false;
+  try{localStorage.setItem('page',page);}catch{}
+  dirtyForms.clear();
   document.querySelectorAll('#nav button').forEach((button) => button.classList.toggle('active', button.dataset.page === page));
   $('top-title').textContent = titles[page];
   render().catch(showError);
@@ -519,7 +670,6 @@ async function loadCore() {
     $('competition').value = competitions.some(c => c.slug === remembered) ? remembered : competitions[0].slug;
   }
   await loadData();
-  liveSignature = '';
 }
 async function loadData() {
   if (!slug()) { teams=[]; matches=[]; scheduleEvents=[]; await render(); return; }
@@ -531,7 +681,7 @@ async function loadData() {
   ]);
   await applyBranding();
   await render();
-  viewDirty = false;
+  dirtyForms.clear();
 }
 async function applyBranding() {
   if (!slug()) return;
@@ -548,7 +698,7 @@ async function applyBranding() {
   };
   const colors = themes[document.body.dataset.theme] || themes.paper;
   ['--paper','--surface','--ink','--accent','--line','--raised','--muted'].forEach((name,index)=>document.documentElement.style.setProperty(name,colors[index]));
-  $('brand').innerHTML = result.settings?.logo_data_url ? `<img src="${h(result.settings.logo_data_url)}" alt="">Competition Control` : 'Competition Control';
+  $('brand').innerHTML = result.settings?.logo_data_url ? `<img src="${h(result.settings.logo_data_url)}" alt="Competition logo">` : '<span class="brand-mark">CC</span>Competition Control';
 }
 function teamRows() {
   return teams.map(t => `<tr><td><strong>${h(t.code)}</strong></td><td><input data-team-name="${h(t.id)}" value="${h(t.name)}" maxlength="160"></td><td><span class="badge ${t.active?'good':'warn'}">${t.active?'Active':'Inactive'}</span></td><td><div class="actions"><button class="secondary" data-action="save-team" data-id="${h(t.id)}">Save</button><button class="secondary" data-action="toggle-team" data-id="${h(t.id)}" data-active="${t.active}">${t.active?'Deactivate':'Activate'}</button><button class="danger" data-action="delete-team" data-id="${h(t.id)}">Delete</button></div></td></tr>`);
@@ -614,7 +764,7 @@ function matchRows(source=matches, actions=false, edit=false) {
         ?`<button class="secondary" data-action="playoff-score" data-id="${h(m.id)}">${m.has_scores?'Correct score':'Enter score'}</button>`
         :m.state==='pending'?'<span class="subtle">Waiting for prior results</span>':''}${heatDelayControls}</div></td>`:''
       :edit?`<td><div class="match-actions">${['scheduled','ready','delayed'].includes(m.state)?`<button class="secondary" data-action="edit-schedule" data-id="${h(m.id)}">Edit</button>`:''}${!['running','paused'].includes(m.state)?`<button class="danger" data-action="delete-match" data-id="${h(m.id)}">Delete</button>`:''}</div></td>`
-      :actions?`<td><div class="match-actions">${['scheduled','ready','delayed'].includes(m.state)?`<button data-action="${m.countdown_started_at?'cancel-start':'start'}" data-id="${h(m.id)}">${m.countdown_started_at?'Cancel countdown':'Start'}</button>`:''}${m.state==='running'?`<button class="secondary" data-action="pause" data-id="${h(m.id)}">Pause</button><button data-action="finish" data-id="${h(m.id)}">Finish</button><button class="danger" data-action="reset-match" data-id="${h(m.id)}">Reset timer</button>`:''}${m.state==='paused'?`<button class="secondary" data-action="resume" data-id="${h(m.id)}">Resume</button><button class="danger" data-action="reset-match" data-id="${h(m.id)}">Reset timer</button>`:''}${m.state==='awaiting_score'?`<button class="secondary" data-action="score" data-id="${h(m.id)}">${m.has_scores?'Correct score':'Enter score'}</button><button class="danger" data-action="reset-match" data-id="${h(m.id)}">Reset timer</button>`:''}${['scheduled','ready','delayed'].includes(m.state)&&!m.countdown_started_at?`<button class="secondary" data-action="delay" data-id="${h(m.id)}">Add delay</button>${Number(m.delay_seconds)>0?`<button class="secondary" data-action="undelay" data-id="${h(m.id)}">Reduce delay</button>`:''}`:''}${m.state==='complete'?`<button class="secondary" data-action="score" data-id="${h(m.id)}">${m.has_scores?'Correct score':'Enter score'}</button>`:''}</div></td>`:'';
+      :actions?`<td><div class="match-actions">${['scheduled','ready','delayed'].includes(m.state)?`<button data-action="${m.countdown_started_at?'cancel-start':'start'}" data-id="${h(m.id)}">${m.countdown_started_at?'Cancel countdown':'Start'}</button>`:''}${m.state==='running'?`<button class="secondary" data-action="pause" data-id="${h(m.id)}">Pause</button><button data-action="finish" data-id="${h(m.id)}">Finish</button><button class="danger" data-action="reset-match" data-id="${h(m.id)}">Reset timer</button>`:''}${m.state==='paused'?`<button class="secondary" data-action="resume" data-id="${h(m.id)}">Resume</button><button class="danger" data-action="reset-match" data-id="${h(m.id)}">Reset timer</button>`:''}${m.state==='awaiting_score'?`<button class="secondary" data-action="score" data-id="${h(m.id)}">${m.has_scores?'Correct score':'Enter score'}</button><button class="secondary" data-action="close-without-score" data-id="${h(m.id)}">No score</button><button class="danger" data-action="reset-match" data-id="${h(m.id)}">Reset timer</button>`:''}${['scheduled','ready','delayed'].includes(m.state)&&!m.countdown_started_at?`<button class="secondary" data-action="delay" data-id="${h(m.id)}">Add delay</button>${Number(m.delay_seconds)>0?`<button class="secondary" data-action="undelay" data-id="${h(m.id)}">Reduce delay</button>`:''}`:''}${m.state==='complete'?`<button class="secondary" data-action="score" data-id="${h(m.id)}">${m.has_scores?'Correct score':'Enter score'}</button>`:''}</div></td>`:'';
     const fill=m.isPlayoff
       ?`<span class="badge ${m.state==='pending'?'warn':'good'}">${h(m.team_count)}/${h(m.entrant_count)} teams assigned</span>${Number(m.delay_seconds)>0?` <span class="badge warn">Delayed by ${h(formatDelay(m.delay_seconds))}</span>`:''}`
       :`${m.underfilled?`<span class="badge warn">UNDERFILLED ${h(m.team_count)}/4</span>`:'<span class="badge good">4 teams</span>'}${Number(m.delay_seconds)>0?` <span class="badge warn">Delayed by ${h(formatDelay(m.delay_seconds))}</span>`:''}`;
@@ -736,15 +886,70 @@ function bracketBoardHtml() {
     return `<div class="bracket-stage"><h3>${label}</h3>${heats.map(card).join('')}</div>`;
   }).join('');
   const teamRows=(playoffData.teams||[]).map(team=>`<tr><td>${h(team.seed)}</td><td><strong>${h(team.code)}</strong></td><td>${h(team.name)}</td><td>${h(team.losses)}</td><td>${team.eliminated?'<span class="badge warn">Eliminated</span>':'<span class="badge good">Still in</span>'}</td></tr>`);
-  return `<section class="card" style="margin-top:1rem"><div class="section-title"><h2>Playoff bracket</h2><span class="badge">${h(playoffFormatLabel(bracket.format))}</span></div>
+  return `<section class="card"><div class="section-title"><h2>Playoff bracket</h2><span class="badge">${h(playoffFormatLabel(bracket.format))}</span></div>
     <div class="diagram-scroll">${playoffData.diagram||''}</div>
     ${bracketLegendHtml()}
     <details class="bracket-details"><summary>Heat cards</summary><div class="bracket-board">${columns}</div></details>
     <details class="bracket-details"><summary>Team progress</summary>${table(['Seed','Code','Team','Losses','Status'],teamRows,'No playoff entrants.')}</details></section>`;
 }
 async function schedulePage() {
-  playoffData=slug()?await api(`/api/admin/competitions/${encodeURIComponent(slug())}/playoffs`):{bracket:null,matches:[],teams:[]};
+  if(!slug())return `${heading('Schedule','Select a competition first.')}<div class="card empty">Create or select a competition to continue.</div>`;
   const nextNumber = matches.reduce((n,m)=>Math.max(n,Number(m.match_number)),0)+1;
+  const nextStart = new Date(Date.now()+60000);
+  nextStart.setSeconds(0,0);
+  const eventRows=scheduleEvents.map(event=>{
+    const start=new Date(event.starts_at);
+    return {start:start.getTime(),row:`<tr><td><strong>${h(event.title)}</strong><br><span class="badge">Event</span></td>
+      <td colspan="7">${h(formatCompetitionDateTime(start))} · ${h(event.duration_minutes)} minutes · ${h(event.location||'No location')}${event.description?` · ${h(event.description)}`:''}</td>
+      <td><div class="match-actions"><button class="secondary" data-action="edit-event" data-id="${h(event.id)}">Edit</button><button class="danger" data-action="delete-event" data-id="${h(event.id)}">Remove</button></div></td></tr>`};
+  });
+  const scheduleRows=[...matches.map(match=>({start:new Date(match.effective_start).getTime(),row:scheduleMatchRow(match)})),...eventRows]
+    .sort((a,b)=>a.start-b.start).map(item=>item.row);
+  const tab=currentTab('schedule','timeline');
+  const tabs=tabsHtml('schedule',[['timeline','Timeline',matches.length],['build','Build schedule'],['events','Timed events',scheduleEvents.length],['clear','Clear']],tab);
+  let body='';
+  if(tab==='timeline'){
+    body=`<section class="card"><div class="section-title"><h2>Competition schedule</h2><span class="subtle">${h(matches.filter(m=>!m.isPlayoff).length)} league · ${h(matches.filter(m=>m.isPlayoff).length)} playoff · ${h(scheduleEvents.length)} events</span></div>${table(['Match','Time / status','Arena','Position 0','Position 1','Position 2','Position 3','Fill','Actions'],scheduleRows,'No matches or events yet. Use “Build schedule” to generate one.')}</section>`;
+  }else if(tab==='build'){
+    body=`<section class="card"><h2>Generate a balanced league schedule</h2><p class="subtle">Every team plays the same number of matches, opponents are spread out, and positions are balanced.</p><form id="generate-form" class="form-grid cols-3">
+      <label>Number of matches<input name="matchCount" type="number" min="1" value="${Math.max(1,teams.filter(t=>t.active).length*3)}" required></label>
+      <label>First scheduled start<input name="firstStart" type="datetime-local" value="${toLocalDate(nextStart)}" required></label>
+      <label>Start-to-start interval per arena (minutes)<input name="interval" type="number" min="1" value="3" required></label>
+      <label>Arenas (comma-separated)<input name="arenas" value="Arena 1" required></label>
+      <p class="subtle wide" style="margin:0">The interval is the time between match starts in the same arena: 5 minutes means the next match starts exactly 5 minutes later, whatever the match length.</p>
+      <div class="wide"><button>Generate schedule</button></div>
+    </form></section>
+    <section class="card"><h2>Add a single match</h2><form id="manual-match-form">
+      <div class="form-grid cols-3">
+        <label>Match number<input name="matchNumber" type="number" min="1" value="${nextNumber}" required></label>
+        <label>Arena<input name="arenaName" value="Arena 1" required></label>
+        <label>Scheduled start<input name="scheduledStart" type="datetime-local" value="${toLocalDate(nextStart)}" required></label>
+        ${[1,2,3,4].map(positionEditor).join('')}
+        <label class="wide">Reason for an underfilled match<input name="underfilledReason" maxlength="500" placeholder="Required when fewer than four teams are assigned"></label>
+      </div><div style="margin-top:1rem"><button>Add match</button></div>
+    </form></section>`;
+  }else if(tab==='events'){
+    const rows=scheduleEvents.slice().sort((a,b)=>new Date(a.starts_at)-new Date(b.starts_at)).map(event=>`<tr><td><strong>${h(event.title)}</strong></td><td>${h(formatCompetitionDateTime(event.starts_at))}</td><td>${h(event.duration_minutes)} min</td><td>${h(event.location||'—')}</td><td><div class="match-actions"><button class="secondary" data-action="edit-event" data-id="${h(event.id)}">Edit</button><button class="danger" data-action="delete-event" data-id="${h(event.id)}">Remove</button></div></td></tr>`);
+    body=`<section class="card"><h2 id="event-form-title">Add a timed event</h2><p class="subtle">Lunch, talks or breaks. Matches never run during an event: anything that would overlap moves after it, and later matches in the arena follow.</p><form id="event-form" class="form-grid cols-3">
+      <label>Event title<input name="title" maxlength="120" placeholder="Lunch or opening talk" required></label>
+      <label>Start time<input name="startsAt" type="datetime-local" value="${toLocalDate(nextStart)}" required></label>
+      <label>Duration (minutes)<input name="durationMinutes" type="number" min="1" max="1440" value="30" required></label>
+      <label>Location<input name="location" maxlength="120"></label>
+      <label class="wide">Description<input name="description" maxlength="1000"></label>
+      <div class="wide actions"><button id="event-submit">Add event</button><button id="event-cancel" type="button" data-action="cancel-event-edit" class="secondary hidden">Cancel edit</button></div>
+    </form></section>
+    <section class="card"><h2>Timed events</h2>${table(['Event','Starts','Length','Location','Actions'],rows,'No timed events.')}</section>`;
+  }else{
+    body=`<section class="card danger-card"><div class="section-title"><h2>Clear everything scheduled</h2><button class="danger" data-action="clear-schedule">Clear all scheduled content</button></div>
+      <p class="subtle">Permanently deletes ${matches.length} match(es), ${scheduleEvents.length} timed event(s), all playoff heats and their scores. Teams, challenges, settings and displays stay. Running or paused matches and active countdowns must be stopped first; matches only waiting for scores do not block this.</p></section>
+      <section class="card danger-card"><div class="section-title"><h2>Clear matches only</h2><button class="danger" data-action="clear-matches">Clear matches only</button></div>
+      <p class="subtle">Deletes league matches, playoff heats and saved match scores, but keeps timed events such as lunch. Teams and challenge points stay.</p></section>`;
+  }
+  return `<div class="page-head"><div><div class="eyebrow">Schedule</div><h1>Schedule</h1><p>Build the league schedule, add timed events, and see everything in time order.</p></div><button class="secondary" data-action="go-page" data-page="playoffs">Playoffs →</button></div>${tabs}${body}`;
+}
+async function playoffsPage() {
+  if(!slug())return `${heading('Playoffs','Select a competition first.')}<div class="card empty">Create or select a competition to continue.</div>`;
+  playoffData=await api(`/api/admin/competitions/${encodeURIComponent(slug())}/playoffs`);
   const nextStart = new Date(Date.now()+60000);
   nextStart.setSeconds(0,0);
   const activeTeamCount=teams.filter(team=>team.active).length;
@@ -755,14 +960,6 @@ async function schedulePage() {
   const defaultArenas=(leagueArenas.length?leagueArenas:['Arena 1']).join(', ');
   const playoffStart=new Date(Math.ceil(Math.max(nextStart.getTime(),...matches.map(match=>
     new Date(match.effective_start).getTime()+Number(match.duration_seconds||120)*1000))/60000)*60000);
-  const eventRows=scheduleEvents.map(event=>{
-    const start=new Date(event.starts_at);
-    return {start:start.getTime(),row:`<tr><td><strong>${h(event.title)}</strong><br><span class="badge">Event</span></td>
-      <td colspan="7">${h(formatCompetitionDateTime(start))} · ${h(event.duration_minutes)} minutes · ${h(event.location||'No location')}${event.description?` · ${h(event.description)}`:''}</td>
-      <td><div class="match-actions"><button class="secondary" data-action="edit-event" data-id="${h(event.id)}">Edit</button><button class="danger" data-action="delete-event" data-id="${h(event.id)}">Remove</button></div></td></tr>`};
-  });
-  const scheduleRows=[...matches.map(match=>({start:new Date(match.effective_start).getTime(),row:scheduleMatchRow(match)})),...eventRows]
-    .sort((a,b)=>a.start-b.start).map(item=>item.row);
   const seedBracket=playoffData.bracket;
   const seedSnapshotAvailable=Array.isArray(seedBracket?.seed_standings_snapshot)&&
     seedBracket.seed_snapshot_at&&seedBracket.seed_match_number!==null&&seedBracket.seed_match_number!==undefined;
@@ -778,42 +975,17 @@ async function schedulePage() {
   const seedTies=(Array.isArray(seedBracket?.seed_standings_snapshot)?seedBracket.seed_standings_snapshot:[])
     .filter(team=>team.rank<=Number(seedBracket.field_size)+1&&team.tiedWith?.length);
   const seedTieWarning=seedTies.length&&!seedBracket.seed_frozen_at
-    ?`<div role="alert" class="preview-box error" style="margin-bottom:1rem"><strong>Level teams in the playoff seeding:</strong> ${h([...new Set(seedTies.map(team=>[team.code,...team.tiedWith].sort().join(' = ')))].join('; '))}. They are equal on league points, match points, head-to-head and best match, so they are currently listed by team code. The judge should decide the order (for example with a tie-break run recorded as a challenge award) before the first playoff countdown freezes the seeds.</div>`:'';
-  return `${heading('Schedule', 'Generate a balanced schedule or add a match manually.')}
-    <section class="card"><h2>Generate balanced schedule</h2><form id="generate-form" class="form-grid cols-3">
-      <label>Number of matches<input name="matchCount" type="number" min="1" value="${Math.max(1,teams.filter(t=>t.active).length*3)}" required></label>
-      <label>First scheduled start<input name="firstStart" type="datetime-local" value="${toLocalDate(nextStart)}" required></label>
-      <label>Start-to-start interval per arena (minutes)<input name="interval" type="number" min="1" value="3" required></label>
-      <label>Arenas<input name="arenas" value="Arena 1" required></label>
-      <p class="subtle wide">This is the time between scheduled match starts in the same arena. For example, 5 minutes means the next match starts exactly 5 minutes later, regardless of match duration.</p>
-      <div class="wide"><button>Generate schedule</button></div>
-    </form></section>
-    <section class="card" style="margin-top:1rem"><h2>Add single match</h2><form id="manual-match-form">
-      <div class="form-grid cols-3">
-        <label>Match number<input name="matchNumber" type="number" min="1" value="${nextNumber}" required></label>
-        <label>Arena<input name="arenaName" value="Arena 1" required></label>
-        <label>Scheduled start<input name="scheduledStart" type="datetime-local" value="${toLocalDate(nextStart)}" required></label>
-        ${[1,2,3,4].map(positionEditor).join('')}
-        <label class="wide">Reason for underfilled match<input name="underfilledReason" maxlength="500" placeholder="Required when fewer than four teams are assigned"></label>
-      </div><div style="margin-top:1rem"><button>Add match</button></div>
-    </form></section>
-    <section class="card" style="margin-top:1rem"><h2 id="event-form-title">Add a scheduled event</h2><p class="subtle">Matches are shifted in whole-minute increments around event times, including lunch; later matches in the same arena move with them.</p><form id="event-form" class="form-grid cols-3">
-      <label>Event title<input name="title" maxlength="120" placeholder="Lunch or opening talk" required></label>
-      <label>Start time<input name="startsAt" type="datetime-local" value="${toLocalDate(nextStart)}" required></label>
-      <label>Duration (minutes)<input name="durationMinutes" type="number" min="1" max="1440" value="30" required></label>
-      <label>Location<input name="location" maxlength="120"></label>
-      <label class="wide">Description<input name="description" maxlength="1000"></label>
-      <div class="wide"><button id="event-submit">Add event</button><button id="event-cancel" type="button" data-action="cancel-event-edit" class="secondary hidden">Cancel edit</button></div>
-    </form></section>
+    ?`<div role="alert" class="callout warn" style="margin-bottom:1rem"><strong>Level teams in the playoff seeding:</strong> ${h([...new Set(seedTies.map(team=>[team.code,...team.tiedWith].sort().join(' = ')))].join('; '))}. They are equal on league points, match points, head-to-head and best match, so they are currently listed by team code. The judge should decide the order (for example with a tie-break run recorded as a challenge award) before the first playoff countdown freezes the seeds.</div>`:'';
+  return `<div class="page-head"><div><div class="eyebrow">Schedule</div><h1>Playoffs</h1><p>How teams get from the league to the final, and the bracket as it plays out.</p></div>${seedBracket?`<a class="button-link" href="${seedCheckUrl}">Seeding sanity check</a>`:''}</div>
     ${bracketBoardHtml()}
-    <section class="card" style="margin-top:1rem"><h2>${playoffData.bracket?'Replace scheduled playoffs':'Schedule playoffs after the league'}</h2>
-      ${seedBracket?`<div role="status" style="margin:.8rem 0 1rem;padding:.8rem 1rem;border-left:5px solid ${seedSnapshotAvailable?'var(--good,#16804a)':'var(--warn,#b66a00)'};background:var(--surface,#f2f5f4)">
+    <section class="card"><h2>${playoffData.bracket?'Replace scheduled playoffs':'Schedule playoffs after the league'}</h2>
+      ${seedBracket?`<div role="status" class="callout ${seedSnapshotAvailable?'good':'warn'}" style="margin-bottom:1rem">
         <strong>${seedBracket.seed_frozen_at?'Frozen playoff seeding snapshot':'Current playoff seeding snapshot'}</strong>
         <span> · ${seedSnapshotDescription}</span>
         <a href="${seedCheckUrl}" style="display:inline-block;margin-left:.5rem">Open standings sanity check</a>
       </div>`:''}
       ${seedTieWarning}
-      <p class="subtle">Choose how teams get from the league to the final. Every heat has two to four robots; seeds are spread across first-round heats and nobody gets a single-team bye. Seeds follow the live league table until the first playoff countdown, then freeze. Ties in a heat are settled by league seed, and playoff points never change league standings.</p>
+      <p class="subtle">Choose how teams get from the league to the final. Every heat has two to four robots; seeds are spread across first-round heats and nobody gets a single-team bye. Seeds follow the live league table until the first playoff countdown, then freeze. Ties that decide who advances are settled by the judge, and playoff points never change league standings.</p>
       <form id="playoff-form" data-replace="${playoffData.bracket?'true':'false'}" class="form-grid cols-3">
         <label>Route to the final<select name="format">
           <option value="double-elimination">Double elimination</option>
@@ -833,51 +1005,62 @@ async function schedulePage() {
       </form>
       ${playoffData.bracket?`<p class="subtle" style="margin-top:1rem">Current bracket: ${h(playoffFormatLabel(playoffData.bracket.format))} · top ${h(playoffData.bracket.field_size)} from standings · final of ${h(playoffData.bracket.final_size)}${Number(playoffData.bracket.final_byes)?` with ${h(playoffData.bracket.final_byes)} seeded bye(s)`:''} · ${playoffData.bracket.seed_frozen_at?'seeds frozen when play began':'seeds update from the latest league standings until the first playoff countdown starts'} · ${h(playoffData.bracket.status)}. Replacing archives its progression and scores.</p>`:''}
     </section>
-    <section class="card" style="margin-top:1rem"><h2>Competition schedule</h2>${table(['Match','Time / status','Arena','Position 0','Position 1','Position 2','Position 3','Fill','Actions'],scheduleRows,'No matches or events scheduled.')}</section>
-    <section class="card danger-card" style="margin-top:1rem"><div class="section-title"><h2>Clear schedule</h2><button class="danger" data-action="clear-schedule">Clear all scheduled content</button></div>
-      <p class="subtle">Permanently deletes ${matches.length} match(es), ${scheduleEvents.length} custom event(s), all generated playoff heats and their scores. Teams, challenges, settings and public displays stay intact. Active, paused, awaiting-score matches or an active countdown must be stopped first.</p>
-      <div style="margin-top:1rem"><button class="danger" data-action="clear-matches">Clear matches only</button>
-      <p class="subtle">Deletes league matches, all playoff heats and saved match scores, but keeps custom timed events such as lunch and breaks. Teams and challenge points stay intact. Active matches or countdowns must be stopped first.</p></div>
-    </section>`;
+`;
 }
 function toLocalDate(date) {
   return new Date(date.getTime()-date.getTimezoneOffset()*60000).toISOString().slice(0,16);
 }
+function metricCard(value,label,icon,tone=''){
+  return `<section class="card metric-card"><span class="metric-icon" style="${tone?`background:var(--${tone}-soft);color:var(--${tone})`:''}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${ICONS[icon]||''}</svg></span><div class="metric">${h(value)}</div><div class="metric-label">${h(label)}</div></section>`;
+}
 async function overviewPage() {
   const comp=compOption();
-  const standingsData=slug()?await leagueData():{standings:[]};
+  if(!comp)return `${heading('Welcome','Create your first competition to get started.')}
+    <section class="card" style="max-width:640px"><h2>Create a competition</h2><form id="competition-form" class="form-grid"><label>Competition name<input name="name" maxlength="120" required></label><label>URL slug<input name="slug" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" required></label><label>Match duration (seconds)<input name="matchDurationSeconds" type="number" value="120" min="1" max="7200" required></label><div class="wide"><button>Create competition</button></div></form></section>`;
+  const standingsData=await leagueData();
   const standings=standingsData.standings||[];
+  const now=Date.now();
+  const due=matches.filter(match=>isDueToStart(match,now));
+  const waiting=matches.filter(needsScore);
+  const live=matches.filter(match=>['running','paused'].includes(match.state)||match.countdown_started_at);
+  const remaining=matches.filter(match=>!['complete','cancelled'].includes(match.state)).length;
+  const completed=matches.filter(match=>match.state==='complete').length;
+  const arenas=[...new Set(matches.filter(match=>!['complete','cancelled'].includes(match.state)).map(match=>match.arena_name))].sort();
+  const arenaStrip=arenas.map(arena=>{
+    const focus=arenaFocus(matches.filter(match=>match.arena_name===arena).sort((a,b)=>new Date(a.effective_start)-new Date(b.effective_start)),now);
+    if(!focus)return '';
+    const [tone,label]=focusLabel(focus,now);
+    return `<div class="now-panel ${tone}" style="cursor:pointer" data-action="go-page" data-page="matches"><div class="now-label">${h(arena)} · ${h(label)}</div><div class="now-title"><strong>${h(matchLabel(focus))}</strong>${bigClockHtml(focus).replace('big-clock','match-clock')}</div><div class="subtle">${h(focus.positions.filter(p=>p.teamCode).map(p=>p.teamCode).join(' · ')||'Teams to be decided')}</div></div>`;
+  }).join('');
   const upcomingItems=[
-    ...matches.filter(match=>!['complete','cancelled'].includes(match.state)).map(match=>({
+    ...matches.filter(match=>['scheduled','ready','delayed'].includes(match.state)).map(match=>({
       time:new Date(match.effective_start).getTime(),
-      row:`<tr><td><strong>${match.isPlayoff?'Heat':'Match'} #${h(match.match_number)}</strong>${match.isPlayoff?'<br><span class="badge warn">PLAYOFF</span>':''}</td><td>${h(formatCompetitionDateTime(match.effective_start))}</td><td>${h(match.arena_name)}</td><td>${h(match.positions.filter(position=>position.teamCode).map(position=>position.teamCode).join(' · ')||'Waiting for playoff results')}</td><td>${h(match.state.replaceAll('_',' '))}</td></tr>`
+      row:`<tr><td><strong>${h(matchLabel(match))}</strong>${match.isPlayoff?' <span class="badge info">Playoff</span>':''}</td><td>${h(formatCompetitionDateTime(match.effective_start))}${Number(match.delay_seconds)>0?` <span class="badge warn">+${h(formatDelay(match.delay_seconds))}</span>`:''}</td><td>${h(match.arena_name)}</td><td>${h(match.positions.filter(position=>position.teamCode).map(position=>position.teamCode).join(' · ')||'Waiting for playoff results')}</td></tr>`
     })),
     ...scheduleEvents.map(event=>({
       time:new Date(event.starts_at).getTime(),
-      row:`<tr><td><strong>${h(event.title)}</strong><br><span class="badge">Event</span></td><td>${h(formatCompetitionDateTime(event.starts_at))}</td><td>${h(event.location||'—')}</td><td>—</td><td>${h(event.duration_minutes)} min</td></tr>`
+      row:`<tr><td><strong>${h(event.title)}</strong> <span class="badge">Event</span></td><td>${h(formatCompetitionDateTime(event.starts_at))}</td><td>${h(event.location||'—')}</td><td>${h(event.duration_minutes)} min</td></tr>`
     }))
-  ].filter(item=>item.time>=Date.now()).sort((a,b)=>a.time-b.time).slice(0,6).map(item=>item.row);
-  const running=matches.filter(m=>['running','paused','awaiting_score'].includes(m.state));
-  const activeTeams=teams.filter(team=>team.active).length;
-  const scheduledCount=matches.filter(match=>!['complete','cancelled'].includes(match.state)).length;
-  const completedCount=matches.filter(match=>match.state==='complete').length;
-  const miniLeague=standings.slice(0,5).map((team,index)=>`<tr><td>${index+1}</td><td><strong>${h(team.code)}</strong></td><td>${h(team.name)}</td><td><strong>${h(team.league_points)}</strong></td></tr>`);
-  return `${comp
-    ? `<div class="overview-intro"><div><h1>${h(comp.name)}</h1><p>Competition overview and live event status</p></div><div class="actions"><button class="secondary" data-action="go-page" data-page="matches">Open live control</button><button data-action="go-page" data-page="schedule">Manage schedule</button></div></div>`
-    : heading('Overview','Create a competition to get started.')}
-    ${!comp?`<section class="card"><h2>Create competition</h2><form id="competition-form" class="form-grid"><label>Competition name<input name="name" maxlength="120" required></label><label>Public slug<input name="slug" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" required></label><label>Match duration (seconds)<input name="matchDurationSeconds" type="number" value="120" min="1" max="7200" required></label><div class="wide"><button>Create competition</button></div></form></section>`:
-    `<div class="grid cols-4">
-      <section class="card metric-card"><div class="metric">${activeTeams}</div><div class="metric-label">Active teams</div></section>
-      <section class="card metric-card"><div class="metric">${scheduledCount}</div><div class="metric-label">Upcoming / active matches</div></section>
-      <section class="card metric-card"><div class="metric">${completedCount}</div><div class="metric-label">Completed matches</div></section>
-      <section class="card metric-card"><div class="metric">${scheduleEvents.length}</div><div class="metric-label">Scheduled events</div></section>
+  ].filter(item=>item.time>=now-5*60_000).sort((a,b)=>a.time-b.time).slice(0,8).map(item=>item.row);
+  const miniLeague=standings.slice(0,6).map((team,index)=>`<tr><td>${index+1}</td><td><strong>${h(team.code)}</strong> <span class="subtle">${h(team.name)}</span></td><td><strong>${h(team.league_points)}</strong></td></tr>`);
+  const attention=[
+    due.length?`<div class="callout warn" style="display:flex;justify-content:space-between;gap:1rem;align-items:center;flex-wrap:wrap"><span><strong>${due.length} match${due.length===1?' is':'es are'} due to start.</strong> Nothing starts until someone presses Start${autoRunEnabled?'':' (auto-run is off)'}.</span><button data-action="go-page" data-page="matches">Open live control</button></div>`:'',
+    waiting.length?`<div class="callout" style="display:flex;justify-content:space-between;gap:1rem;align-items:center;flex-wrap:wrap"><span><strong>${waiting.length} finished match${waiting.length===1?' is':'es are'} waiting for scores.</strong></span><button class="secondary" data-action="go-page" data-page="scores">Enter scores</button></div>`:'',
+    comp.status==='draft'?`<div class="callout warn" style="display:flex;justify-content:space-between;gap:1rem;align-items:center;flex-wrap:wrap"><span><strong>This competition is a draft.</strong> Public displays stay hidden until you publish it.</span><button data-action="publish">Publish competition</button></div>`:''
+  ].filter(Boolean).join('');
+  return `<div class="overview-intro"><div><div class="eyebrow">${h(comp.status)}</div><h1>${h(comp.name)}</h1><p>${live.length?`${live.length} match${live.length===1?'':'es'} on now`:'No match running right now'} · ${remaining} to play · ${completed} complete</p></div><div class="actions"><button class="secondary" data-action="go-page" data-page="schedule">Schedule</button><button data-action="go-page" data-page="matches">Live control</button></div></div>
+    ${attention?`<div class="stack" style="margin-bottom:1rem">${attention}</div>`:''}
+    <div class="grid cols-4">
+      ${metricCard(teams.filter(team=>team.active).length,'Active teams','teams')}
+      ${metricCard(remaining,'Matches to play','schedule')}
+      ${metricCard(completed,'Matches complete','scores','good')}
+      ${metricCard(waiting.length,'Waiting for scores','scores',waiting.length?'warn':'')}
     </div>
+    ${arenaStrip?`<section class="card overview-section"><div class="section-title"><h2>Now in each arena</h2>${scheduleHealthHtml(now)}</div><div class="grid cols-2">${arenaStrip}</div></section>`:''}
     <div class="grid cols-2 overview-section">
-      <section class="card"><h2>Live matches</h2>${running.length?table(['Match','Arena','Teams','Status'],running.map(m=>`<tr><td>#${h(m.match_number)}</td><td>${h(m.arena_name)}</td><td>${h(m.positions.filter(p=>p.teamCode).map(p=>p.teamCode).join(' · '))}</td><td><span class="badge">${h(m.state.replaceAll('_',' '))}</span></td></tr>`)):'<div class="empty">No matches in progress.</div>'}</section>
-      <section class="card"><div class="section-title"><h2>League leaders</h2><button class="secondary" data-action="go-page" data-page="league">Full table</button></div>${table(['Rank','Code','Team','Points'],miniLeague,'No league standings yet.')}</section>
-    </div>
-    <section class="card overview-section"><div class="section-title"><h2>Upcoming schedule</h2><button class="secondary" data-action="go-page" data-page="schedule">Manage schedule</button></div>${table(['Item','Time','Arena / location','Teams','Status / duration'],upcomingItems,'No upcoming matches or events.')}</section>
-    <section class="card" style="margin-top:1rem"><div class="section-title"><h2>Competition status</h2>${comp.status==='draft'?`<button data-action="publish">Publish competition</button>`:`<span class="badge good">${h(comp.status)}</span>`}</div><p class="subtle">Public displays become available after publishing.</p></section>`}`;
+      <section class="card"><div class="section-title"><h2>Coming up</h2><button class="ghost" data-action="go-page" data-page="schedule">Full schedule →</button></div>${table(['Item','Time','Arena / location','Teams'],upcomingItems,'Nothing coming up.')}</section>
+      <section class="card"><div class="section-title"><h2>League leaders</h2><button class="ghost" data-action="go-page" data-page="league">Full table →</button></div>${table(['#','Team','Points'],miniLeague,'No league standings yet.')}</section>
+    </div>`;
 }
 async function leagueData() {
   return slug()?api(`/api/admin/competitions/${encodeURIComponent(slug())}/league`):{standings:[]};
@@ -1058,57 +1241,181 @@ async function settingsPage() {
       <div class="actions" style="margin-top:1rem"><button>Save settings</button><button type="button" class="secondary" id="remove-logo">Remove logo</button></div>
     </form></section>`;
 }
+async function accessPage() {
+  const [me,passkeys,users]=await Promise.all([api('/api/admin/me'),api('/api/admin/passkeys'),api('/api/admin/users')]);
+  const canAdd=me.passkeysAvailable&&passkeysSupported();
+  const date=value=>value?formatCompetitionDateTime(value):'Never';
+  const passkeyRows=passkeys.map(passkey=>`<tr><td><strong>${h(passkey.name)}</strong><br><span class="subtle">${passkey.backed_up?'Synced passkey':'This device only'}</span></td><td>${h(date(passkey.created_at))}</td><td>${h(date(passkey.last_used_at))}</td><td><div class="match-actions"><button class="secondary" data-action="rename-passkey" data-id="${h(passkey.id)}" data-name="${h(passkey.name)}">Rename</button><button class="danger" data-action="remove-passkey" data-id="${h(passkey.id)}">Remove</button></div></td></tr>`);
+  const userRows=users.map(user=>`<tr><td><strong>${h(user.email)}</strong>${user.is_you?' <span class="badge info">You</span>':''}${user.disabled?' <span class="badge bad">Disabled</span>':''}<br><span class="subtle">${h(user.display_name||'')}</span></td><td>${h(date(user.last_login_at))}${user.last_login_method?`<br><span class="subtle">${user.last_login_method==='passkey'?'Passkey':'Organisation sign-in'}</span>`:''}</td><td>${user.passkey_count?`<span class="badge good">${h(user.passkey_count)} passkey${user.passkey_count===1?'':'s'}</span>`:'<span class="badge warn">No passkey</span>'}</td><td>${h(user.active_sessions)}</td><td><div class="match-actions">${user.is_you?'':`<button class="${user.disabled?'secondary':'danger'}" data-action="toggle-user" data-id="${h(user.id)}" data-disabled="${user.disabled}">${user.disabled?'Enable':'Disable'}</button>`}<button class="secondary" data-action="signout-user" data-id="${h(user.id)}" ${user.active_sessions?'':'disabled'}>Sign out ${user.is_you?'other devices':'everywhere'}</button></div></td></tr>`);
+  return `<div class="page-head"><div><div class="eyebrow">Admin</div><h1>Access &amp; passkeys</h1><p>Who can run competitions, and how they sign in.</p></div></div>
+    <section class="card"><div class="section-title"><h2>Your passkeys</h2><span class="subtle">${h(me.email)}</span></div>
+      <p class="subtle">A passkey lets you sign in with this device's fingerprint, face or PIN — and keeps working if the organisation sign-in service is down. Passkeys are the only fallback sign-in; there are no passwords.</p>
+      ${passkeys.length?'':'<div class="callout warn" style="margin-bottom:.85rem"><strong>You have no passkey yet.</strong> Add one now so you can still get in during an event if the organisation sign-in stops working.</div>'}
+      ${table(['Passkey','Added','Last used','Actions'],passkeyRows,'No passkeys on your account.')}
+      <form id="passkey-add-form" class="actions" style="margin-top:.9rem">
+        <label style="flex:1 1 220px">Name for the new passkey<input name="name" maxlength="80" value="${h(/iPhone|iPad/.test(navigator.userAgent)?'iPhone':/Android/.test(navigator.userAgent)?'Android phone':/Mac/.test(navigator.userAgent)?'Mac':'This device')}"></label>
+        <button ${canAdd?'':'disabled'} style="align-self:end">Add a passkey</button>
+      </form>
+      ${canAdd?'':'<p class="subtle" style="margin:.5rem 0 0">Passkeys can only be added when this site is opened at its HTTPS address in a browser that supports them.</p>'}
+    </section>
+    <section class="card"><h2>Administrators</h2>
+      <p class="subtle">Anyone allowed by the organisation sign-in can administer competitions. Disabling an account signs it out everywhere and blocks its passkeys.</p>
+      ${table(['Account','Last sign-in','Passkeys','Active sessions','Actions'],userRows,'No administrators yet.')}
+      <details style="margin-top:.85rem"><summary>Getting someone in without the organisation sign-in</summary>
+        <p class="subtle">On the server, create a one-time passkey enrollment link (valid 30 minutes by default) and send it to them:</p>
+        <p><code>docker compose exec app node dist/cli.js invite person@example.com</code></p>
+        <p class="subtle">Restrict who can sign in at all with the <code>ADMIN_EMAILS</code> setting (comma-separated) in the server's <code>.env</code>.</p>
+      </details>
+    </section>`;
+}
+function humanAction(action){
+  const [entity,verb]=String(action).split('.');
+  const words=(verb||entity).replace(/_/g,' ');
+  const subject={match:'Match',playoff:'Playoff',playoff_match:'Playoff heat',playoffs:'Playoffs',competition:'Competition',team:'Team',challenge:'Challenge',competition_event:'Event',display:'Display',passkey:'Passkey',auth:'Sign-in',admin_user:'Administrator'}[entity]||entity;
+  return `${subject} ${words}`;
+}
+function humanDetails(details){
+  if(!details||typeof details!=='object')return '';
+  return Object.entries(details).filter(([,value])=>value!==null&&value!==''&&!(Array.isArray(value)&&!value.length))
+    .slice(0,6).map(([key,value])=>`<span class="subtle">${h(key.replace(/([A-Z])/g,' $1').toLowerCase())}:</span> ${h(Array.isArray(value)?value.length+' item(s)':typeof value==='object'?JSON.stringify(value).slice(0,60):String(value).slice(0,80))}`).join(' · ');
+}
 async function activityPage() {
   const events=await api('/api/admin/audit');
-  return `${heading('Activity','Recent administrative and system events.')}
-    <section class="card">${table(['Time','Actor','Action','Details'],events.slice(0,100).map(e=>`<tr><td>${h(new Date(e.created_at).toLocaleString())}</td><td>${h(e.actor_email)}</td><td>${h(e.action)}</td><td>${h(JSON.stringify(e.details))}</td></tr>`),'No activity recorded.')}</section>`;
+  const rows=events.slice(0,150).map(e=>`<tr><td>${h(formatCompetitionDateTime(e.created_at))}</td><td>${e.actor_email.startsWith('system:')?'<span class="badge">Automatic</span>':h(e.actor_email)}</td><td><strong>${h(humanAction(e.action))}</strong></td><td style="white-space:normal">${humanDetails(e.details)}</td></tr>`);
+  return `${heading('Activity','Everything changed by administrators and by the automatic match clock, newest first.')}
+    <section class="card">${table(['When','Who','What','Details'],rows,'No activity recorded.')}</section>`;
 }
 // A league match or ready playoff heat whose start time has arrived but that nobody has started.
 function isDueToStart(match,now=Date.now()) {
   if(match.countdown_started_at||new Date(match.effective_start).getTime()>now)return false;
   return match.isPlayoff?match.state==='ready':['scheduled','ready','delayed'].includes(match.state);
 }
-function scheduleHealthHtml(now) {
+function scheduleHealthHtml(now,onlyArena) {
   const future=matches.filter(match=>['scheduled','ready','delayed'].includes(match.state)&&!match.countdown_started_at)
     .sort((left,right)=>new Date(left.effective_start)-new Date(right.effective_start));
-  const arenas=[...new Set(matches.filter(match=>!['complete','cancelled'].includes(match.state)).map(match=>match.arena_name))].sort();
+  const arenas=onlyArena?[onlyArena]:[...new Set(matches.filter(match=>!['complete','cancelled'].includes(match.state)).map(match=>match.arena_name))].sort();
   if(!arenas.length)return '<div class="empty">Nothing left to run.</div>';
   const pills=arenas.map(arena=>{
     const next=future.filter(match=>match.arena_name===arena)[0];
-    if(!next)return `<span class="health-pill ok">${h(arena)} · nothing queued</span>`;
+    const prefix=onlyArena?'':`${h(arena)} · `;
+    if(!next)return `<span class="health-pill ok">${prefix}nothing queued</span>`;
     const scheduled=new Date(next.scheduled_start).getTime();
     const effective=new Date(next.effective_start).getTime();
     const overdue=Math.max(0,now-effective);
     const behind=Math.max(0,Math.max(effective,now)-scheduled);
     const label=`${next.isPlayoff?'Heat':'Match'} #${next.match_number}`;
-    if(overdue>=60000)return `<span class="health-pill late">${h(arena)} · ${label} overdue by ${h(formatDelay(Math.floor(overdue/1000)))}</span>`;
-    if(behind>=60000)return `<span class="health-pill late">${h(arena)} · running ${h(formatDelay(Math.floor(behind/1000)))} behind (next: ${label})</span>`;
-    return `<span class="health-pill ok">${h(arena)} · on time (next: ${label})</span>`;
+    if(overdue>=60000)return `<span class="health-pill late">${prefix}${label} overdue by ${h(formatDelay(Math.floor(overdue/1000)))}</span>`;
+    if(behind>=60000)return `<span class="health-pill late">${prefix}${h(formatDelay(Math.floor(behind/1000)))} behind</span>`;
+    return `<span class="health-pill ok">${prefix}on time</span>`;
   });
   return `<div class="schedule-health">${pills.join('')}</div>`;
 }
+function needsScore(match){return match.state==='awaiting_score';}
+function matchLabel(match){return `${match.isPlayoff?(match.bracket_side==='final'?'Final':'Heat'):'Match'} #${match.match_number}`;}
+function teamChipsHtml(match){
+  return `<div class="now-teams">${(match.positions||[]).map(position=>{
+    const colour=/^#[0-9a-f]{6}$/i.test(position.colour||'')?position.colour:'#777777';
+    return `<div class="team-chip" style="--chip:${h(colour)}"><small>Position ${h(Number(position.position)-1)}</small><strong>${h(position.teamCode||'—')}</strong><span>${h(position.teamName||(match.isPlayoff&&match.state==='scheduled'?'To be decided':'Vacant'))}</span></div>`;
+  }).join('')}</div>`;
+}
+function liveControlsHtml(match,{compact=false}={}){
+  const id=h(match.id);
+  const cls=compact?'secondary':'';
+  const delayed=Number(match.delay_seconds)>0;
+  if(match.isPlayoff){
+    if(match.countdown_started_at)return `<button class="danger" data-action="playoff-cancel-start" data-id="${id}">Cancel countdown</button>`;
+    if(match.state==='ready')return `<button class="${compact?'secondary':'big success'}" data-action="playoff-start" data-id="${id}">Start ${compact?'':'heat'}</button><button class="secondary" data-action="heat-delay" data-id="${id}">Delay</button>${delayed?`<button class="secondary" data-action="heat-undelay" data-id="${id}">Reduce delay</button>`:''}`;
+    if(match.state==='running')return `<button class="secondary" data-action="playoff-pause" data-id="${id}">Pause</button><button data-action="playoff-finish" data-id="${id}">Finish</button><button class="ghost" data-action="playoff-reset-timer" data-id="${id}">Reset timer</button>`;
+    if(match.state==='paused')return `<button class="success" data-action="playoff-resume" data-id="${id}">Resume</button><button data-action="playoff-finish" data-id="${id}">Finish</button><button class="ghost" data-action="playoff-reset-timer" data-id="${id}">Reset timer</button>`;
+    if(match.state==='awaiting_score')return `<button data-action="playoff-score" data-id="${id}">Enter placings</button><button class="ghost" data-action="playoff-reset-timer" data-id="${id}">Reset timer</button>`;
+    if(match.state==='complete')return `<button class="secondary" data-action="playoff-score" data-id="${id}">Correct</button>`;
+    return '<span class="subtle">Waiting for earlier results</span>';
+  }
+  if(['scheduled','ready','delayed'].includes(match.state)){
+    if(match.countdown_started_at)return `<button class="danger" data-action="cancel-start" data-id="${id}">Cancel countdown</button>`;
+    return `<button class="${compact?cls:'big success'}" data-action="start" data-id="${id}">Start${compact?'':' match'}</button><button class="secondary" data-action="delay" data-id="${id}">Delay</button>${delayed?`<button class="secondary" data-action="undelay" data-id="${id}">Reduce delay</button>`:''}`;
+  }
+  if(match.state==='running')return `<button class="secondary" data-action="pause" data-id="${id}">Pause</button><button data-action="finish" data-id="${id}">Finish now</button><button class="ghost" data-action="reset-match" data-id="${id}">Reset timer</button>`;
+  if(match.state==='paused')return `<button class="success" data-action="resume" data-id="${id}">Resume</button><button data-action="finish" data-id="${id}">Finish now</button><button class="ghost" data-action="reset-match" data-id="${id}">Reset timer</button>`;
+  if(match.state==='awaiting_score')return `<button data-action="score" data-id="${id}">Enter scores</button><button class="secondary" data-action="close-without-score" data-id="${id}">No score</button><button class="ghost" data-action="reset-match" data-id="${id}">Reset timer</button>`;
+  if(match.state==='complete')return `<button class="secondary" data-action="score" data-id="${id}">${match.has_scores?'Correct scores':'Add scores'}</button>`;
+  return '';
+}
+function bigClockHtml(match){
+  if(match.countdown_started_at)return `<div class="big-clock" data-countdown-big="${h(new Date(match.countdown_started_at).getTime())}">GET READY</div>`;
+  if(['running','paused'].includes(match.state)&&match.actual_start)return `<div class="big-clock" data-clock data-state="${h(match.state)}" data-start="${h(new Date(match.actual_start).getTime())}" data-paused="${h(match.paused_at?new Date(match.paused_at).getTime():'')}" data-paused-seconds="${h(match.paused_seconds)}" data-duration="${h(match.duration_seconds)}">--:--</div>`;
+  if(['awaiting_score','complete'].includes(match.state))return '<div class="big-clock">00:00</div>';
+  return `<div class="big-clock" data-until="${h(new Date(match.effective_start).getTime())}">--:--</div>`;
+}
+// What an arena's operator should be looking at right now.
+function arenaFocus(arenaMatches,now){
+  const order=[
+    match=>Boolean(match.countdown_started_at)&&!['running','paused'].includes(match.state),
+    match=>match.state==='running',
+    match=>match.state==='paused',
+    match=>isDueToStart(match,now),
+    match=>['scheduled','ready','delayed'].includes(match.state)&&!(match.isPlayoff&&match.state==='scheduled')
+  ];
+  for(const test of order){const found=arenaMatches.find(test);if(found)return found;}
+  return arenaMatches.find(match=>match.isPlayoff&&match.state==='scheduled');
+}
+function focusLabel(match,now){
+  if(match.countdown_started_at&&!['running','paused'].includes(match.state))return ['countdown','Starting'];
+  if(match.state==='running')return ['running','In progress'];
+  if(match.state==='paused')return ['paused','Paused'];
+  if(match.state==='awaiting_score')return ['finished','Finished · waiting for scores'];
+  if(isDueToStart(match,now))return ['due','Due now · press Start'];
+  if(match.isPlayoff&&match.state==='scheduled')return ['','Next · waiting for earlier results'];
+  return ['','Up next'];
+}
 async function matchesPage() {
-  if(!slug())return `${heading('Live control','Select a competition to manage match operations.')}<div class="card empty">Create or select a competition to continue.</div>`;
-  const timerDisplays=await api(`/api/admin/competitions/${encodeURIComponent(slug())}/displays`);
-  const timerDisplay=timerDisplays.find(display=>display.display_type==='timer'&&display.enabled);
+  if(!slug())return `${heading('Live control','Select a competition to run matches.')}<div class="card empty">Create or select a competition to continue.</div>`;
+  const displays=await api(`/api/admin/competitions/${encodeURIComponent(slug())}/displays`);
+  const timerDisplay=displays.find(display=>display.display_type==='timer'&&display.enabled);
   const now=Date.now();
-  const active=matches.filter(match=>['running','paused','awaiting_score'].includes(match.state)||Boolean(match.countdown_started_at)||isDueToStart(match,now))
-    .sort((left,right)=>new Date(left.effective_start)-new Date(right.effective_start));
-  const future=matches.filter(match=>!['running','paused','awaiting_score','complete','cancelled'].includes(match.state)&&!match.countdown_started_at&&!isDueToStart(match,now))
-    .sort((left,right)=>new Date(left.effective_start)-new Date(right.effective_start));
-  const past=matches.filter(match=>['complete','cancelled'].includes(match.state))
+  const byTime=(left,right)=>new Date(left.effective_start)-new Date(right.effective_start);
+  const open=matches.filter(match=>!['complete','cancelled'].includes(match.state)||(match.actual_end&&now-new Date(match.actual_end).getTime()<10*60_000)).sort(byTime);
+  const arenas=[...new Set(open.map(match=>match.arena_name))].sort();
+  const consoles=arenas.map(arena=>{
+    const arenaMatches=open.filter(match=>match.arena_name===arena);
+    const focus=arenaFocus(arenaMatches,now);
+    const queue=arenaMatches.filter(match=>match!==focus&&['scheduled','ready','delayed'].includes(match.state)&&!match.countdown_started_at).slice(0,4);
+    // Finished matches wait for scores in a slim strip, so the next match's Start stays front and centre.
+    const finished=arenaMatches.filter(needsScore).sort((a,b)=>new Date(b.actual_end||0)-new Date(a.actual_end||0));
+    const finishedStrip=finished.map(match=>`<div class="queue-row" style="border-color:color-mix(in srgb,var(--accent) 35%,var(--line));background:var(--accent-soft)"><span class="badge info">Finished</span><span><strong>${h(matchLabel(match))}</strong> <span class="subtle">${h(match.positions.filter(p=>p.teamCode).map(p=>p.teamCode).join(' · '))}</span></span><span class="match-actions">${match.isPlayoff?`<button data-action="playoff-score" data-id="${h(match.id)}">Enter placings</button>`:`<button data-action="score" data-id="${h(match.id)}">Enter scores</button><button class="secondary" data-action="close-without-score" data-id="${h(match.id)}">No score</button>`}</span></div>`).join('');
+    if(!focus)return finishedStrip?`<section class="card arena-console"><header><h2>${h(arena)}</h2></header><div class="queue">${finishedStrip}</div><div class="empty">Nothing else queued in ${h(arena)}.</div></section>`:'';
+    const [tone,label]=focusLabel(focus,now);
+    const delay=Number(focus.delay_seconds)>0?`<span class="badge warn">+${h(formatDelay(focus.delay_seconds))}</span>`:'';
+    return `<section class="card arena-console">
+      <header><h2>${h(arena)}</h2>${scheduleHealthHtml(now,arena)}</header>
+      ${finishedStrip?`<div class="queue">${finishedStrip}</div>`:''}
+      <div class="now-panel ${tone}">
+        <div class="now-label">${h(label)}</div>
+        <div class="now-title"><strong>${h(matchLabel(focus))}${focus.isPlayoff&&focus.bracket_side!=='final'?` <span class="badge info">${h(playoffSideLabel(focus.bracket_side,focus.bracket_format))}</span>`:''}</strong><span class="subtle">${h(formatCompetitionDateTime(focus.effective_start))} ${delay}</span></div>
+        ${bigClockHtml(focus)}
+        ${teamChipsHtml(focus)}
+        ${focus.team_count<4&&!focus.isPlayoff?`<div class="badge warn">Underfilled · ${h(focus.team_count)}/4 teams</div>`:''}
+        <div class="now-controls">${liveControlsHtml(focus)}</div>
+      </div>
+      ${queue.length?`<div><h3 class="subtle" style="font-size:.72rem;letter-spacing:.08em;text-transform:uppercase">Next in ${h(arena)}</h3><div class="queue">${queue.map(match=>`<div class="queue-row"><span class="when">${h(formatCompetitionDateTime(match.effective_start).split(', ').pop())}</span><span><strong>${h(matchLabel(match))}</strong> <span class="subtle">${h(match.positions.filter(p=>p.teamCode).map(p=>p.teamCode).join(' · ')||'Teams to be decided')}</span>${Number(match.delay_seconds)>0?` <span class="badge warn">+${h(formatDelay(match.delay_seconds))}</span>`:''}</span><span class="match-actions">${match.isPlayoff&&match.state!=='ready'?'':`<button class="secondary" data-action="${match.isPlayoff?'heat-delay':'delay'}" data-id="${h(match.id)}">Delay</button>`}</span></div>`).join('')}</div></div>`:''}
+    </section>`;
+  }).join('');
+  const waiting=matches.filter(needsScore);
+  const future=matches.filter(match=>['scheduled','ready','delayed'].includes(match.state)&&!match.countdown_started_at).sort(byTime);
+  const past=matches.filter(match=>['complete','cancelled','awaiting_score'].includes(match.state))
     .sort((left,right)=>new Date(right.actual_end||right.effective_start)-new Date(left.actual_end||left.effective_start));
-  return `${heading('Live control','Start, pause, delay, finish, and score matches.')}
-    <section class="card"><div class="section-title"><h2>Automatic starts</h2><label class="toggle-control"><input id="auto-run-toggle" type="checkbox" ${autoRunEnabled?'checked':''}> Enable competition auto-run</label></div>
-      <p class="subtle">When enabled, every scheduled match starts automatically at its effective start time. When disabled, matches wait for an operator to start them. The synchronized 3-2-1 countdown is shown on connected timer and arena displays.</p>
-      ${timerDisplay?`<a href="/display/${encodeURIComponent(timerDisplay.slug)}" target="_blank" rel="noopener">Open live arena timer</a>`:`<p class="subtle">Create and enable a Timer display in Public displays to publish the live arena clock.</p>`}
-    </section>
-    <section class="card" style="margin-top:1rem"><h2>Schedule status</h2>${scheduleHealthHtml(now)}</section>
-    <section class="card" style="margin-top:1rem"><h2>Active</h2>${table(['Match','Time / status','Arena positions','Fill','Controls'],matchRows(active,true),'No active matches.')}</section>
-    <section class="card" style="margin-top:1rem"><div class="section-title"><h2>Future matches</h2><div class="actions"><button class="secondary" data-action="delay-all" ${future.length?'':'disabled'}>Delay all upcoming…</button><button class="secondary" data-action="undelay-all" ${future.some(match=>new Date(match.effective_start)>new Date(match.scheduled_start))?'':'disabled'}>Undelay all future matches</button></div></div>
-      <p class="subtle">Delays push later matches and playoff heats automatically, including heats waiting on a delayed result. <strong>Undelay all</strong> restores unstarted league matches and active playoff heats to their original future start times; matches with a countdown, an arena, schedule or event conflict, or an original start in the past are left unchanged.</p>
-      ${table(['Match','Time / status','Arena positions','Fill','Controls'],matchRows(future,true),'No future matches.')}</section>
-    <section class="card" style="margin-top:1rem"><h2>Past matches</h2>${table(['Match','Time / status','Arena positions','Fill','Controls'],matchRows(past,true),'No past matches.')}</section>`;
+  return `<div class="page-head"><div><div class="eyebrow">Event day</div><h1>Live control</h1><p>Start, pause and finish matches. Everything here updates the moment it changes.</p></div>
+      <div class="actions">
+        <label class="switch" title="Start matches and ready playoff heats automatically at their time"><input id="auto-run-toggle" type="checkbox" ${autoRunEnabled?'checked':''}> Auto-run</label>
+        <button class="secondary" data-action="delay-all" ${future.length?'':'disabled'}>Delay all…</button>
+        <button class="secondary" data-action="undelay-all" ${future.some(match=>new Date(match.effective_start)>new Date(match.scheduled_start))?'':'disabled'}>Undelay all</button>
+        ${timerDisplay?`<a class="button-link" href="/display/${encodeURIComponent(timerDisplay.slug)}" target="_blank" rel="noopener">Open timer ↗</a>`:''}
+      </div></div>
+    ${waiting.length?`<div class="callout warn" style="margin-bottom:1rem;display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap"><span><strong>${waiting.length} finished match${waiting.length===1?' is':'es are'} waiting for scores.</strong> Screens have already moved on; scores can be entered whenever you're ready.</span><button data-action="go-page" data-page="scores">Go to scores</button></div>`:''}
+    ${autoRunEnabled?'<div class="callout good" style="margin-bottom:1rem"><strong>Auto-run is on.</strong> Matches and ready playoff heats start themselves at their scheduled time with the synchronized countdown.</div>':''}
+    ${consoles?`<div class="console-grid">${consoles}</div>`:'<div class="card empty">Nothing scheduled. Generate a schedule on the Schedule page.</div>'}
+    <details class="card" data-key="live-upcoming" style="margin-top:1rem"><summary>All upcoming <span class="tab-count">${future.length}</span></summary><div style="margin-top:.75rem">${table(['Match','Time / status','Arena positions','Fill','Controls'],matchRows(future,true),'No upcoming matches.')}</div></details>
+    <details class="card" data-key="live-past"><summary>Finished <span class="tab-count">${past.length}</span></summary><div style="margin-top:.75rem">${table(['Match','Time / status','Arena positions','Fill','Controls'],matchRows(past,true),'No finished matches.')}</div></details>`;
 }
 // Copies each column heading onto its cells so tables can be shown as labelled cards on phones.
 function labelTableCells(root) {
@@ -1132,17 +1439,60 @@ function labelTableCells(root) {
     });
   });
 }
-async function render() {
-  const pages={competitions:competitionsPage,overview:overviewPage,teams:teamsPage,challenges:challengesPage,schedule:schedulePage,matches:matchesPage,league:leaguePage,arena:arenaPage,displays:displaysPage,settings:settingsPage,activity:activityPage};
+function markFormDirty(target) {
+  const form=target.closest?.('form');
+  if(form?.id&&form.closest('#view'))dirtyForms.add(form.id);
+}
+// Values of forms the user has started filling in, so a live refresh never wipes them.
+function snapshotForms() {
+  const saved=new Map();
+  for(const id of dirtyForms){
+    const form=document.getElementById(id);
+    if(form)saved.set(id,[...form.elements].filter(element=>element.name).map(element=>({name:element.name,value:element.value,checked:element.checked,type:element.type})));
+  }
+  return saved;
+}
+function restoreForms(saved) {
+  for(const [id,fields] of saved){
+    const form=document.getElementById(id);
+    if(!form){dirtyForms.delete(id);continue;}
+    const elements=[...form.elements];
+    for(const field of fields){
+      if(field.type==='checkbox'||field.type==='radio'){
+        const element=elements.find(candidate=>candidate.name===field.name&&candidate.value===field.value);
+        if(element)element.checked=field.checked;
+      }else{
+        const element=elements.find(candidate=>candidate.name===field.name);
+        if(element&&element.type!=='file')element.value=field.value;
+      }
+    }
+  }
+}
+function userIsTyping() {
+  const active=document.activeElement;
+  return Boolean(active&&active.closest?.('#view')&&['INPUT','TEXTAREA','SELECT'].includes(active.tagName)&&active.type!=='checkbox'&&active.type!=='button');
+}
+const openDetails=new Set();
+async function render({fromRefresh=false}={}) {
+  const pages={competitions:competitionsPage,overview:overviewPage,teams:teamsPage,challenges:challengesPage,schedule:schedulePage,playoffs:playoffsPage,matches:matchesPage,scores:scoresPage,league:leaguePage,arena:arenaPage,displays:displaysPage,settings:settingsPage,access:accessPage,activity:activityPage};
+  // A background refresh waits until you stop typing in a field (or close a dialog).
+  if(fromRefresh&&(userIsTyping()||document.querySelector('dialog[open]'))){pendingRender=true;return;}
   const pageToRender=page;
   const revision=++renderRevision;
   const content=await pages[pageToRender]();
   if(revision!==renderRevision||pageToRender!==page)return;
+  if(fromRefresh&&userIsTyping()){pendingRender=true;return;}
+  const saved=snapshotForms();
+  document.querySelectorAll('#view details[data-key]').forEach(node=>node.open?openDetails.add(node.dataset.key):openDetails.delete(node.dataset.key));
   $('view').innerHTML=content;
+  document.querySelectorAll('#view details[data-key]').forEach(node=>{if(openDetails.has(node.dataset.key))node.open=true;});
+  restoreForms(saved);
+  updateNavCounts();
+  pendingRender=false;
   labelTableCells($('view'));
   document.querySelector('#nav button.active')?.scrollIntoView({block:'nearest',inline:'center'});
   if(pageToRender==='displays')updateDisplayOptionVisibility($('display-form'));
-  if(pageToRender==='schedule'&&$('playoff-form'))updatePlayoffPreview($('playoff-form'));
+  if(pageToRender==='playoffs'&&$('playoff-form'))updatePlayoffPreview($('playoff-form'));
 }
 async function postMatch(action,id,body={}) {
   const result=await api(`/api/admin/matches/${id}/${action}`,{method:'POST',body:JSON.stringify(body)});
@@ -1168,11 +1518,11 @@ async function startMatchCountdown(button,id) {
 function showTieBreak(form,ties,scores) {
   const pointsOf=new Map(scores.map(score=>[score.teamCode,score.points]));
   form.dataset.ties=JSON.stringify(ties);
-  const section=$('tie-break-fields');
-  section.innerHTML=`<h3 id="tie-break-title">Judge's decision needed</h3>
-    <p class="subtle">These teams are level on points but their places lead to different outcomes. Decide the order (for example after a replay or by the judge's ruling) and record why.</p>
-    ${ties.map((tie,index)=>`<div class="form-grid">${tie.places.slice(0,-1).map((place,slot)=>`<label>${h(ordinal(place))} place (${h(pointsOf.get(tie.teamCodes[0]))} pts)<select data-tie="${index}" data-slot="${slot}" required><option value="">Choose…</option>${tie.teamCodes.map(code=>`<option value="${h(code)}">${h(code)}</option>`).join('')}</select></label>`).join('')}<p class="subtle wide">${h(tie.teamCodes.join(' and '))} share ${h(tie.places.map(ordinal).join(', '))}${tie.places.length>2?'; the remaining team takes the last place':`; the other takes ${h(ordinal(tie.places.at(-1)))}`}.</p></div>`).join('')}
-    <label>Reason for the decision<input id="tie-break-reason" maxlength="500" required placeholder="e.g. won the tie-break replay"></label>`;
+  const section=form.querySelector('[data-tie-section]');
+  section.innerHTML=`<h3>Judge's decision needed</h3>
+    <p class="subtle" style="margin:0">These teams are level on points but their places lead to different outcomes. Decide the order (for example after a replay or by the judge's ruling) and record why.</p>
+    ${ties.map((tie,index)=>`<div class="form-grid">${tie.places.slice(0,-1).map((place,slot)=>`<label>${h(ordinal(place))} place (${h(pointsOf.get(tie.teamCodes[0]))} pts)<select data-tie="${index}" data-slot="${slot}" required><option value="">Choose…</option>${tie.teamCodes.map(code=>`<option value="${h(code)}">${h(code)}</option>`).join('')}</select></label>`).join('')}<p class="subtle wide" style="margin:0">${h(tie.teamCodes.join(' and '))} share ${h(tie.places.map(ordinal).join(', '))}${tie.places.length>2?'; the remaining team takes the last place':`; the other takes ${h(ordinal(tie.places.at(-1)))}`}.</p></div>`).join('')}
+    <label style="margin-top:.6rem">Reason for the decision<input class="tie-break-reason" maxlength="500" required placeholder="e.g. won the tie-break replay"></label>`;
   section.classList.remove('hidden');
   section.scrollIntoView({block:'nearest'});
   notify('Scores not saved yet: the judge must decide the tie.',true);
@@ -1190,7 +1540,50 @@ function readTieBreak(form,scores) {
     const decided=[...chosen,...tie.teamCodes.filter(code=>!chosen.includes(code))];
     order.splice(Math.min(...tie.teamCodes.map(code=>order.indexOf(code))),decided.length,...decided);
   });
-  return {order,reason:$('tie-break-reason').value.trim()};
+  return {order,reason:form.querySelector('.tie-break-reason')?.value.trim()||''};
+}
+// Saves league scores or playoff placings from any score form (dialog or inline card).
+async function submitScores(form,{kind,matchId,reason}) {
+  const scores=[...form.querySelectorAll('[data-points]')].map(input=>({teamCode:input.dataset.points,points:Number(input.value)}));
+  if(scores.some(score=>!Number.isFinite(score.points)))throw new Error('Enter a number for every team.');
+  if(kind==='playoff'){
+    const tieBreak=readTieBreak(form,scores);
+    try{
+      return await api(`/api/admin/playoff-matches/${matchId}/scores`,{method:'POST',body:JSON.stringify({scores,reason,tieBreak})});
+    }catch(error){
+      if(error.data?.tieBreakRequired){showTieBreak(form,error.data.ties,scores);return null;}
+      throw error;
+    }
+  }
+  return api(`/api/admin/matches/${matchId}/scores`,{method:'POST',body:JSON.stringify({scores:scores.map(score=>({teamCode:score.teamCode,leaguePoints:score.points})),reason})});
+}
+function scoreSummary(match){
+  const scores=Array.isArray(match.scores)?match.scores:[];
+  return scores.length?scores.map(score=>`<strong>${h(score.teamCode)}</strong> ${h(score.points)}`).join(' · '):'<span class="subtle">No scores</span>';
+}
+async function scoresPage() {
+  if(!slug())return `${heading('Scores','Select a competition first.')}<div class="card empty">Create or select a competition to continue.</div>`;
+  const waiting=matches.filter(needsScore).sort((a,b)=>new Date(a.actual_end||a.effective_start)-new Date(b.actual_end||b.effective_start));
+  const recent=matches.filter(match=>match.state==='complete').sort((a,b)=>new Date(b.actual_end||b.effective_start)-new Date(a.actual_end||a.effective_start)).slice(0,40);
+  const cards=waiting.map(match=>{
+    const kind=match.isPlayoff?'playoff':'league';
+    const rows=match.positions.filter(position=>position.teamCode).map(position=>{
+      const colour=/^#[0-9a-f]{6}$/i.test(position.colour||'')?position.colour:'#777777';
+      return `<label class="score-row" style="--chip:${h(colour)}"><span><strong>${h(position.teamCode)}</strong> <span class="subtle">${h(position.teamName||'')}</span></span><input type="number" step="any" inputmode="decimal" name="points-${h(position.teamCode)}" data-points="${h(position.teamCode)}" required aria-label="${h(position.teamCode)} ${kind==='playoff'?'match points':'league points'}"></label>`;
+    }).join('');
+    return `<section class="card score-card"><div class="section-title"><h2>${h(matchLabel(match))}${match.isPlayoff?` <span class="badge info">${h(playoffSideLabel(match.bracket_side,match.bracket_format))}</span>`:''}</h2><span class="subtle">${h(match.arena_name)} · finished ${h(formatCompetitionDateTime(match.actual_end||match.effective_start).split(', ').pop())}</span></div>
+      <form id="score-inline-${h(match.id)}" class="score-inline" data-match-id="${h(match.id)}" data-kind="${kind}">
+        <p class="subtle" style="margin:0">${kind==='playoff'?'Enter each robot\'s match points; placings follow from them. Ties that decide who advances need the judge\'s decision.':'Enter the league points each team earned.'}</p>
+        ${rows}
+        <div class="tie-break hidden" data-tie-section></div>
+        <div class="actions"><button type="submit">Save ${kind==='playoff'?'placings':'scores'}</button>${kind==='league'?`<button type="button" class="secondary" data-action="close-without-score" data-id="${h(match.id)}">No score for this match</button>`:''}</div>
+      </form></section>`;
+  }).join('');
+  const recentRows=recent.map(match=>`<tr><td><strong>${h(matchLabel(match))}</strong><br><span class="subtle">${h(match.arena_name)}</span></td><td>${h(formatCompetitionDateTime(match.actual_end||match.effective_start))}</td><td>${scoreSummary(match)}${match.isPlayoff&&match.tie_break?' <span class="badge warn">Tie decided by judge</span>':''}</td><td><div class="match-actions"><button class="secondary" data-action="${match.isPlayoff?'playoff-score':'score'}" data-id="${h(match.id)}">${match.has_scores?'Correct':'Add scores'}</button></div></td></tr>`);
+  return `<div class="page-head"><div><div class="eyebrow">Event day</div><h1>Scores</h1><p>Finished matches waiting for scores, and corrections to recent results. Displays never wait for scores.</p></div></div>
+    <h2>Waiting for scores <span class="tab-count">${waiting.length}</span></h2>
+    ${cards?`<div class="score-grid">${cards}</div>`:'<div class="empty">All caught up — no finished match is waiting for scores.</div>'}
+    <section class="card" style="margin-top:1.25rem"><h2>Recent results</h2>${table(['Match','Finished','Scores','Actions'],recentRows,'No scored matches yet.')}</section>`;
 }
 function formData(form) { return Object.fromEntries(new FormData(form).entries()); }
 function displayOptionsFromForm(form) {
@@ -1236,6 +1629,18 @@ function updateMatchClocks() {
     const goAt=Number(node.dataset.countdown)+MATCH_COUNTDOWN_TOTAL_MS;
     const remaining=goAt-now;
     node.textContent=remaining>0?`Starting in ${Math.ceil(remaining/1000)}`:'GO';
+  });
+  document.querySelectorAll('[data-countdown-big]').forEach(node=>{
+    const elapsed=now-Number(node.dataset.countdownBig);
+    node.textContent=elapsed<2000?'GET READY':elapsed<MATCH_COUNTDOWN_TOTAL_MS?String(Math.ceil((MATCH_COUNTDOWN_TOTAL_MS-elapsed)/1000)):'GO';
+  });
+  document.querySelectorAll('[data-until]').forEach(node=>{
+    const delta=Math.round((Number(node.dataset.until)-now)/1000);
+    const abs=Math.abs(delta);
+    const text=abs>=3600?`${Math.floor(abs/3600)}h ${String(Math.floor(abs%3600/60)).padStart(2,'0')}m`:`${String(Math.floor(abs/60)).padStart(2,'0')}:${String(abs%60).padStart(2,'0')}`;
+    node.textContent=delta>=0?text:`+${text}`;
+    node.title=delta>=0?'Until the scheduled start':'Overdue';
+    node.style.color=delta<0?'var(--warn)':'';
   });
   document.querySelectorAll('[data-clock]').forEach(clock=>{
     const start=Number(clock.dataset.start);
@@ -1401,6 +1806,34 @@ document.addEventListener('click',async(event)=>{
       form.elements.minutes.value='5';
       form.elements.reason.value='Delay reduced by admin';
       $('undelay-dialog').showModal();
+    }else if(action==='close-without-score'){
+      const match=matches.find(item=>item.id===id);
+      if(!match)throw new Error('Match not found');
+      const reason=prompt(`Close ${matchLabel(match)} without a score? It stays in the results with no points, and scores can still be added later.\n\nReason:`,'Not scored');
+      if(!reason)return;
+      await api(`/api/admin/matches/${id}/close-without-score`,{method:'POST',body:JSON.stringify({reason})});
+      await loadData();notify(`${matchLabel(match)} closed without a score.`);
+    }else if(action==='tab'){
+      tabState[button.dataset.group]=button.dataset.tab;
+      try{localStorage.setItem(`tab:${button.dataset.group}`,button.dataset.tab);}catch{}
+      await render();
+    }else if(action==='rename-passkey'){
+      const name=prompt('New name for this passkey',button.dataset.name||'Passkey');
+      if(!name?.trim())return;
+      await api(`/api/admin/passkeys/${encodeURIComponent(id)}`,{method:'PATCH',body:JSON.stringify({name:name.trim()})});
+      await render();notify('Passkey renamed.');
+    }else if(action==='remove-passkey'){
+      if(!confirm('Remove this passkey? You will no longer be able to sign in with it.'))return;
+      await api(`/api/admin/passkeys/${encodeURIComponent(id)}`,{method:'DELETE'});
+      await render();notify('Passkey removed.');
+    }else if(action==='toggle-user'){
+      const disable=button.dataset.disabled!=='true';
+      if(disable&&!confirm('Disable this administrator? They are signed out everywhere and cannot sign in until re-enabled.'))return;
+      await api(`/api/admin/users/${id}`,{method:'PATCH',body:JSON.stringify({disabled:disable})});
+      await render();notify(disable?'Administrator disabled and signed out.':'Administrator enabled.');
+    }else if(action==='signout-user'){
+      const result=await api(`/api/admin/users/${id}/sessions`,{method:'DELETE'});
+      await render();notify(`Signed out ${result.removed} session(s).`);
     }else if(action==='delay-all'){
       const form=$('delay-all-form');
       const arenas=[...new Set(matches.filter(match=>!['complete','cancelled'].includes(match.state)).map(match=>match.arena_name))].sort();
@@ -1533,12 +1966,11 @@ document.addEventListener('click',async(event)=>{
 });
 $('competition').addEventListener('change',async()=>{
   localStorage.setItem('competitionSlug',slug());
-  liveSignature='';
-  viewDirty=false;
+  dirtyForms.clear();
   try{await loadData();}catch(error){showError(error);}
 });
 $('view').addEventListener('input',(event)=>{
-  if(event.target.closest('form'))viewDirty=true;
+  markFormDirty(event.target);
   const form=event.target.form;
   if(form?.id==='display-form'){
     if(event.target.name==='slug')form.elements.slug.dataset.edited='true';
@@ -1548,7 +1980,7 @@ $('view').addEventListener('input',(event)=>{
   }
 });
 $('view').addEventListener('change',(event)=>{
-  if(event.target.closest('form'))viewDirty=true;
+  markFormDirty(event.target);
   if(event.target.name==='type')updateDisplayOptionVisibility(event.target.form);
   if(event.target.form?.id==='playoff-form')updatePlayoffPreview(event.target.form);
 });
@@ -1651,13 +2083,13 @@ async function handleFormSubmit(event){
         scheduledStart:requestedStart.toISOString(),
         intervalMinutes,finalDelayMinutes:Number(values.finalDelayMinutes),arenaNames
       })});
-      viewDirty=false;
+      dirtyForms.clear();
       await loadData();
       const moved=result.shiftedMatchIds?.length||0;
       notify(`${playoffFormatLabel(values.format)} playoffs scheduled · ${result.matchCount} heat(s)${moved?`; ${moved} match(es) moved to avoid conflicts`:''}.`);
     }else if(form.id==='display-form'){
       const result=await api(`/api/admin/competitions/${encodeURIComponent(slug())}/displays`,{method:'POST',body:JSON.stringify({slug:values.slug,title:values.title,type:values.type,options:displayOptionsFromForm(form)})});
-      viewDirty=false;
+      dirtyForms.clear();
       await render();notify(`Display created: ${location.origin}${result.htmlUrl}`);
     }else if(form.id==='display-config-form'){
       await api(`/api/admin/displays/${form.dataset.displayId}`,{method:'PATCH',body:JSON.stringify({title:values.title,options:displayOptionsFromForm(form)})});
@@ -1676,29 +2108,34 @@ async function handleFormSubmit(event){
       positionColours=result.cornerColours;
       await loadData();
       notify('Competition arena colours saved and applied to all matches.');
+    }else if(form.id==='passkey-add-form'){
+      const button=form.querySelector('button');
+      button.disabled=true;
+      try{
+        const {challengeId,options}=await api('/api/admin/passkeys/register/options',{method:'POST',body:'{}'});
+        let response;
+        try{response=await createPasskey(options);}catch(error){throw new Error(passkeyErrorMessage(error));}
+        await api('/api/admin/passkeys/register/verify',{method:'POST',body:JSON.stringify({challengeId,name:values.name||'Passkey',response})});
+        dirtyForms.delete(form.id);
+        await render();notify('Passkey added. You can now sign in with it.');
+      }finally{if(button.isConnected)button.disabled=false;}
+    }else if(form.classList.contains('score-inline')){
+      const button=form.querySelector('button[type="submit"]');
+      button.disabled=true;
+      try{
+        const kind=form.dataset.kind;
+        const result=await submitScores(form,{kind,matchId:form.dataset.matchId});
+        if(result===null)return;
+        dirtyForms.delete(form.id);
+        notify(kind==='playoff'?'Placings saved; later heats updated.':'Scores saved.');
+        await loadData();
+      }finally{if(button.isConnected)button.disabled=false;}
     }else if(form.id==='score-form'){
       const matchId=form.dataset.matchId;
       const reason=form.dataset.hasExistingScores==='true'?$('score-reason').value:undefined;
-      let playoffScheduleChanges=0;
-      if(form.dataset.scoreKind==='playoff'){
-        const scores=[...form.querySelectorAll('[data-points]')].map(input=>({
-          teamCode:input.dataset.points,points:Number(input.value)
-        }));
-        const tieBreak=readTieBreak(form,scores);
-        let result;
-        try{
-          result=await api(`/api/admin/playoff-matches/${matchId}/scores`,{method:'POST',body:JSON.stringify({scores,reason,tieBreak})});
-        }catch(error){
-          if(error.data?.tieBreakRequired){showTieBreak(form,error.data.ties,scores);return;}
-          throw error;
-        }
-        playoffScheduleChanges=new Set([...(result.rescheduledHeatIds||[]),...(result.eventShiftedIds||[])]).size;
-      }else{
-        const scores=[...form.querySelectorAll('[data-points]')].map(input=>({
-          teamCode:input.dataset.points,leaguePoints:Number(input.value)
-        }));
-        await api(`/api/admin/matches/${matchId}/scores`,{method:'POST',body:JSON.stringify({scores,reason})});
-      }
+      const result=await submitScores(form,{kind:form.dataset.scoreKind==='playoff'?'playoff':'league',matchId,reason});
+      if(result===null)return;
+      const playoffScheduleChanges=new Set([...(result?.rescheduledHeatIds||[]),...(result?.eventShiftedIds||[])]).size;
       $('score-dialog').close();
       try{
         await loadData();
@@ -1789,77 +2226,173 @@ $('view').addEventListener('click',(event)=>{
   if(event.target.id==='remove-logo'){$('logo-data').value='';$('logo-preview').src='';$('logo-preview').classList.add('hidden');}
 });
 $('logout').addEventListener('click',async()=>{try{await api('/auth/logout',{method:'POST',body:'{}'});}finally{location.reload();}});
-async function init(){
-  try{
-    const user=await api('/api/admin/me');
-    $('user-email').textContent=user.email;
-    $('app').classList.remove('hidden');
-    await loadCore();
-  }catch(error){
-    $('login').classList.remove('hidden');
-    try{
-      const auth=await api('/auth/status');
-      if(!auth.oidcConfigured){$('login-link').removeAttribute('href');$('login-link').textContent='Sign-in setup required';}
-    }catch{}
+// ---------- Sign-in, passkeys and enrollment ----------
+const b64urlToBuffer=value=>{const base=value.replace(/-/g,'+').replace(/_/g,'/');const binary=atob(base+'='.repeat((4-base.length%4)%4));return Uint8Array.from(binary,c=>c.charCodeAt(0)).buffer;};
+const bufferToB64url=buffer=>btoa(String.fromCharCode(...new Uint8Array(buffer))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+function passkeysSupported(){return Boolean(window.PublicKeyCredential&&navigator.credentials&&window.isSecureContext);}
+async function createPasskey(options){
+  const publicKey={...options,challenge:b64urlToBuffer(options.challenge),user:{...options.user,id:b64urlToBuffer(options.user.id)},
+    excludeCredentials:(options.excludeCredentials||[]).map(item=>({...item,id:b64urlToBuffer(item.id)}))};
+  const credential=await navigator.credentials.create({publicKey});
+  if(!credential)throw new Error('No passkey was created.');
+  const response=credential.response;
+  return {id:credential.id,rawId:bufferToB64url(credential.rawId),type:credential.type,
+    response:{clientDataJSON:bufferToB64url(response.clientDataJSON),attestationObject:bufferToB64url(response.attestationObject),transports:response.getTransports?.()||[]},
+    clientExtensionResults:credential.getClientExtensionResults?.()||{},authenticatorAttachment:credential.authenticatorAttachment||undefined};
+}
+async function getPasskey(options){
+  const publicKey={...options,challenge:b64urlToBuffer(options.challenge),allowCredentials:(options.allowCredentials||[]).map(item=>({...item,id:b64urlToBuffer(item.id)}))};
+  const credential=await navigator.credentials.get({publicKey});
+  if(!credential)throw new Error('No passkey was chosen.');
+  const response=credential.response;
+  return {id:credential.id,rawId:bufferToB64url(credential.rawId),type:credential.type,
+    response:{clientDataJSON:bufferToB64url(response.clientDataJSON),authenticatorData:bufferToB64url(response.authenticatorData),signature:bufferToB64url(response.signature),userHandle:response.userHandle?bufferToB64url(response.userHandle):undefined},
+    clientExtensionResults:credential.getClientExtensionResults?.()||{},authenticatorAttachment:credential.authenticatorAttachment||undefined};
+}
+function passkeyErrorMessage(error){
+  if(error?.name==='NotAllowedError')return 'The passkey request was cancelled or timed out.';
+  if(error?.name==='InvalidStateError')return 'This device already has a passkey for this account.';
+  if(error?.name==='SecurityError')return 'Passkeys only work at the site\'s HTTPS address.';
+  return error?.message||'The passkey could not be used.';
+}
+const AUTH_ERRORS={
+  idp_unavailable:'The organisation sign-in service is not reachable right now. Use a passkey instead.',
+  idp_error:'The organisation sign-in did not complete. Please try again.',
+  idp_denied:'Sign-in was cancelled.',
+  invalid_state:'That sign-in link expired. Please try again.',
+  email_unverified:'Your account needs a verified email address to sign in.',
+  not_allowed:'This account is not allowed to administer competitions.',
+  account_disabled:'This account has been disabled by an administrator.'
+};
+function showAuthMessage(id,message,kind='warn'){
+  const node=$(id);
+  node.textContent=message;
+  node.className=`callout ${kind}`;
+}
+async function showSignIn(){
+  $('login').classList.remove('hidden');
+  const params=new URLSearchParams(location.search);
+  const code=params.get('auth_error');
+  if(code){showAuthMessage('auth-message',AUTH_ERRORS[code]||'Sign-in failed.');history.replaceState(null,'',location.pathname+location.hash);}
+  let status={};
+  try{status=await api('/auth/status');}catch{}
+  if(!status.oidcConfigured){$('login-link').classList.add('hidden');document.querySelector('#auth-panel-signin .divider').classList.add('hidden');}
+  else if(!status.oidcAvailable&&!code){showAuthMessage('auth-message','The organisation sign-in service is not responding. If it does not come back, sign in with a passkey.');}
+  const canPasskey=status.passkeysAvailable&&passkeysSupported();
+  $('passkey-signin').disabled=!canPasskey;
+  $('passkey-note').classList.toggle('hidden',canPasskey);
+  const enroll=/^#enroll=([A-Za-z0-9_-]{20,200})$/.exec(location.hash);
+  if(enroll){
+    $('auth-panel-signin').classList.add('hidden');
+    $('auth-panel-enroll').classList.remove('hidden');
+    $('enroll-button').dataset.token=enroll[1];
+    if(!canPasskey){$('enroll-button').disabled=true;showAuthMessage('enroll-message','Open this link at the site\'s HTTPS address in a browser that supports passkeys.');}
   }
 }
-init();
-setInterval(updateMatchClocks,250);
-async function refreshLive() {
-  if(polling||$('app').classList.contains('hidden'))return;
-  polling=true;
+$('passkey-signin').addEventListener('click',async()=>{
+  const button=$('passkey-signin');
+  button.disabled=true;
+  try{
+    const {challengeId,options}=await api('/auth/passkey/options',{method:'POST',body:'{}'});
+    const response=await getPasskey(options);
+    await api('/auth/passkey/verify',{method:'POST',body:JSON.stringify({challengeId,response})});
+    location.replace('/');
+  }catch(error){showAuthMessage('auth-message',passkeyErrorMessage(error));}
+  finally{button.disabled=false;}
+});
+$('enroll-button').addEventListener('click',async()=>{
+  const button=$('enroll-button');
+  const token=button.dataset.token;
+  button.disabled=true;
+  try{
+    const {challengeId,options,email}=await api('/auth/passkey/enroll/options',{method:'POST',body:JSON.stringify({token})});
+    $('enroll-email').textContent=email;
+    const response=await createPasskey(options);
+    await api('/auth/passkey/enroll/verify',{method:'POST',body:JSON.stringify({token,challengeId,name:$('enroll-name').value.trim()||'Passkey',response})});
+    location.replace('/');
+  }catch(error){showAuthMessage('enroll-message',passkeyErrorMessage(error));button.disabled=false;}
+});
+async function signOut(){try{await api('/auth/logout',{method:'POST',body:'{}'});}finally{location.replace('/');}}
+$('logout').addEventListener('click',signOut);
+$('logout-mobile').addEventListener('click',signOut);
+
+// ---------- Live updates ----------
+// The server pushes a "revision" event whenever anything changes; we then refetch at once.
+// A slow fallback poll covers dropped connections, and a 15-second tick re-checks
+// time-based state (e.g. a match becoming due).
+let changeFeed=null;
+let refreshQueued=false;
+let refreshRunning=false;
+function setLiveIndicator(state){
+  const node=$('live-indicator');
+  node.className=`live-indicator ${state}`;
+  node.textContent=state==='connected'?'Live':state==='lost'?'Reconnecting…':'Connecting';
+}
+function connectChangeFeed(){
+  if(changeFeed)changeFeed.close();
+  changeFeed=new EventSource('/api/admin/changes');
+  changeFeed.addEventListener('open',()=>setLiveIndicator('connected'));
+  changeFeed.addEventListener('revision',()=>{setLiveIndicator('connected');queueRefresh();});
+  changeFeed.addEventListener('error',()=>setLiveIndicator('lost'));
+}
+function queueRefresh(){
+  if(refreshRunning){refreshQueued=true;return;}
+  void refreshLive();
+}
+async function refreshLive(){
+  if($('app').classList.contains('hidden'))return;
+  refreshRunning=true;
   try{
     const nextCompetitions=await api('/api/admin/competitions');
-    const nextSlug=slug();
-    let nextTeams=[];
-    let nextMatches=[];
-    let nextLeague={standings:[]};
-    let pageData=null;
-    let nextEvents=scheduleEvents;
-    if(nextSlug){
-      const encoded=encodeURIComponent(nextSlug);
-      [nextTeams,nextMatches,nextLeague]=await Promise.all([
-        api(`/api/admin/competitions/${encoded}/teams`),
-        api(`/api/admin/competitions/${encoded}/matches`),
-        api(`/api/admin/competitions/${encoded}/league`)
-      ]);
-      if(page==='schedule')nextEvents=await api(`/api/admin/competitions/${encoded}/events`);
-      if(page==='challenges')pageData=await api(`/api/admin/competitions/${encoded}/challenges`);
-      if(page==='displays')pageData=await api(`/api/admin/competitions/${encoded}/displays`);
-      if(page==='matches'){
-        pageData=await api(`/api/admin/competitions/${encoded}/auto-run`);
-        autoRunEnabled=pageData.enabled;
-      }
-      if(page==='activity')pageData=await api('/api/admin/audit');
-    }
-    // Time passing alone changes which matches are due, so include that in the refresh check.
-    const dueNow=page==='matches'?nextMatches.filter(match=>isDueToStart(match)).map(match=>match.id):null;
-    const signature=JSON.stringify([nextCompetitions,nextTeams,nextMatches,nextLeague,pageData,nextEvents,dueNow]);
-    const changed=signature!==liveSignature;
-    competitions=nextCompetitions;
-    teams=nextTeams;
-    matches=nextMatches;
-    scheduleEvents=nextEvents;
     const previousSlug=slug();
+    competitions=nextCompetitions;
     const nextCompetitionSignature=JSON.stringify(competitions.map(c=>[c.id,c.name,c.slug,c.status,c.team_count,c.match_count,c.challenge_count,c.challenge_completion_count,c.event_count]));
     if(nextCompetitionSignature!==competitionSignature){
       $('competition').innerHTML=competitions.map(c=>`<option value="${h(c.slug)}">${h(c.name)} · ${h(c.status)}</option>`).join('');
       if(competitions.some(c=>c.slug===previousSlug))$('competition').value=previousSlug;
       else if(competitions.length){$('competition').value=competitions[0].slug;localStorage.setItem('competitionSlug',competitions[0].slug);}
-      else $('competition').value='';
       competitionSignature=nextCompetitionSignature;
     }
-    if(changed&&!viewDirty&&!document.querySelector('dialog[open]')){
-      await applyBranding();
-      await render();
-      liveSignature=signature;
-    }else if(!changed){
-      liveSignature=signature;
+    if(slug()){
+      const encoded=encodeURIComponent(slug());
+      [teams,matches,scheduleEvents]=await Promise.all([
+        api(`/api/admin/competitions/${encoded}/teams`),
+        api(`/api/admin/competitions/${encoded}/matches`),
+        api(`/api/admin/competitions/${encoded}/events`)
+      ]);
     }
-  }catch(error){showError(error);}
-  finally{polling=false;}
+    await render({fromRefresh:true});
+  }catch(error){
+    if(error.status===401){location.replace('/');return;}
+    setLiveIndicator('lost');
+  }finally{
+    refreshRunning=false;
+    if(refreshQueued){refreshQueued=false;queueRefresh();}
+  }
 }
-setInterval(()=>{void refreshLive();},3000);
+document.addEventListener('focusout',()=>setTimeout(()=>{if(pendingRender&&!userIsTyping())queueRefresh();},50));
+document.addEventListener('close',()=>{if(pendingRender)queueRefresh();},true);
+setInterval(()=>{if(document.visibilityState==='visible')queueRefresh();},15000);
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')queueRefresh();});
+
+async function init(){
+  renderNav();
+  try{page=localStorage.getItem('page')||'overview';}catch{}
+  if(!titles[page])page='overview';
+  let user;
+  try{user=await api('/api/admin/me');}
+  catch(error){await showSignIn();return;}
+  if(location.hash.startsWith('#enroll=')){history.replaceState(null,'',location.pathname);}
+  $('user-email').textContent=user.email;
+  $('user-method').textContent=user.signedInWith==='passkey'?'Signed in with a passkey':'Signed in with organisation account';
+  $('app').classList.remove('hidden');
+  renderNav();
+  $('top-title').textContent=titles[page];
+  await loadCore();
+  connectChangeFeed();
+}
+init();
+setInterval(updateMatchClocks,250);
 </script>
 </body>
 </html>

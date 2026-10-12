@@ -4,6 +4,16 @@ Competition Control provides an OIDC-protected admin dashboard, PostgreSQL-backe
 
 ## Dashboard
 
+The admin portal is grouped by what you are doing:
+
+- **Event day** — *Overview* (what needs attention, each arena right now, coming up, leaders), *Live control* (one console per arena: the current or next match with a big clock and its controls, then the queue) and *Scores* (finished matches waiting for scores, entered inline, plus recent results and corrections).
+- **Schedule** — *Schedule* (timeline, build, timed events, clear) and *Playoffs* (bracket diagram, seeding check, route to the final).
+- **Setup** — Teams, Challenges, Arena colours, Displays. **Results** — League table. **Admin** — Competitions, Settings, Access & passkeys, Activity.
+
+Everything updates live: the server pushes a change notification (Server-Sent Events) whenever data changes, and the dashboard, public displays and SR screens refresh immediately. Forms you are filling in are preserved across refreshes, and a refresh waits while you are typing. The sidebar shows how many matches are due to start and how many are waiting for scores. The layout works on phones (tables become cards, dialogs open as bottom sheets).
+
+Running matches without entering scores is supported: when the timer ends the match shows END on the screens, then they move to the next match; the match waits in **Scores** and can be scored later or closed with **No score**. Matches that only lack scores never block clearing the schedule.
+
 The left navigation separates Competitions, Overview, Teams, Challenges, Schedule, Live control, League table, Arena, Public displays, Settings and Activity. Playoff generation, scoring and scheduled heats are part of Schedule.
 
 - Generate equal-appearance league schedules or add individual matches. Every match has four coloured positions; fewer than four teams requires a reason and is visibly marked.
@@ -64,7 +74,20 @@ Docker and Docker Compose are required. The app listens on port 8080 inside the 
 4. Start the service with `docker compose up -d --build`.
 5. Check `curl http://127.0.0.1:8080/health`, then sign in through the public HTTPS URL.
 
-Every authenticated account from the configured OIDC provider currently has full administrator access. Control account enrollment and provider access in the identity provider. Sessions use HttpOnly, SameSite=Lax cookies; use `COOKIE_SECURE=true` behind HTTPS. For local-only development, use `COOKIE_SECURE=false` and do not expose the service publicly.
+Sessions use HttpOnly, SameSite=Lax cookies; use `COOKIE_SECURE=true` behind HTTPS. For local-only development, use `COOKIE_SECURE=false` and do not expose the service publicly.
+
+## Sign-in and security
+
+- **Organisation sign-in (OIDC)** is the normal way in. Only accounts with a *verified* email are accepted. Set `ADMIN_EMAILS` (comma-separated) to restrict sign-in to named people; leave it empty to allow any account the identity provider accepts. Every allowed administrator has full access.
+- **Passkeys are the fallback, and the only one** (there are no passwords). Each administrator can add passkeys under **Admin → Access & passkeys**; they then sign in with their device's fingerprint, face or PIN even when the identity provider is down. Passkeys require HTTPS at `PUBLIC_BASE_URL` (they are bound to that host name) and always require user verification.
+- **If the identity provider is down when the app starts**, the app still starts; passkey sign-in works and discovery retries in the background.
+- **Break-glass enrollment**: someone with shell access on the server can create a one-time passkey link (valid 30 minutes by default) for an administrator who has no passkey yet:
+  ```sh
+  docker compose exec app node dist/cli.js invite person@example.com
+  docker compose exec app node dist/cli.js users
+  ```
+- **Accounts** appear under Access & passkeys after their first sign-in. Disabling one signs it out everywhere and blocks its passkeys; you cannot disable yourself. "Sign out everywhere" ends all other sessions.
+- **Protections**: state-changing requests must come from this site (Origin check) on top of SameSite cookies; the admin pages cannot be framed; sign-in endpoints are rate limited per client (configure `TRUST_PROXY` to match your reverse proxy so client addresses are correct); sessions last 12 hours; sign-in and passkey changes are audit logged.
 
 ## Public outputs
 
@@ -85,12 +108,15 @@ Displays are read-only and are available after the competition is published. Dis
 ## Development and validation
 
 ```sh
-npm test
+npm test                 # unit tests (pure scheduling, playoff, display logic)
+npm run typecheck
 npm run build
 npm audit --omit=dev
+# integration tests against a real PostgreSQL (see docs/REPOSITORY.md)
+TEST_DATABASE_URL=postgres://... npm run test:integration
 ```
 
-`npm test` covers the pure scheduling, playoff, display and SR adapter logic, including every playoff format × final size × bye combination for fields of 2–40 teams. To exercise the API against a real database locally, see **Local end-to-end testing** in [docs/REPOSITORY.md](docs/REPOSITORY.md#local-end-to-end-testing).
+`npm test` covers the pure scheduling, playoff, display and SR adapter logic, including every playoff format × final size × bye combination for fields of 2–40 teams. `npm run test:integration` boots the whole app against a real PostgreSQL and runs: a fuzzer that sends 8,000+ hostile requests to every route and fails on any server error; auth tests (sessions, allowlist, disabled users, cross-site requests, framing, rate limits); complete passkey registration and sign-in with a software authenticator (including tampered, replayed and wrong-site credentials); live-match lifecycle and concurrency tests; and randomised schedule tests that apply hundreds of operations and check after each that no two matches overlap, nothing runs during an event, and playoff heats follow their feeders. See [docs/REPOSITORY.md](docs/REPOSITORY.md#local-end-to-end-testing).
 
 Schema setup runs when the server starts (new columns are added with `ADD COLUMN IF NOT EXISTS`, so upgrading an existing database is automatic). Back up the `postgres_data` volume and verify a restore before event use. Versioned schema migrations and automated browser integration coverage are release-readiness work.
 

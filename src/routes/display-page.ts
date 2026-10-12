@@ -591,6 +591,8 @@ export function registerDisplayPageRoutes(app: FastifyInstance): void {
         };
         void syncDisplay();
         setInterval(()=>{void syncDisplay();},1000);
+        // Changes (a start, a pause, a new match) arrive at once instead of on the next poll.
+        try{new EventSource('/api/public/changes').addEventListener('revision',()=>{void syncDisplay();});}catch{}
         const renderClockFrame=()=>{renderClock();requestAnimationFrame(renderClockFrame);};
         requestAnimationFrame(renderClockFrame);
       </script>` : ''}
@@ -653,6 +655,7 @@ export function registerDisplayPageRoutes(app: FastifyInstance): void {
         renderRelativeTimes();
         setInterval(renderRelativeTimes,1000);
         setInterval(()=>{void refreshBoard();},5000);
+        try{new EventSource('/api/public/changes').addEventListener('revision',()=>{setTimeout(()=>void refreshBoard(),150);});}catch{}
       </script>`}</body></html>`);
   });
 
