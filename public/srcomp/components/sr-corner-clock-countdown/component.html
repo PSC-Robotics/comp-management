@@ -127,6 +127,17 @@
                     return;
                 }
 
+                // GO stays up for its full time after the match starts running (the server clears
+                // the countdown at that moment), matching the other screens.
+                if (options.showStartCue && started && this.match.state === 'running' && this.currentGameStart) {
+                    var goSince = now - this.currentGameStart;
+                    if (goSince >= 0 && goSince < (options.cueDurationSeconds || 2) * 1000) {
+                        this.text = 'GO';
+                        this.backgroundColor = options.goBackgroundColor || '#167847';
+                        return;
+                    }
+                }
+
                 // Without a countdown an unstarted match must not flash "Begin!" at its slot time.
                 if (!started) {
                     this.text = null;

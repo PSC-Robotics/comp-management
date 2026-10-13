@@ -125,6 +125,17 @@
                     }
                 }
 
+                // GO stays up for its full time after the match starts running (the server clears
+                // the countdown at that moment), matching the other screens.
+                if (options.showStartCue && started && this.match.state === 'running' && gameStartTime) {
+                    var goSince = currentTime - gameStartTime;
+                    if (goSince >= 0 && goSince < (options.cueDurationSeconds || 2) * 1000) {
+                        this.text = 'GO';
+                        this.backgroundColor = options.goBackgroundColor || '#167847';
+                        return;
+                    }
+                }
+
                 if (gameStartTime == null || gameEndTime == null) {
                     this.text = '';
                 } else if (!started && currentTime >= gameStartTime) {
