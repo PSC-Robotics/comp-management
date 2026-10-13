@@ -245,7 +245,7 @@ export function registerPublicRoutes(app: FastifyInstance): void {
          LEFT JOIN teams t3 ON t3.id = pm.team_three_id
          LEFT JOIN teams t4 ON t4.id = pm.team_four_id
          WHERE pb.competition_id = $1 AND pb.status = 'active'
-           AND ((pm.schedule_state = 'scheduled' AND (pm.status = 'ready' OR pm.timer_state IN ('running', 'paused')))
+           AND (pm.schedule_state = 'scheduled'
                 OR (pm.actual_end >= now() - make_interval(secs => $3::int)
                     AND (pm.schedule_state = 'complete' OR pm.timer_state = 'awaiting_score')))
        )

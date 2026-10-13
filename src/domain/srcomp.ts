@@ -27,6 +27,8 @@ export type SrMatchInput = {
   scores?: Record<string, number> | null;
   bracket_side?: string;
   round_number?: number;
+  /** Staging window computed on the server (see domain/staging.ts); the same for every screen. */
+  staging?: { opens: number; closes: number; signalShepherds: number };
 };
 
 function date(value: Date | string): Date {
@@ -74,13 +76,19 @@ export function toSrMatch(input: SrMatchInput): Record<string, unknown> {
     times: {
       slot: { start: slotStart.toISOString(), end: slotEnd.toISOString() },
       game: { start: gameStart.toISOString(), end: gameEnd.toISOString() },
-      staging: {
-        opens: new Date(slotStart.getTime() - 10 * 60 * 1000).toISOString(),
-        closes: slotStart.toISOString(),
-        signal_shepherds: {
-          [input.arena_name]: new Date(slotStart.getTime() - 5 * 60 * 1000).toISOString()
+      staging: input.staging
+        ? {
+          opens: new Date(input.staging.opens).toISOString(),
+          closes: new Date(input.staging.closes).toISOString(),
+          signal_shepherds: { [input.arena_name]: new Date(input.staging.signalShepherds).toISOString() }
         }
-      }
+        : {
+          opens: new Date(slotStart.getTime() - 10 * 60 * 1000).toISOString(),
+          closes: slotStart.toISOString(),
+          signal_shepherds: {
+            [input.arena_name]: new Date(slotStart.getTime() - 5 * 60 * 1000).toISOString()
+          }
+        }
     }
   };
 }
@@ -117,8 +125,9 @@ export function selectSrDisplayMatches<T extends SrMatchInput>(
       nowMs < countdownStart + MATCH_COUNTDOWN_TOTAL_SECONDS * 1000 &&
       ['scheduled', 'ready', 'delayed'].includes(match.state);
     // A match whose time has come stays the current one until it is started, however late.
-    const due = ['scheduled', 'ready', 'delayed'].includes(match.state) && nowMs >= effectiveStart;
-    const upcoming = ['scheduled', 'ready', 'delayed'].includes(match.state) &&
+    // A heat waiting for earlier results ('pending') still runs in its turn, so it is shown in its place.
+    const due = ['scheduled', 'ready', 'delayed', 'pending'].includes(match.state) && nowMs >= effectiveStart;
+    const upcoming = ['scheduled', 'ready', 'delayed', 'pending'].includes(match.state) &&
       effectiveStart > nowMs;
     // Unscored matches count as finished too, so the screen does not skip their END.
     const completed = ['complete', 'awaiting_score'].includes(match.state) && match.actual_end !== null;
@@ -171,7 +180,6 @@ export function buildSrDisplayConfig(options: DisplayOptions) {
     maxTeams: options.srMaxTeams,
     maxKnockoutRounds: options.srMaxKnockoutRounds,
     shepherdingPastMatches: options.srShepherdingPastMatches,
-    stagingCloseOffsetMinutes: options.srStagingCloseOffsetMinutes,
     stagingCornersList: options.srStagingCornerOrder.map(String),
     rotationSeconds: options.srRotationSeconds,
     displayOptions: {

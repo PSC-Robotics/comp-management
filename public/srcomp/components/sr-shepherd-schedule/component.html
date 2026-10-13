@@ -35,8 +35,9 @@
             <tr>
                 <th></th>
                 <th>Staging Closes</th>
-                <template repeat="{{ arena in arenasList }}">
+                <template repeat="{{ heading in arenaHeadings }}">
                     <th></th>
+                    <th colspan="4">{{ heading }}</th>
                 </template>
             </tr>
 
@@ -46,7 +47,7 @@
                     <td><time datetime="{{ match.stagingEnd }}"></time></td>
                     <template repeat="{{ arena in arenasList }}">
                         <td style="width: 0.1em;"></td>
-                        <template repeat="{{ team in match.arenas[arena].teamOrder }}">
+                        <template repeat="{{ team in match.cells[arena] }}">
                             <td class="team" style="color: {{ team.colour }}">
                                 {{ team.code || '—' }}
                             </td>
@@ -65,6 +66,7 @@
             arena: null,
             arenas: undefined,
             arenasList: undefined,
+            arenaHeadings: [],
             corners: {},
             locations: undefined,
             teams: undefined,
@@ -91,10 +93,11 @@
                     this.comp.displayConfig.displayOptions.clockOffsetMs || 0;
                 this.now = new Date(Date.now() + clockOffsetMs);
                 var dates = this.shadowRoot.querySelectorAll('time');
+                // Relative to the server-synchronised clock, not this device's own clock.
                 dates.array().forEach(function(elem) {
                     var epoch = moment(elem.getAttribute('datetime'));
-                    elem.textContent = epoch.fromNow();
-                });
+                    elem.textContent = epoch.from(this.now);
+                }.bind(this));
             },
             backChanged: function() {
                 this.updateSchedule();
@@ -107,6 +110,7 @@
                     this.arenas = arenas;
                     this.arenasList = this.arena && arenas[this.arena]
                         ? [this.arena] : Object.keys(arenas);
+                    this.updateArenaHeadings();
                     this.updateSchedule();
                 }.bind(this));
 
@@ -137,8 +141,17 @@
                 if (this.arenas) {
                     this.arenasList = this.arena && this.arenas[this.arena]
                         ? [this.arena] : Object.keys(this.arenas);
+                    this.updateArenaHeadings();
                     this.updateSchedule();
                 }
+            },
+            // Arena names head their columns only when more than one arena is shown.
+            updateArenaHeadings: function() {
+                var arenas = this.arenas || {};
+                var several = this.arenasList.length > 1;
+                this.arenaHeadings = this.arenasList.map(function(arena) {
+                    return several ? (arenas[arena] && arenas[arena].display_name) || arena : '';
+                });
             },
             updateSchedule: function() {
                 if (this.arenasList == null || this.arenas == null
@@ -204,32 +217,28 @@
 
                     formattedSchedule.sort(function(left, right) {
                         return Date.parse(left.gameStart) - Date.parse(right.gameStart) ||
-                            left.num.localeCompare(right.num);
+                            left.num.localeCompare(right.num, undefined, {numeric: true});
                     });
 
+                    // Staging windows come from the server (one rule for every screen).
                     var displayConfig = this.comp && this.comp.displayConfig || {};
-                    var requestedOffset = Number(displayConfig.stagingCloseOffsetMinutes);
-                    var closeOffsetMs = Number.isFinite(requestedOffset) && requestedOffset >= 0
-                        ? requestedOffset * 60 * 1000 : 5 * 60 * 1000;
-                    var previousGameStartByArena = {};
                     formattedSchedule.forEach(function(match) {
                         var opens = [];
                         var closes = [];
                         Object.keys(match.arenas).forEach(function(arena) {
-                            var arenaMatch = match.arenas[arena];
-                            var previousGameStart = previousGameStartByArena[arena];
-                            var opensAt = previousGameStart ||
-                                Date.parse(arenaMatch.times.staging.opens);
-                            var closesAt = previousGameStart
-                                ? Date.parse(previousGameStart) + closeOffsetMs
-                                : Date.parse(arenaMatch.times.slot.start);
-                            opens.push(new Date(opensAt).toISOString());
-                            closes.push(new Date(closesAt).toISOString());
-                            previousGameStartByArena[arena] = arenaMatch.times.game.start;
+                            opens.push(match.arenas[arena].times.staging.opens);
+                            closes.push(match.arenas[arena].times.staging.closes);
                         });
                         match.stagingStart = opens.reduce(this._getEarliest);
                         match.stagingEnd = closes.reduce(this._getEarliest);
                         match.shepherdingSignal = match.stagingStart;
+                        // Every arena gets a cell group, so each arena's teams stay in its own columns.
+                        match.cells = {};
+                        this.arenasList.forEach(function(arena) {
+                            match.cells[arena] = match.arenas[arena]
+                                ? match.arenas[arena].teamOrder
+                                : [0, 1, 2, 3].map(function() { return {code: '', colour: 'transparent'}; });
+                        });
                     }.bind(this));
 
                     // Anchor on the next match that has not finished so the history count

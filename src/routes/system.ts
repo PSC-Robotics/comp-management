@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { extname, join } from 'node:path';
 import { type FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { clockSyncScript } from '../lib/clock-sync.js';
 import { publicDir } from '../lib/paths.js';
 
 const assetTypes: Record<string, string> = {
@@ -13,6 +14,17 @@ const assetTypes: Record<string, string> = {
 
 export function registerSystemRoutes(app: FastifyInstance): void {
   app.get('/health', async () => ({ status: 'ok' }));
+
+  // Clock synchronisation for every screen: no database work, so the timestamp is as fresh as possible.
+  app.get('/api/time', async (_request, reply) => {
+    reply.header('cache-control', 'no-store');
+    return { serverTime: Date.now() };
+  });
+
+  app.get('/assets/clock-sync.js', async (_request, reply) => reply
+    .type('application/javascript; charset=utf-8')
+    .header('cache-control', 'public, max-age=300')
+    .send(clockSyncScript));
 
   app.get('/', async (_request, reply) => {
     const html = await readFile(join(publicDir, 'index.html'), 'utf8');

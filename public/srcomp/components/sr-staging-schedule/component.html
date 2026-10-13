@@ -203,18 +203,19 @@
                     matches.filter(function(match) {
                         return !this.arena || match.arena == this.arena;
                     }.bind(this)).forEach(function(match) {
-                        if (!schedule[match.num]) {
-                            schedule[match.num] = {};
+                        var key = (match.knockout_bracket || 'league') + ':' + match.num;
+                        if (!schedule[key]) {
+                            schedule[key] = {};
                         }
 
-                        displayNames[match.num] = match.display_name;
-                        schedule[match.num][match.arena] = match;
-                        startTimes[match.num] = match.times.slot.start;
-                        endTimes[match.num] = match.times.slot.end;
-                        gameStartTimes[match.num] = match.times.game.start;
-                        gameEndTimes[match.num] = match.times.game.end;
-                        stagingStartTimes[match.num] = match.times.staging.opens;
-                        stagingEndTimes[match.num] = match.times.staging.closes;
+                        displayNames[key] = match.display_name;
+                        schedule[key][match.arena] = match;
+                        startTimes[key] = match.times.slot.start;
+                        endTimes[key] = match.times.slot.end;
+                        gameStartTimes[key] = match.times.game.start;
+                        gameEndTimes[key] = match.times.game.end;
+                        stagingStartTimes[key] = match.times.staging.opens;
+                        stagingEndTimes[key] = match.times.staging.closes;
                     }.bind(this));
 
                     var formattedSchedule = [];
@@ -232,32 +233,15 @@
 
                     formattedSchedule.sort(function(left, right) {
                         return Date.parse(left.start) - Date.parse(right.start) ||
-                            Number(left.num) - Number(right.num);
+                            left.num.localeCompare(right.num, undefined, {numeric: true});
                     });
-                    var displayConfig = this.comp && this.comp.displayConfig || {};
-                    var requestedOffset = Number(displayConfig.stagingCloseOffsetMinutes);
-                    var closeOffsetMs = Number.isFinite(requestedOffset) && requestedOffset >= 0
-                        ? requestedOffset * 60 * 1000 : 5 * 60 * 1000;
-                    var previousGameStartByArena = {};
+                    // Staging windows come from the server (one rule for every screen).
                     formattedSchedule.forEach(function(match) {
                         var opens = [];
                         var closes = [];
                         Object.keys(match.arenas).forEach(function(arena) {
-                            var arenaMatch = match.arenas[arena];
-                            var previousGameStart = previousGameStartByArena[arena];
-                            var opensAt = previousGameStart
-                                ? Date.parse(previousGameStart)
-                                : Date.parse(arenaMatch.times.staging.opens);
-                            var closesAt = previousGameStart
-                                ? Date.parse(previousGameStart) + closeOffsetMs
-                                : Date.parse(arenaMatch.times.slot.start);
-                            if (['running', 'paused', 'awaiting_score', 'complete']
-                                .includes(arenaMatch.state)) {
-                                closesAt = Math.min(closesAt, Date.parse(arenaMatch.times.game.start));
-                            }
-                            opens.push(opensAt);
-                            closes.push(closesAt);
-                            previousGameStartByArena[arena] = arenaMatch.times.game.start;
+                            opens.push(Date.parse(match.arenas[arena].times.staging.opens));
+                            closes.push(Date.parse(match.arenas[arena].times.staging.closes));
                         });
                         match.stagingStart = new Date(Math.min.apply(null, opens)).toISOString();
                         match.stagingEnd = new Date(Math.min.apply(null, closes)).toISOString();
@@ -287,7 +271,7 @@
                     this.async(this._updateDisplayedTimes);
                 }.bind(this);
 
-                this.comp.api.getMatches(receiveMatchList);
+                this.comp.api.getMatches(receiveMatchList, 'all');
             },
             formatMatchClass: function(now, match) {
                 var start = match.stagingStart;

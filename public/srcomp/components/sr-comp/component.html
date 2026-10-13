@@ -2,6 +2,8 @@
 
 <link rel="import" href="../sr-comp-api/component.html" />
 <link rel="import" href="../sr-comp-stream/component.html" />
+<!-- Shared with every non-SR screen so all screens agree on server time. -->
+<script src="/assets/clock-sync.js"></script>
 
 <polymer-element name="sr-comp" attributes="displayConfig apiurl streamurl">
     <template>
@@ -143,6 +145,27 @@
             },
             syncClock: function() {
                 if (!this.apiurl) {
+                    return;
+                }
+                var options = this.displayConfig && this.displayConfig.displayOptions;
+                if (window.ServerClock) {
+                    // Use the shared estimate (fastest of recent samples) instead of a single request.
+                    if (options && window.ServerClock.synced) {
+                        options.clockOffsetMs = window.ServerClock.offset;
+                        options.clockUncertaintyMs = window.ServerClock.uncertainty;
+                        this.hasClockSync = true;
+                    }
+                    if (!this.sharedClockListening) {
+                        this.sharedClockListening = true;
+                        window.ServerClock.onChange(function(offset) {
+                            var current = this.displayConfig && this.displayConfig.displayOptions;
+                            if (current) {
+                                current.clockOffsetMs = offset;
+                                current.clockUncertaintyMs = window.ServerClock.uncertainty;
+                                this.hasClockSync = true;
+                            }
+                        }.bind(this));
+                    }
                     return;
                 }
 

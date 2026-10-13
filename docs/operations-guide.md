@@ -151,6 +151,24 @@ Start. With **competition auto-run** on, league matches and ready playoff heats 
 on their own at their effective time. A heat whose teams or arena are still in
 another match waits until they are free and then gets a fresh countdown.
 
+Playoff heats in an arena always run in schedule order. If the next heat is
+still waiting for results from another heat, Live control shows it as next
+("waiting for earlier results") and nothing after it can start — auto-run
+waits, and pressing Start on a later heat explains which heat comes first. To
+run a later heat first on purpose, delay the earlier heat past it.
+
+Countdowns start on a whole server second, at least one second after Start is
+pressed, so every screen (non-SR and SR) shows GET READY, 3, 2, 1 and GO at the
+same moment. Keep the server's clock on NTP; screens synchronize to the server.
+
+## Staging and shepherding
+
+Set the staging rules on the **Arena** page: staging for a match opens when the
+previous match in its arena starts, and closes a number of minutes later
+(default five, never after the match itself starts). The first match opens a
+set lead before its start (default ten minutes). The SR Shepherding and Staging
+screens use these server-calculated times, including for playoff heats.
+
 ## Running matches and scores
 
 Live control shows one console per arena. The big panel is always the match that needs you:
@@ -184,12 +202,15 @@ and send them the printed link; it works once, for 30 minutes.
 | Screen | Display type | Notes |
 |---|---|---|
 | Arena timer / stream overlay | Match timer | Full-screen synchronized clock, arena layout, optional previous result. |
-| Next to the arena | Arena diagram | Shows which team is in which corner. |
-| At each corner | Corner display | One per corner; large team code in the corner colour. |
+| Next to the arena | Arena diagram | Which team is in which corner, with the clock; fits the screen. Set **Arena** in a multi-arena event. |
+| At each corner | Corner display | One per corner; large team code in the corner colour. Set **Arena** in a multi-arena event. |
 | Pit / queueing area | Schedule | Enable the team filter so teams can find their next match. Delays are shown live. |
 | Main hall during playoffs | Playoff bracket | Heats by stage with results; eliminated teams are struck through. |
 | Website or results screen | League table, Match points history | Embed with **Copy embed**. |
 | SR-style venue screens | SR — Arena / Outside / Producer / Shepherding / Staging | Original SRComp pages backed by this system. |
+
+Switch competitions from the card at the top of the sidebar (it shows each
+competition's status; **Manage competitions…** opens the full list).
 
 Displays only work once the competition is **published**. Each display type
 only shows the options it uses. Board displays (league, schedule, results,

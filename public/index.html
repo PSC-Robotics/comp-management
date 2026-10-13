@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Competition Control</title>
   <link rel="icon" type="image/png" href="/assets/favicon.png">
+  <script src="/assets/clock-sync.js"></script>
   <link rel="apple-touch-icon" href="/assets/psc-robotics-logo.png">
   <style>
     /* ---------- Design tokens (themes override the first seven via applyBranding) ---------- */
@@ -91,8 +92,24 @@
     .topbar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .7rem clamp(1rem, 3vw, 2.25rem); background: var(--surface); border-bottom: 1px solid var(--line); }
     .topbar strong { font-size: .95rem; }
     .topbar-right { display: flex; align-items: center; gap: .9rem; min-width: 0; }
-    .topbar label { width: min(360px, 42vw); display: flex; align-items: center; gap: .5rem; font-size: .75rem; white-space: nowrap; }
-    .topbar select { min-height: 34px; }
+    .comp-switcher { position: relative; }
+    .comp-switcher-button { width: 100%; justify-content: flex-start; gap: .55rem; padding: .55rem .65rem; background: var(--nav-hover); color: #fff; border: 1px solid #263042; border-radius: 9px; text-align: left; font-weight: 600; }
+    .comp-switcher-button:hover { filter: none; border-color: #3a4760; }
+    .comp-switcher-button svg { flex: 0 0 16px; opacity: .7; }
+    .comp-switcher-text { display: grid; min-width: 0; flex: 1; }
+    .comp-switcher-eyebrow { color: var(--nav-muted); font-size: .64rem; font-weight: 750; letter-spacing: .1em; text-transform: uppercase; }
+    .comp-switcher-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .9rem; }
+    .comp-status-dot { width: 9px; height: 9px; flex: 0 0 9px; border-radius: 50%; background: var(--nav-muted); }
+    .comp-status-dot.live { background: var(--good); box-shadow: 0 0 0 3px color-mix(in srgb, var(--good) 30%, transparent); }
+    .comp-status-dot.published { background: var(--accent); }
+    .comp-status-dot.draft { background: var(--warn); }
+    .comp-switcher-menu { position: absolute; z-index: 50; top: calc(100% + .35rem); left: 0; right: 0; min-width: 230px; max-height: min(60vh, 420px); overflow-y: auto; padding: .35rem; background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 12px 32px rgb(0 0 0 / 28%); }
+    .comp-switcher-menu button { width: 100%; justify-content: flex-start; gap: .55rem; background: transparent; color: var(--ink); font-weight: 560; padding: .5rem .55rem; border-radius: 7px; text-align: left; }
+    .comp-switcher-menu button:hover, .comp-switcher-menu button[aria-selected="true"] { background: var(--accent-soft); filter: none; }
+    .comp-switcher-menu .comp-option-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .comp-switcher-menu .comp-option-status { color: var(--muted); font-size: .72rem; text-transform: capitalize; }
+    .comp-switcher-menu hr { border: 0; border-top: 1px solid var(--line); margin: .3rem 0; }
+    .comp-switcher-menu .comp-manage { color: var(--accent); }
     .live-indicator { display: inline-flex; align-items: center; gap: .4rem; font-size: .75rem; font-weight: 650; color: var(--muted); white-space: nowrap; }
     .live-indicator::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
     .live-indicator.connected { color: var(--good); }
@@ -300,15 +317,16 @@
       nav button svg { display: none; }
       .mobile-signout { display: inline-flex !important; order: 2; margin-left: auto; padding: .3rem .65rem; font-size: .78rem; border: 1px solid #2d384b; }
       .brand { order: 1; }
-      nav { order: 3; }
+      nav { order: 4; }
       .queue-row { grid-template-columns: auto 1fr; }
       .queue-row .match-actions { grid-column: 1 / -1; }
       main { height: 0; flex: 1; }
       .topbar { padding: .45rem .75rem; }
       #top-title { display: none; }
-      .topbar-right { width: 100%; }
-      .topbar label { width: 100%; font-size: 0; gap: 0; }
-      .topbar select { font-size: .85rem; }
+      .topbar-right { margin-left: auto; }
+      .comp-switcher { order: 3; flex: 1 1 100%; }
+      .comp-switcher-button { padding: .4rem .6rem; }
+      .comp-switcher-eyebrow { display: none; }
       .main-content { padding: .9rem .75rem 2rem; }
       .grid.cols-2, .grid.cols-3, .form-grid, .form-grid.cols-3, .display-options { grid-template-columns: 1fr; }
       .grid.cols-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .6rem; }
@@ -375,6 +393,15 @@
   <div id="app" class="shell hidden">
     <aside>
       <div id="brand" class="brand"><img class="brand-mark" src="/assets/psc-robotics-logo.png" alt="PSC Robotics" width="32" height="32">Competition Control</div>
+      <div class="comp-switcher" id="comp-switcher">
+        <select id="competition" aria-label="Selected competition" hidden></select>
+        <button type="button" id="comp-switcher-button" class="comp-switcher-button" aria-haspopup="listbox" aria-expanded="false">
+          <span class="comp-switcher-text"><span class="comp-switcher-eyebrow">Competition</span><span id="comp-switcher-name" class="comp-switcher-name">No competition</span></span>
+          <span id="comp-switcher-status" class="comp-status-dot" aria-hidden="true"></span>
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg>
+        </button>
+        <div id="comp-switcher-menu" class="comp-switcher-menu hidden" role="listbox" aria-label="Competitions"></div>
+      </div>
       <nav id="nav" aria-label="Sections"></nav>
       <button id="logout-mobile" class="ghost mobile-signout hidden" type="button" style="color:var(--nav-ink)">Sign out</button>
       <div class="aside-bottom">
@@ -387,7 +414,6 @@
         <strong id="top-title">Overview</strong>
         <div class="topbar-right">
           <span id="live-indicator" class="live-indicator" title="Connection to live updates">Connecting</span>
-          <label id="competition-switcher-label">Competition<select id="competition" aria-label="Selected competition"></select></label>
         </div>
       </div>
       <div class="main-content"><div id="view"></div></div>
@@ -583,6 +609,26 @@ function updateNavCounts() {
 }
 const h = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const slug = () => $('competition').value;
+// One place fills the (hidden) competition select and the sidebar switcher that drives it.
+function renderCompetitionOptions(selected=slug()) {
+  $('competition').innerHTML=competitions.map(c=>`<option value="${h(c.slug)}">${h(c.name)}</option>`).join('');
+  if(competitions.some(c=>c.slug===selected))$('competition').value=selected;
+  updateCompetitionSwitcher();
+}
+function updateCompetitionSwitcher() {
+  const current=competitions.find(c=>c.slug===slug());
+  $('comp-switcher-name').textContent=current?current.name:'No competition';
+  $('comp-switcher-status').className=`comp-status-dot ${current?current.status:''}`;
+  $('comp-switcher-button').title=current?`${current.name} · ${current.status}`:'No competition';
+  $('comp-switcher-menu').innerHTML=competitions.map(c=>`<button type="button" role="option" data-switch-competition="${h(c.slug)}" aria-selected="${c.slug===slug()}"><span class="comp-status-dot ${h(c.status)}"></span><span class="comp-option-name">${h(c.name)}</span><span class="comp-option-status">${h(c.status)}</span></button>`).join('')
+    +`${competitions.length?'<hr>':''}<button type="button" class="comp-manage" data-switch-manage>Manage competitions…</button>`;
+}
+function toggleCompetitionMenu(open) {
+  const menu=$('comp-switcher-menu');
+  const show=open??menu.classList.contains('hidden');
+  menu.classList.toggle('hidden',!show);
+  $('comp-switcher-button').setAttribute('aria-expanded',String(show));
+}
 function formatCompetitionDateTime(value) {
   const date=new Date(value);
   if(!Number.isFinite(date.getTime()))throw new RangeError('Schedule time must be a valid date');
@@ -667,7 +713,7 @@ function setPage(next) {
 function compOption() { return competitions.find((c) => c.slug === slug()); }
 async function loadCore() {
   competitions = await api('/api/admin/competitions');
-  $('competition').innerHTML = competitions.map(c => `<option value="${h(c.slug)}">${h(c.name)} · ${h(c.status)}</option>`).join('');
+  renderCompetitionOptions();
   competitionSignature=JSON.stringify(competitions.map(c=>[c.id,c.name,c.slug,c.status,c.team_count,c.match_count,c.challenge_count,c.challenge_completion_count,c.event_count]));
   if (competitions.length) {
     const remembered = localStorage.getItem('competitionSlug');
@@ -676,6 +722,7 @@ async function loadCore() {
   await loadData();
 }
 async function loadData() {
+  updateCompetitionSwitcher();
   if (!slug()) { teams=[]; matches=[]; scheduleEvents=[]; await render(); return; }
   const encoded = encodeURIComponent(slug());
   [teams, matches, scheduleEvents] = await Promise.all([
@@ -692,6 +739,9 @@ async function applyBranding() {
   const result = await api(`/api/admin/competitions/${encodeURIComponent(slug())}/settings`);
   document.body.dataset.theme = result.settings?.theme || 'paper';
   autoRunEnabled = Boolean(result.settings?.auto_run_enabled);
+  if(result.settings?.staging_close_minutes!==undefined){
+    stagingSettings={closeAfterPreviousStartMinutes:Number(result.settings.staging_close_minutes),firstMatchLeadMinutes:Number(result.settings.staging_first_lead_minutes)};
+  }
   if(Array.isArray(result.settings?.corner_colours)&&result.settings.corner_colours.length===4&&result.settings.corner_colours.every(colour=>/^#[0-9a-f]{6}$/i.test(colour))){
     positionColours=[...result.settings.corner_colours];
   }
@@ -1031,7 +1081,7 @@ async function overviewPage() {
   const completed=matches.filter(match=>match.state==='complete').length;
   const arenas=[...new Set(matches.filter(match=>!['complete','cancelled'].includes(match.state)).map(match=>match.arena_name))].sort();
   const arenaStrip=arenas.map(arena=>{
-    const focus=arenaFocus(matches.filter(match=>match.arena_name===arena).sort((a,b)=>new Date(a.effective_start)-new Date(b.effective_start)),now);
+    const focus=arenaFocus(matches.filter(match=>match.arena_name===arena).sort((a,b)=>new Date(a.effective_start)-new Date(b.effective_start)||Number(a.match_number)-Number(b.match_number)));
     if(!focus)return '';
     const [tone,label]=focusLabel(focus,now);
     return `<div class="now-panel ${tone}" style="cursor:pointer" data-action="go-page" data-page="matches"><div class="now-label">${h(arena)} · ${h(label)}</div><div class="now-title"><strong>${h(matchLabel(focus))}</strong>${bigClockHtml(focus).replace('big-clock','match-clock')}</div><div class="subtle">${h(focus.positions.filter(p=>p.teamCode).map(p=>p.teamCode).join(' · ')||'Teams to be decided')}</div></div>`;
@@ -1094,6 +1144,7 @@ async function challengesPage() {
     </form></section>
     <div class="grid" style="margin-top:1rem">${cards||'<section class="card empty">No challenges in this competition.</section>'}</div>`;
 }
+let stagingSettings={closeAfterPreviousStartMinutes:5,firstMatchLeadMinutes:10};
 function arenaPage() {
   const current=matches.find(m=>['running','paused','awaiting_score'].includes(m.state))||matches.find(m=>['scheduled','ready','delayed'].includes(m.state));
   const matchesOptions=matches.map(m=>`<option value="${h(m.id)}" ${current?.id===m.id?'selected':''}>${h(m.match_number)} · ${h(m.arena_name)} · ${h(m.state)}</option>`).join('');
@@ -1101,6 +1152,15 @@ function arenaPage() {
     <section class="card"><h2>Arena position colours</h2><p class="subtle">These four colours apply to every match in this competition, including matches already on the schedule, and identify each corner on the SR Shepherding board.</p>
       <form id="arena-colours-form" class="form-grid cols-3">${positionColours.map((colour,index)=>`<label>Position ${index}<input type="color" name="cornerColour${index}" value="${h(colour)}"></label>`).join('')}
         <div class="wide"><button>Save competition colours</button></div>
+      </form>
+    </section>
+    <section class="card"><h2>Staging and shepherding</h2>
+      <p class="subtle">When teams should be in the staging area. These times drive the SR Staging and Shepherding screens, so every screen shows the same window.</p>
+      <form id="staging-settings-form" class="form-grid">
+        <label>Staging closes this many minutes after the previous match in the arena starts<input name="closeAfterPreviousStartMinutes" type="number" min="0" max="60" value="${h(stagingSettings.closeAfterPreviousStartMinutes)}" required></label>
+        <label>For the first match in an arena, staging opens this many minutes before it<input name="firstMatchLeadMinutes" type="number" min="0" max="120" value="${h(stagingSettings.firstMatchLeadMinutes)}" required></label>
+        <p class="subtle wide" style="margin:0">Staging opens when the previous match in the arena starts (its real start once it has begun) and never stays open after the match itself starts. Shepherds are prompted to fetch teams when staging opens.</p>
+        <div class="wide"><button>Save staging times</button></div>
       </form>
     </section>
     <section class="card"><label>Match<select id="arena-match">${matchesOptions}</select></label>
@@ -1122,17 +1182,19 @@ const DISPLAY_TYPES=[
 ];
 const LIVE_DISPLAY_TYPES=['arena','timer','corner','sr-arena','sr-producer'];
 const BOARD_DISPLAY_TYPES=['league','schedule','results','playoffs','arena','timer'];
-const SR_FILTER_TYPES=['sr-arena','sr-producer','sr-shepherding','sr-staging'];
+// Screens that can follow one arena (SR Arena falls back to the first arena; the rest show every arena).
+const ARENA_FILTER_TYPES=['schedule','arena','timer','corner','sr-arena','sr-producer','sr-shepherding','sr-staging'];
 const secondsOptions=(max)=>Array.from({length:max},(_,index)=>[index+1,`${index+1} second${index?'s':''}`]);
 const DISPLAY_OPTION_GROUPS=[
   {title:'Layout',fields:[
+    {name:'srArenaName',kind:'arena',label:'Arena',def:'',max:120,types:ARENA_FILTER_TYPES},
     {name:'showTitle',kind:'check',label:'Show title and competition heading',def:true,types:BOARD_DISPLAY_TYPES},
     {name:'darkTheme',kind:'check',label:'Dark theme',def:false,types:BOARD_DISPLAY_TYPES},
     {name:'showArena',kind:'check',label:'Show arena name',def:true,types:['schedule','arena','timer']},
-    {name:'fillCorners',kind:'check',label:'Fill corner squares with their colour',def:false,types:['arena']},
-    {name:'showTeamNames',kind:'check',label:'Show team names',def:true,types:['arena']},
-    {name:'showPositionNumbers',kind:'check',label:'Show position numbers',def:true,types:['arena']},
-    {name:'showPreviousResults',kind:'check',label:'Show the previous match’s scores at the bottom',def:false,types:['timer']}
+    {name:'fillCorners',kind:'check',label:'Fill corner squares with their colour',def:false,types:['arena','timer']},
+    {name:'showTeamNames',kind:'check',label:'Show team names',def:true,types:['arena','timer']},
+    {name:'showPositionNumbers',kind:'check',label:'Show position numbers',def:true,types:['arena','timer']},
+    {name:'showPreviousResults',kind:'check',label:'Show the previous match’s scores at the bottom',def:false,types:['arena','timer']}
   ]},
   {title:'Corner',fields:[
     {name:'cornerPosition',kind:'select',label:'Corner position',def:0,types:['corner','sr-arena'],options:[[0,'Position 0 · bottom-left'],[1,'Position 1 · top-left'],[2,'Position 2 · top-right'],[3,'Position 3 · bottom-right']]},
@@ -1144,8 +1206,7 @@ const DISPLAY_OPTION_GROUPS=[
     {name:'hideCompletedMatches',kind:'check',label:'Hide completed matches',def:false,types:['schedule']},
     {name:'hideCompletedEvents',kind:'check',label:'Hide finished events',def:false,types:['schedule']},
     {name:'enableTeamFilter',kind:'check',label:'Show a team filter',def:false,types:['schedule']},
-    {name:'relativeTime',kind:'check',label:'Show “in 5 minutes” instead of clock times',def:false,types:['schedule']},
-    {name:'hideScheduleArena',kind:'check',label:'Hide the arena column',def:false,types:['schedule']}
+    {name:'relativeTime',kind:'check',label:'Show “in 5 minutes” instead of clock times',def:false,types:['schedule']}
   ]},
   {title:'Start and end cues',description:'Full-screen, server-synchronized GET READY → 3-2-1 → GO and END screens shared by every live display.',fields:[
     {name:'showStartCue',kind:'check',label:'Show the GET READY / 3-2-1 / GO cue',def:false,types:LIVE_DISPLAY_TYPES},
@@ -1161,7 +1222,6 @@ const DISPLAY_OPTION_GROUPS=[
     {name:'endBackgroundColor',kind:'color',label:'END background',def:'#b3131b',types:LIVE_DISPLAY_TYPES}
   ]},
   {title:'SRComp screen',fields:[
-    {name:'srArenaName',kind:'text',label:'Only show this arena (blank for all)',def:'',max:120,types:SR_FILTER_TYPES},
     {name:'srMaxTeams',kind:'number',label:'Leaderboard teams',def:6,min:1,max:32,types:['sr-outside']},
     {name:'srMaxKnockoutRounds',kind:'number',label:'Knockout stages shown',def:5,min:1,max:12,types:['sr-outside']},
     {name:'srRotationSeconds',kind:'number',label:'Seconds per page',def:15,min:5,max:120,types:['sr-outside']},
@@ -1170,8 +1230,7 @@ const DISPLAY_OPTION_GROUPS=[
     {name:'srHideKnockout',kind:'check',label:'Hide knockout page',def:false,types:['sr-outside'],special:true},
     {name:'srExternalUrl',kind:'text',label:'Competition website link (optional)',def:'',max:500,types:['sr-outside']},
     {name:'srStagingCornerOrder',kind:'text',label:'Corner order (0-3, comma-separated)',def:'0,3,2,1',max:15,types:['sr-staging'],special:true},
-    {name:'srShepherdingPastMatches',kind:'number',label:'Past matches kept visible',def:1,min:0,max:5,types:['sr-shepherding']},
-    {name:'srStagingCloseOffsetMinutes',kind:'number',label:'Close staging this many minutes after the previous match starts',def:5,min:0,max:30,types:['sr-shepherding','sr-staging']}
+    {name:'srShepherdingPastMatches',kind:'number',label:'Past matches kept visible',def:1,min:0,max:5,types:['sr-shepherding']}
   ]}
 ];
 const DISPLAY_OPTION_FIELDS=DISPLAY_OPTION_GROUPS.flatMap(group=>group.fields);
@@ -1182,8 +1241,9 @@ function displayOptionFieldsHtml() {
     if(field.kind==='select')return `<label ${types}>${h(field.label)}<select name="${field.name}">${field.options.map(([value,label])=>`<option value="${h(value)}" ${value===field.def?'selected':''}>${h(label)}</option>`).join('')}</select></label>`;
     if(field.kind==='number')return `<label ${types}>${h(field.label)}<input type="number" name="${field.name}" min="${field.min}" max="${field.max}" value="${h(field.def)}"></label>`;
     if(field.kind==='color')return `<label ${types}>${h(field.label)}<input type="color" name="${field.name}" value="${h(field.def)}"></label>`;
+    if(field.kind==='arena')return `<label ${types}>${h(field.label)}<input name="${field.name}" maxlength="${field.max}" value="" list="display-arena-names" placeholder="Every arena"><span class="subtle" data-option-types="sr-arena,sr-producer">Blank uses the first arena (this screen shows one arena).</span></label>`;
     return `<label ${types}>${h(field.label)}<input name="${field.name}" maxlength="${field.max}" value="${h(field.def)}"></label>`;
-  }).join('')}</div></fieldset>`).join('');
+  }).join('')}</div></fieldset>`).join('')+`<datalist id="display-arena-names">${[...new Set(matches.map(match=>match.arena_name))].sort().map(name=>`<option value="${h(name)}"></option>`).join('')}</datalist>`;
 }
 function fillDisplayOptionForm(form,options) {
   for(const field of DISPLAY_OPTION_FIELDS){
@@ -1192,6 +1252,8 @@ function fillDisplayOptionForm(form,options) {
     let value=options[field.name]??field.def;
     if(field.name.startsWith('srHide'))value=(options.srHideOutsidePages||[]).includes(field.name.slice(6).toLowerCase());
     if(field.name==='srStagingCornerOrder')value=(options.srStagingCornerOrder||[0,3,2,1]).join(',');
+    // Older displays hid the schedule's arena column with a separate switch.
+    if(field.name==='showArena'&&options.hideScheduleArena)value=false;
     if(field.kind==='check')element.checked=Boolean(value);
     else element.value=String(value);
   }
@@ -1351,17 +1413,17 @@ function bigClockHtml(match){
   if(['awaiting_score','complete'].includes(match.state))return '<div class="big-clock">00:00</div>';
   return `<div class="big-clock" data-until="${h(new Date(match.effective_start).getTime())}">--:--</div>`;
 }
-// What an arena's operator should be looking at right now.
-function arenaFocus(arenaMatches,now){
+// What an arena's operator should be looking at right now. Matches run in schedule order: a heat still
+// waiting for earlier results holds up the ones after it (their teams are not ready either).
+function arenaFocus(arenaMatches){
   const order=[
     match=>Boolean(match.countdown_started_at)&&!['running','paused'].includes(match.state),
     match=>match.state==='running',
     match=>match.state==='paused',
-    match=>isDueToStart(match,now),
-    match=>['scheduled','ready','delayed'].includes(match.state)&&!(match.isPlayoff&&match.state==='scheduled')
+    match=>['scheduled','ready','delayed'].includes(match.state)
   ];
   for(const test of order){const found=arenaMatches.find(test);if(found)return found;}
-  return arenaMatches.find(match=>match.isPlayoff&&match.state==='scheduled');
+  return undefined;
 }
 function focusLabel(match,now){
   if(match.countdown_started_at&&!['running','paused'].includes(match.state))return ['countdown','Starting'];
@@ -1377,12 +1439,12 @@ async function matchesPage() {
   const displays=await api(`/api/admin/competitions/${encodeURIComponent(slug())}/displays`);
   const timerDisplay=displays.find(display=>display.display_type==='timer'&&display.enabled);
   const now=Date.now();
-  const byTime=(left,right)=>new Date(left.effective_start)-new Date(right.effective_start);
+  const byTime=(left,right)=>new Date(left.effective_start)-new Date(right.effective_start)||Number(left.match_number)-Number(right.match_number);
   const open=matches.filter(match=>!['complete','cancelled'].includes(match.state)||(match.actual_end&&now-new Date(match.actual_end).getTime()<10*60_000)).sort(byTime);
   const arenas=[...new Set(open.map(match=>match.arena_name))].sort();
   const consoles=arenas.map(arena=>{
     const arenaMatches=open.filter(match=>match.arena_name===arena);
-    const focus=arenaFocus(arenaMatches,now);
+    const focus=arenaFocus(arenaMatches);
     const queue=arenaMatches.filter(match=>match!==focus&&['scheduled','ready','delayed'].includes(match.state)&&!match.countdown_started_at).slice(0,4);
     // Finished matches wait for scores in a slim strip, so the next match's Start stays front and centre.
     const finished=arenaMatches.filter(needsScore).sort((a,b)=>new Date(b.actual_end||0)-new Date(a.actual_end||0));
@@ -1628,7 +1690,7 @@ function updateDisplayOptionVisibility(form) {
   if(descriptionNode)descriptionNode.textContent=description;
 }
 function updateMatchClocks() {
-  const now=performance.timeOrigin+performance.now()+serverClockOffset;
+  const now=window.ServerClock&&window.ServerClock.synced?window.ServerClock.now():performance.timeOrigin+performance.now()+serverClockOffset;
   document.querySelectorAll('[data-countdown]').forEach(node=>{
     const goAt=Number(node.dataset.countdown)+MATCH_COUNTDOWN_TOTAL_MS;
     const remaining=goAt-now;
@@ -1925,7 +1987,7 @@ document.addEventListener('click',async(event)=>{
       $('score-dialog').showModal();
     }else if(action==='publish'){
       await api(`/api/admin/competitions/${encodeURIComponent(slug())}/publish`,{method:'POST',body:'{}'});
-      competitions=await api('/api/admin/competitions');$('competition').selectedOptions[0].textContent=`${compOption().name} · ${compOption().status}`;
+      competitions=await api('/api/admin/competitions');updateCompetitionSwitcher();
       notify('Competition published.');await render();
     }else if(action==='playoff-score'){
       const match=matches.find(item=>item.id===id&&item.isPlayoff);
@@ -1968,6 +2030,18 @@ document.addEventListener('click',async(event)=>{
     }
   }catch(error){showError(error);}
 });
+$('comp-switcher-button').addEventListener('click',()=>toggleCompetitionMenu());
+$('comp-switcher-menu').addEventListener('click',(event)=>{
+  const option=event.target.closest('[data-switch-competition]');
+  const manage=event.target.closest('[data-switch-manage]');
+  toggleCompetitionMenu(false);
+  if(manage){setPage('competitions');return;}
+  if(!option||option.dataset.switchCompetition===slug())return;
+  $('competition').value=option.dataset.switchCompetition;
+  $('competition').dispatchEvent(new Event('change'));
+});
+document.addEventListener('click',(event)=>{if(!event.target.closest('#comp-switcher'))toggleCompetitionMenu(false);});
+document.addEventListener('keydown',(event)=>{if(event.key==='Escape')toggleCompetitionMenu(false);});
 $('competition').addEventListener('change',async()=>{
   localStorage.setItem('competitionSlug',slug());
   dirtyForms.clear();
@@ -2007,7 +2081,7 @@ async function handleFormSubmit(event){
     if(form.id==='competition-form'){
       const result=await api('/api/admin/competitions',{method:'POST',body:JSON.stringify({...values,matchDurationSeconds:Number(values.matchDurationSeconds)})});
       competitions=await api('/api/admin/competitions');
-      $('competition').innerHTML=competitions.map(c=>`<option value="${h(c.slug)}">${h(c.name)} · ${h(c.status)}</option>`).join('');
+      renderCompetitionOptions();
       competitionSignature=JSON.stringify(competitions.map(c=>[c.id,c.name,c.slug,c.status,c.team_count,c.match_count,c.challenge_count,c.challenge_completion_count,c.event_count]));
       $('competition').value=result.slug;localStorage.setItem('competitionSlug',result.slug);await loadData();setPage('overview');notify('Competition created.');
     }else if(form.id==='challenge-form'){
@@ -2106,6 +2180,11 @@ async function handleFormSubmit(event){
       const selected=compOption();
       if(selected)selected.timezone=values.timezone;
       await applyBranding();await render();notify('Settings saved.');
+    }else if(form.id==='staging-settings-form'){
+      const body={closeAfterPreviousStartMinutes:Number(values.closeAfterPreviousStartMinutes),firstMatchLeadMinutes:Number(values.firstMatchLeadMinutes)};
+      await api(`/api/admin/competitions/${encodeURIComponent(slug())}/staging-settings`,{method:'PUT',body:JSON.stringify(body)});
+      stagingSettings=body;dirtyForms.delete(form.id);
+      notify('Staging times saved. Staging and shepherding screens update straight away.');
     }else if(form.id==='arena-colours-form'){
       const cornerColours=[0,1,2,3].map(position=>values[`cornerColour${position}`]);
       const result=await api(`/api/admin/competitions/${encodeURIComponent(slug())}/arena-settings`,{method:'PUT',body:JSON.stringify({cornerColours})});
@@ -2183,7 +2262,7 @@ async function handleFormSubmit(event){
       competitions=await api('/api/admin/competitions');
       const current=slug()===targetSlug;
       if(current){localStorage.removeItem('competitionSlug');}
-      $('competition').innerHTML=competitions.map(c=>`<option value="${h(c.slug)}">${h(c.name)} · ${h(c.status)}</option>`).join('');
+      renderCompetitionOptions();
       competitionSignature=JSON.stringify(competitions.map(c=>[c.id,c.name,c.slug,c.status,c.team_count,c.match_count,c.challenge_count,c.challenge_completion_count,c.event_count]));
       if(current&&competitions.length){$('competition').value=competitions[0].slug;localStorage.setItem('competitionSlug',competitions[0].slug);}
       await loadData();
@@ -2352,7 +2431,7 @@ async function refreshLive(){
     competitions=nextCompetitions;
     const nextCompetitionSignature=JSON.stringify(competitions.map(c=>[c.id,c.name,c.slug,c.status,c.team_count,c.match_count,c.challenge_count,c.challenge_completion_count,c.event_count]));
     if(nextCompetitionSignature!==competitionSignature){
-      $('competition').innerHTML=competitions.map(c=>`<option value="${h(c.slug)}">${h(c.name)} · ${h(c.status)}</option>`).join('');
+      renderCompetitionOptions();
       if(competitions.some(c=>c.slug===previousSlug))$('competition').value=previousSlug;
       else if(competitions.length){$('competition').value=competitions[0].slug;localStorage.setItem('competitionSlug',competitions[0].slug);}
       competitionSignature=nextCompetitionSignature;

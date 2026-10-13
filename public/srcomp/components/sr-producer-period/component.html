@@ -39,7 +39,7 @@
                 if (!this.period) {
                     return;
                 }
-                const now = e.detail;
+                const now = new Date(window.ServerClock ? window.ServerClock.now() : e.detail.getTime());
                 this.startTimeText = this.formatTime(now, this.period.startTime);
                 this.endTimeText = this.formatTime(now, this.period.apparentEndTime);
             },

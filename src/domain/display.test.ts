@@ -195,3 +195,17 @@ test('validates one unique colour for each of the four arena positions', () => {
   assert.throws(() => cornerColoursSchema.parse(['#112233', '#445566', '#778899']));
   assert.throws(() => cornerColoursSchema.parse(['red', '#445566', '#778899', '#aabbcc']));
 });
+
+test('countdowns begin on a whole second, at least a second ahead, so every screen starts together', async () => {
+  const { countdownStartTime } = await import('./display.js');
+  const now = Date.parse('2026-10-12T10:00:03.470Z');
+  const start = countdownStartTime(now);
+  assert.equal(start % 1000, 0);
+  assert.ok(start - now >= 1000 && start - now < 2000, `${start - now} ms lead`);
+  // Auto-run counts down to the slot when there is time…
+  const slot = Date.parse('2026-10-12T10:01:00Z');
+  assert.equal(countdownStartTime(Date.parse('2026-10-12T10:00:53Z'), slot), slot - 5000);
+  // …and starts promptly (still aligned, never in the past) when the slot has already passed.
+  const late = countdownStartTime(now, Date.parse('2026-10-12T09:59:00Z'));
+  assert.equal(late, start);
+});

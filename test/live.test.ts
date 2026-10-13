@@ -116,3 +116,27 @@ test('the change feed announces updates to dashboards and displays', { skip }, a
   await new Promise((resolve) => setTimeout(resolve, 150));
   assert.ok(currentRevision() > before);
 });
+
+test('playoff heats run in order: a later heat cannot jump ahead of an earlier one', { skip }, async () => {
+  const { slug } = await h.createCompetition(8);
+  await h.api('POST', `/api/admin/competitions/${slug}/playoffs`, {
+    fieldSize: 8, format: 'single-elimination', intervalMinutes: 3, arenaNames: ['A']
+  });
+  const playoffs = await h.api<any>('GET', `/api/admin/competitions/${slug}/playoffs`);
+  const heats = (playoffs.matches as any[]).sort((a, b) => a.match_number - b.match_number);
+  const [first, second] = heats;
+  assert.equal(first.status, 'ready');
+  assert.equal(second.status, 'ready');
+
+  const blocked = await h.request({ method: 'POST', url: `/api/admin/playoff-matches/${second.id}/control/start`, payload: {} });
+  assert.equal(blocked.statusCode, 409);
+  assert.match(blocked.body, new RegExp(`Heat #${first.match_number} in A comes first`));
+
+  // The timer screen shows the earlier heat next, not the later one.
+  const timer = `${slug}-timer`;
+  await h.api('POST', `/api/admin/competitions/${slug}/displays`, { slug: timer, title: 'timer', type: 'timer', options: {} });
+  const shown = await h.api<any>('GET', `/api/public/display/${timer}`);
+  assert.equal(shown.data.match_number, first.match_number);
+
+  await h.api('POST', `/api/admin/playoff-matches/${first.id}/control/start`, {}, 200);
+});

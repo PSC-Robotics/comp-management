@@ -22,10 +22,16 @@
             minutes: 0,
             ready: function() {
                 this.updateTime();
-                this.$.pulses.addEventListener('pulse', this.updateTime.bind(this));
+                this.$.pulses.addEventListener('pulse', function(e) {
+                    this.updateTime(e);
+                    // Push the new text to the screen now, not on Polymer's next 125 ms dirty-check,
+                    // so every screen flips on the same server second.
+                    if (window.Polymer && Polymer.flush) Polymer.flush();
+                }.bind(this));
             },
             updateTime: function() {
-                var date = new Date();
+                // Server time from the clock shared with every screen.
+                var date = new Date(window.ServerClock ? window.ServerClock.now() : Date.now());
                 this.hours = date.getHours();
                 this.minutes = date.getMinutes();
             },

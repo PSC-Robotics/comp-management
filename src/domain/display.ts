@@ -28,6 +28,7 @@ export const displayOptionsSchema = z.object({
   hideCompletedMatches: z.boolean().default(false),
   enableTeamFilter: z.boolean().default(false),
   relativeTime: z.boolean().default(false),
+  // Retained for older saved displays: now folded into showArena (see the admin form).
   hideScheduleArena: z.boolean().default(false),
   cornerPosition: z.number().int().min(0).max(3).default(0),
   countdownBackgroundColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).default('#a21f24'),
@@ -41,6 +42,7 @@ export const displayOptionsSchema = z.object({
   srMaxTeams: z.number().int().min(1).max(32).default(6),
   srMaxKnockoutRounds: z.number().int().min(1).max(12).default(5),
   srShepherdingPastMatches: z.number().int().min(0).max(5).default(1),
+  // Retained for older saved displays: staging windows are now a competition setting (Arena page).
   srStagingCloseOffsetMinutes: z.number().int().min(0).max(30).default(5),
   srHideOutsidePages: z.array(srOutsidePageSchema).max(3).default([]),
   srStagingCornerOrder: z.array(z.number().int().min(0).max(3)).length(4)
@@ -72,8 +74,11 @@ export const cornerColoursSchema = z.array(z.string().regex(/^#[0-9a-fA-F]{6}$/)
 
 export type DisplayOptions = z.infer<typeof displayOptionsSchema>;
 
-/** How long a match that just finished stays on live screens (END cue plus a moment to read it). */
-export const JUST_FINISHED_SECONDS = 15;
+/**
+ * How long a match that just finished stays on live screens: long enough for the default END cue, then
+ * the screens move straight on to the next match (they never sit on "awaiting score").
+ */
+export const JUST_FINISHED_SECONDS = 4;
 
 /**
  * Which match a live screen shows, lowest first: a start countdown, then a
@@ -205,4 +210,23 @@ export function getStartCue(
     return { text: 'GO', colour: 'green' };
   }
   return { text: null, colour: null };
+}
+
+/** How long before a countdown begins that it is announced, so every screen has it in time. */
+export const COUNTDOWN_LEAD_MS = 1000;
+/** Auto-run arms a countdown this long before it begins, for the same reason. */
+export const COUNTDOWN_PREARM_SECONDS = 2;
+
+/**
+ * When a countdown should begin. Countdowns start on a whole server second at
+ * least COUNTDOWN_LEAD_MS ahead: SR screens redraw on whole server seconds and
+ * every screen needs the start time before it happens, so all of them show
+ * GET READY, 3, 2, 1 and GO at the same instant. A scheduled start (auto-run)
+ * counts down to its slot when there is still time, otherwise starts promptly.
+ */
+export function countdownStartTime(now: number, scheduledStart?: number): number {
+  const earliest = Math.ceil((now + COUNTDOWN_LEAD_MS) / 1000) * 1000;
+  if (scheduledStart === undefined) return earliest;
+  const toSlot = Math.ceil(scheduledStart / 1000) * 1000 - MATCH_COUNTDOWN_TOTAL_SECONDS * 1000;
+  return Math.max(toSlot, earliest);
 }

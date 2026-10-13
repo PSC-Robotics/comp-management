@@ -208,7 +208,6 @@ test('passes SR display settings in the names and shapes expected by upstream pa
     maxTeams: 8,
     maxKnockoutRounds: 4,
     shepherdingPastMatches: 2,
-    stagingCloseOffsetMinutes: 7,
     stagingCornersList: ['3', '2', '1', '0'],
     rotationSeconds: 20,
     displayOptions: {
@@ -253,8 +252,15 @@ test('keeps a just-finished match on screen even without scores, then moves on',
   const next = { ...baseMatch, match_number: 2, effective_start: '2026-04-10T10:01:00Z' };
   const at = (seconds: number) => selectSrDisplayMatches([finished, next], new Date(ended.getTime() + seconds * 1000))
     .map((match) => match.match_number);
-  assert.deepEqual(at(5), [1], 'END is shown');
-  assert.deepEqual(at(30), [2], 'then the next match');
+  assert.deepEqual(at(2), [1], 'END is shown');
+  assert.deepEqual(at(5), [2], 'then straight on to the next match, never "awaiting score"');
+});
+
+test('a heat waiting for earlier results is shown before a later ready heat', () => {
+  const waiting = { ...baseMatch, match_number: 44, state: 'pending', effective_start: '2026-04-10T10:25:00Z' };
+  const ready = { ...baseMatch, match_number: 45, state: 'ready', effective_start: '2026-04-10T10:28:00Z' };
+  assert.deepEqual(selectSrDisplayMatches([ready, waiting], new Date('2026-04-10T10:26:00Z'))
+    .map((match) => match.match_number), [44]);
 });
 
 test('an overdue match stays current until someone starts it', () => {

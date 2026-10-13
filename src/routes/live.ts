@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { adminEmail, requireAdmin } from '../auth/sessions.js';
 import { audit } from '../db/audit.js';
 import { transaction } from '../db/pool.js';
-import { MATCH_COUNTDOWN_TOTAL_SECONDS } from '../domain/display.js';
+import { MATCH_COUNTDOWN_TOTAL_SECONDS, countdownStartTime } from '../domain/display.js';
 import { calculateTimerResetStart } from '../domain/scheduler.js';
 import { hasTeamInActiveMatch } from '../services/conflicts.js';
 import { delayNextMatchesAfterManualStart } from '../services/reflow.js';
@@ -58,9 +58,9 @@ export function registerLiveRoutes(app: FastifyInstance): void {
         return { status: 409, error: 'A team in this match is already active in another arena' };
       }
       const countdown = await client.query<{ countdown_started_at: Date }>(
-        `UPDATE matches SET countdown_started_at = now(), revision = revision + 1
+        `UPDATE matches SET countdown_started_at = $2, revision = revision + 1
          WHERE id = $1 RETURNING countdown_started_at`,
-        [matchId]
+        [matchId, new Date(countdownStartTime(Date.now()))]
       );
       await audit(client, adminEmail(request), 'match.countdown_started', 'match', matchId, {
         countdownStartedAt: new Date(countdown.rows[0]!.countdown_started_at).toISOString(),

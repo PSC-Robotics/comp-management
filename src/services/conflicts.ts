@@ -60,3 +60,27 @@ export async function playoffHeatHasActiveConflict(
   );
   return Boolean(conflict.rowCount);
 }
+
+/**
+ * The number of an earlier heat in the same arena that has not been played yet, if any. Heats run in
+ * schedule order: a later heat waits until the earlier one is played (its teams are not ready either).
+ */
+export async function earlierUnplayedHeat(
+  client: PoolClient,
+  heatId: string
+): Promise<number | null> {
+  const result = await client.query<{ match_number: number }>(
+    `SELECT other.match_number
+     FROM playoff_matches heat
+     JOIN playoff_matches other ON other.bracket_id = heat.bracket_id AND other.id <> heat.id
+       AND other.arena_name = heat.arena_name
+     WHERE heat.id = $1
+       AND other.status <> 'complete' AND other.schedule_state = 'scheduled' AND other.timer_state = 'scheduled'
+       AND other.countdown_started_at IS NULL
+       AND (other.effective_start, other.match_number) < (heat.effective_start, heat.match_number)
+     ORDER BY other.effective_start, other.match_number
+     LIMIT 1`,
+    [heatId]
+  );
+  return result.rows[0]?.match_number ?? null;
+}

@@ -1,7 +1,10 @@
 import { type FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { pool } from '../db/pool.js';
 import { MATCH_COUNTDOWN_PREPARATION_SECONDS, MATCH_COUNTDOWN_TOTAL_SECONDS, displayOptionsSchema, formatCompetitionDateTime, formatCompetitionTime, readableTextColour } from '../domain/display.js';
+import { clockSyncScript } from '../lib/clock-sync.js';
 import { escapeHtml, safeDisplayColour } from '../lib/html.js';
+import { findCompetition, listArenaNames } from '../services/competitions.js';
 import { loadPublicDisplay } from '../services/public-display.js';
 
 export function registerDisplayPageRoutes(app: FastifyInstance): void {
@@ -20,7 +23,12 @@ export function registerDisplayPageRoutes(app: FastifyInstance): void {
     const srScreenFile = srScreenFiles[display.type];
     if (srScreenFile) {
       const displayPath = `/srcomp/${encodeURIComponent(display.slug)}/${srScreenFile}`;
-      const arena = options.srArenaName.trim();
+      let arena = options.srArenaName.trim();
+      if (['sr-arena', 'sr-producer'].includes(display.type) && !arena) {
+        // These SR screens need one arena; without one they would show a picker on the TV.
+        const competition = await findCompetition(pool, display.competitionSlug);
+        arena = competition ? (await listArenaNames(pool, competition.id))[0] ?? '' : '';
+      }
       const query = display.type === 'sr-arena' && arena
         ? `?${encodeURIComponent(arena)},${options.cornerPosition}`
         : ['sr-producer', 'sr-shepherding', 'sr-staging'].includes(display.type) && arena
@@ -42,55 +50,9 @@ export function registerDisplayPageRoutes(app: FastifyInstance): void {
       const rows = (Array.isArray(data) ? data : []).map((team, index) =>
         `<tr><td>${index + 1}</td><th>${escapeHtml(team.code)} — ${escapeHtml(team.name)}</th><td>${escapeHtml(team.league_points)}</td><td>${escapeHtml(team.scored_matches)}</td></tr>`
       ).join('');
-      content = `<table><thead><tr><th>Rank</th><th>Team</th><th>Points</th><th>Matches</th></tr></thead><tbody>${rows}</tbody></table>`;
-    } else if (display.type === 'sr-outside' && data && !Array.isArray(data)) {
-      const outside = data as Record<string, unknown>;
-      const hiddenPages = new Set(options.srHideOutsidePages);
-      const standings = Array.isArray(outside.standings)
-        ? outside.standings as Array<Record<string, unknown>> : [];
-      const schedule = Array.isArray(outside.schedule)
-        ? outside.schedule as Array<Record<string, unknown>> : [];
-      const results = Array.isArray(outside.results)
-        ? outside.results as Array<Record<string, unknown>> : [];
-      const knockout = Array.isArray(outside.knockout)
-        ? outside.knockout as Array<Record<string, unknown>> : [];
-      const pages: string[] = [];
-      if (!hiddenPages.has('leaderboard')) {
-        const rows = standings.slice(0, options.srMaxTeams).map((team, index) =>
-          `<tr><td>${index + 1}</td><th>${escapeHtml(team.code)} — ${escapeHtml(team.name)}</th><td>${escapeHtml(team.league_points)}</td></tr>`
-        ).join('');
-        pages.push(`<section class="sr-outside-page" data-sr-outside-page="leaderboard"><h2>Leaderboard</h2><table><thead><tr><th>Rank</th><th>Team</th><th>League Points</th></tr></thead><tbody>${rows}</tbody></table></section>`);
-      }
-      if (!hiddenPages.has('schedule')) {
-        const rows = schedule.map((match) => {
-          const teams = Array.isArray(match.teams) ? match.teams as Array<Record<string, unknown>> : [];
-          const codes = teams.map((team) => escapeHtml(team.code)).join(' · ');
-          const fill = Number(match.team_count) < 4
-            ? `<strong class="warning">${escapeHtml(match.team_count)}/4 TEAM HEAT</strong>` : '';
-          return `<tr><th>Match ${escapeHtml(match.match_number)}</th><td>${escapeHtml(formatCompetitionDateTime(String(match.effective_start), display.competitionTimezone))}</td><td>${escapeHtml(match.arena_name)}</td><td>${codes}</td><td>${fill || escapeHtml(match.state)}</td></tr>`;
-        }).join('');
-        pages.push(`<section class="sr-outside-page" data-sr-outside-page="schedule"><h2>Schedule</h2><table><thead><tr><th>Match</th><th>Time</th><th>Arena</th><th>Teams</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table></section>`);
-      }
-      if (!hiddenPages.has('results')) {
-        const rows = results.map((match) => {
-          const scores = Array.isArray(match.scores) ? match.scores as Array<Record<string, unknown>> : [];
-          return `<tr><th>Match ${escapeHtml(match.match_number)}</th><td>${scores.map((score) => `${escapeHtml(score.code)}: ${escapeHtml(score.points)}`).join(' · ')}</td></tr>`;
-        }).join('');
-        pages.push(`<section class="sr-outside-page" data-sr-outside-page="results"><h2>Latest scores</h2><table><thead><tr><th>Match</th><th>Points by team</th></tr></thead><tbody>${rows}</tbody></table></section>`);
-      }
-      if (!hiddenPages.has('knockout')) {
-        const limitedKnockout = knockout.filter((match) =>
-          Number(match.round_number) <= options.srMaxKnockoutRounds);
-        const rows = limitedKnockout.map((match) => {
-          const scores = Array.isArray(match.scores) ? match.scores as Array<Record<string, unknown>> : [];
-          return `<tr><th>${escapeHtml(match.bracket_side)} · Round ${escapeHtml(match.round_number)}</th><td>Match ${escapeHtml(match.match_number)}</td><td>${scores.map((score) => `${escapeHtml(score.code)}: ${escapeHtml(score.points)}`).join(' · ') || escapeHtml(match.status)}</td><td>${escapeHtml(match.winner || '—')}</td></tr>`;
-        }).join('');
-        pages.push(`<section class="sr-outside-page" data-sr-outside-page="knockout"><h2>Knockout</h2><table><thead><tr><th>Bracket</th><th>Match</th><th>Points</th><th>Winner</th></tr></thead><tbody>${rows}</tbody></table></section>`);
-      }
-      const externalLink = options.srExternalUrl
-        ? `<a class="sr-external-link" href="${escapeHtml(options.srExternalUrl)}" target="_blank" rel="noopener noreferrer">Competition website</a>`
-        : '';
-      content = `<div class="sr-outside">${pages.join('') || '<p class="empty">No Outside Screen pages are enabled.</p>'}${externalLink}</div>`;
+      content = rows
+        ? `<table><thead><tr><th>Rank</th><th>Team</th><th>Points</th><th>Matches</th></tr></thead><tbody>${rows}</tbody></table>`
+        : '<p class="empty-board">No teams yet.</p>';
     } else if (display.type === 'results') {
       const rows = (Array.isArray(data) ? data : []).map((match) => {
         const scores = Array.isArray(match.scores) ? match.scores as Array<Record<string, unknown>> : [];
@@ -102,8 +64,10 @@ export function registerDisplayPageRoutes(app: FastifyInstance): void {
           : '<td>—</td>').join('');
         return `<tr><th scope="row">${escapeHtml(match.match_type)} ${escapeHtml(match.match_number)}</th><td>${escapeHtml(formatCompetitionDateTime(String(match.effective_start), display.competitionTimezone))}</td><td>${escapeHtml(match.arena_name)}</td>${cells}</tr>`;
       }).join('');
-      content = `<table><thead><tr><th>Match</th><th>Time</th><th>Arena</th>${[0,1,2,3].map((position) => `<th><span class="long-label">Position </span><span class="short-label">P</span>${position}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table>`;
-    } else if (['schedule', 'sr-staging', 'sr-shepherding'].includes(display.type)) {
+      content = rows
+        ? `<table><thead><tr><th>Match</th><th>Time</th><th>Arena</th>${[0,1,2,3].map((position) => `<th><span class="long-label">Position </span><span class="short-label">P</span>${position}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table>`
+        : '<p class="empty-board">No completed matches yet. Scores appear here as matches finish.</p>';
+    } else if (display.type === 'schedule') {
       const showArena = options.showArena && !options.hideScheduleArena;
       const timeContent = (value: unknown) => {
         const date = new Date(String(value));
@@ -118,7 +82,7 @@ export function registerDisplayPageRoutes(app: FastifyInstance): void {
         if (state === 'complete') return 'Complete';
         if (state === 'running') return 'In progress';
         if (state === 'paused') return 'Paused';
-        if (state === 'awaiting_score') return 'Awaiting score';
+        if (state === 'awaiting_score') return 'Finished';
         if (match.countdown_started_at) return 'Starting';
         if (state === 'pending') return 'Waiting for results';
         return delayMinutes > 0 ? `Delayed ${delayMinutes} min` : 'Scheduled';
@@ -139,8 +103,7 @@ export function registerDisplayPageRoutes(app: FastifyInstance): void {
           return `<tr data-schedule-event="true"><td colspan="${showArena ? 8 : 7}"><strong>${timeContent(match.effective_start)} · ${escapeHtml(event.title)}</strong>${showArena ? ` · ${escapeHtml(event.location || '—')}` : ''} · ${escapeHtml(event.durationMinutes)} minutes${event.description ? ` · ${escapeHtml(event.description)}` : ''}</td></tr>`;
         }
         const teamCodes = teams.map((team) => String(team.code ?? '')).filter(Boolean);
-        const stagingOrder = display.type === 'sr-staging' ? options.srStagingCornerOrder : [0, 1, 2, 3];
-        const positions = stagingOrder.map((spot) =>
+        const positions = [0, 1, 2, 3].map((spot) =>
           teams.find((team) => Number(team.position) === spot + 1)
         );
         const positionCells = positions.map((team, index) => {
@@ -164,8 +127,9 @@ export function registerDisplayPageRoutes(app: FastifyInstance): void {
           : fillStatus;
         return `<tr${rowState} data-team-codes="${escapeHtml(teamCodes.join(','))}"><td><strong>${escapeHtml(match.match_number)}</strong>${showArena ? `<div class="mobile-only muted">${escapeHtml(match.arena_name)}</div>` : ''}</td>${showArena ? `<td class="arena-col">${escapeHtml(match.arena_name)}</td>` : ''}<td>${wasTime}${timeContent(match.effective_start)}${mobileStatus ? `<div class="mobile-status">${mobileStatus}</div>` : ''}</td>${positionCells}<td class="status-cell">${fillStatus}</td></tr>`;
       }).join('');
-      const positionOrder = display.type === 'sr-staging' ? options.srStagingCornerOrder : [0, 1, 2, 3];
-      content = `${behindBanner}<table><thead><tr><th>Match</th>${showArena ? '<th class="arena-col">Arena</th>' : ''}<th>${options.relativeTime ? 'Starts in / elapsed' : 'Time'}</th>${positionOrder.map((position) => `<th><span class="long-label">Position </span><span class="short-label">P</span>${position}</th>`).join('')}<th class="status-cell">Status</th></tr></thead><tbody>${rows}</tbody></table>`;
+      content = rows
+        ? `${behindBanner}<table><thead><tr><th>Match</th>${showArena ? '<th class="arena-col">Arena</th>' : ''}<th>${options.relativeTime ? 'Starts in / elapsed' : 'Time'}</th>${[0, 1, 2, 3].map((position) => `<th><span class="long-label">Position </span><span class="short-label">P</span>${position}</th>`).join('')}<th class="status-cell">Status</th></tr></thead><tbody>${rows}</tbody></table>`
+        : '<p class="empty-board">Nothing scheduled yet.</p>';
       if (options.enableTeamFilter) {
         const teams = new Map<string, string>();
         for (const match of Array.isArray(data) ? data : []) {
@@ -178,20 +142,6 @@ export function registerDisplayPageRoutes(app: FastifyInstance): void {
           .map(([code, name]) => `<option value="${escapeHtml(code)}">${escapeHtml(code)} · ${escapeHtml(name)}</option>`).join('');
         content = `<label class="team-filter">Filter by team<select id="schedule-team-filter"><option value="">All teams</option>${teamOptions}</select></label>${content}`;
       }
-    } else if (['arena', 'sr-arena'].includes(display.type)) {
-      const match = data && !Array.isArray(data) ? data as Record<string, unknown> : {};
-      const positions = Array.isArray(match.positions) ? match.positions as Array<Record<string, unknown>> : [];
-      content = `<h2>${match.match_number ? `Match ${escapeHtml(match.match_number)}${options.showArena ? ` · ${escapeHtml(match.arena_name)}` : ''}` : 'No scheduled matches'}</h2><p id="timer-state" class="timer-label">WAITING FOR NEXT MATCH</p><div class="timer" id="timer-display">--:--.-</div><p id="timer-label" class="muted timer-label">STARTS IN</p><div id="timer-arena" class="arena-square">${positions.map((position) => {
-        const spot = Number(position.position) - 1;
-        const colour = safeDisplayColour(position.colour);
-        const background = options.fillCorners ? colour : `color-mix(in srgb, ${colour} 18%, ${darkTheme ? '#111820' : 'white'})`;
-        const textColour = options.fillCorners ? readableTextColour(colour) : 'inherit';
-        return `<div class="arena-cell" data-spot="${spot}" style="border-color:${colour};background-color:${background};color:${textColour}">
-          ${options.showPositionNumbers ? `<span class="arena-spot">${spot}</span>` : ''}${position.teamCode
-            ? `<span class="arena-code">${escapeHtml(position.teamCode)}</span>${options.showTeamNames ? `<span class="arena-team">${escapeHtml(position.teamName)}</span>` : ''}`
-            : '<span class="arena-code">VACANT</span>'}
-        </div>`;
-      }).join('')}</div>${Number(match.team_count) < 4 && match.match_number ? `<p id="timer-warning" class="warning" style="text-align:center">UNDERFILLED MATCH · ${escapeHtml(match.team_count)}/4 positions</p>` : '<p id="timer-warning" class="warning" style="text-align:center"></p>'}`;
     } else if (display.type === 'corner') {
       const match = data && !Array.isArray(data) ? data as Record<string, unknown> : null;
       const positions = match && Array.isArray(match.positions) ? match.positions as Array<Record<string, unknown>> : [];
@@ -208,7 +158,7 @@ export function registerDisplayPageRoutes(app: FastifyInstance): void {
         <div class="timer corner-timer" id="timer-display">--:--.-</div>
         <p id="timer-label" class="corner-state">STARTS IN</p>
       </section>`;
-    } else if (['timer', 'sr-producer'].includes(display.type)) {
+    } else if (['timer', 'arena'].includes(display.type)) {
       content = `<h2 id="timer-match">Connecting to live match...</h2><p id="timer-state" class="muted" style="text-align:center">Waiting for live data</p>
         <div class="timer" id="timer-display">--:--.-</div><p id="timer-label" class="muted" style="text-align:center">SYNCING CLOCK</p>
         <div id="timer-arena" class="arena-square" aria-label="Current match arena positions"></div>
@@ -236,7 +186,7 @@ export function registerDisplayPageRoutes(app: FastifyInstance): void {
             : `<li class="tbd">${escapeHtml(describe(source))}</li>`).join('');
         const state = String(heat.schedule_state) === 'complete' ? 'Result'
           : ['running', 'paused'].includes(String(heat.timer_state)) ? 'Live'
-            : String(heat.timer_state) === 'awaiting_score' ? 'Scoring'
+            : String(heat.timer_state) === 'awaiting_score' ? 'Finished'
               : formatCompetitionTime(new Date(String(heat.effective_start)), display.competitionTimezone);
         return `<article class="heat heat-${escapeHtml(heat.bracket_side)}"><header><span>Heat ${escapeHtml(heat.match_number)}</span><span>${escapeHtml(state)}</span></header><div class="muted heat-meta">${escapeHtml(sideLabel(heat.bracket_side))} · ${escapeHtml(heat.arena_name)}</div><ol>${entries}</ol></article>`;
       };
@@ -254,16 +204,17 @@ export function registerDisplayPageRoutes(app: FastifyInstance): void {
     reply.header('cache-control', 'no-store');
     reply.header('x-content-type-options', 'nosniff');
     reply.header('content-security-policy', "default-src 'none'; connect-src 'self'; style-src 'unsafe-inline'; img-src data:; script-src 'unsafe-inline'; base-uri 'none'; frame-ancestors *");
-    const liveTimerDisplay = ['timer', 'arena', 'corner', 'sr-arena', 'sr-producer'].includes(display.type);
-    const rotatingOutsideDisplay = display.type === 'sr-outside';
+    const liveTimerDisplay = ['timer', 'arena', 'corner'].includes(display.type);
     return reply.type('text/html; charset=utf-8').send(`<!doctype html><html lang="en"><head>
       <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-      <title>${escapeHtml(display.title)}</title><style>
+      <title>${escapeHtml(display.title)}</title><script>${clockSyncScript}</script><style>
         *{box-sizing:border-box}body{font:16px/1.45 system-ui,sans-serif;margin:0;padding:clamp(1rem,4vw,3rem);${theme}}
         main{max-width:1100px;margin:auto}header{display:flex;align-items:center;gap:1rem;border-bottom:1px solid currentColor;padding-bottom:1rem}
         header img{max-height:64px;max-width:180px;object-fit:contain}h1{font-size:clamp(1.5rem,4vw,2.5rem);margin:.2rem 0}
         .muted{opacity:.68}table{width:100%;border-collapse:collapse;margin-top:1.5rem}td,th{text-align:left;padding:.8rem;border-bottom:1px solid ${darkTheme ? '#45525c' : '#c9ceca'}}
-        th{font-size:.8rem;text-transform:uppercase;letter-spacing:.04em}
+        thead th{font-size:.8rem;text-transform:uppercase;letter-spacing:.04em;opacity:.75}tbody th{font-weight:700}
+        .empty-board{text-align:center;margin-top:3rem;opacity:.7}
+        ${liveTimerDisplay ? '' : '@media(min-width:1200px){html{font-size:clamp(16px,1.25vw,34px)}main,.board-footer{max-width:72rem}}'}
         .arena-square{width:min(100%,640px);aspect-ratio:1;margin:1.5rem auto;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:3px;background:currentColor;border:3px solid currentColor}
         .arena-cell{min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:clamp(.4rem,2vw,1.2rem);border:6px solid}
         .arena-cell[data-spot="1"],.arena-cell[data-spot="2"]{grid-row:1}.arena-cell[data-spot="0"],.arena-cell[data-spot="3"]{grid-row:2}
@@ -294,6 +245,10 @@ export function registerDisplayPageRoutes(app: FastifyInstance): void {
         .previous-result-team strong{display:block;font:800 clamp(.8rem,2vh,1.15rem)/1.1 ui-monospace,monospace}
         .previous-result-team span{display:block;font-size:clamp(.6rem,1.35vh,.8rem);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
         body.timer-board .previous-results{gap:.2rem;padding-top:.2rem}
+        body.arena-board #timer-display{font-size:clamp(1.8rem,min(10vh,9vw),7rem)}
+        body.arena-board #timer-arena{width:min(100%,82dvh)}
+        body.arena-board .arena-code{font-size:clamp(1.5rem,7vh,5rem)}
+        body.arena-board .arena-team{font-size:clamp(.8rem,2.4vh,1.4rem)}
         body.timer-board-with-results.timer-board-has-title main{grid-template-rows:auto auto auto auto auto minmax(0,1fr) auto auto auto auto}
         @media(max-width:480px){body.timer-board .previous-results{grid-template-columns:repeat(4,minmax(0,1fr))}body.timer-board .previous-results-heading{grid-column:1/-1;text-align:center}}
         body.corner-board{padding:0;min-height:100dvh}body.corner-board main{width:100%;max-width:none;min-height:100dvh;margin:0}
@@ -308,13 +263,6 @@ export function registerDisplayPageRoutes(app: FastifyInstance): void {
         .countdown-overlay.visible{display:grid}
         .countdown-overlay.ready{font-size:clamp(2rem,10vw,8rem);letter-spacing:.04em}
         .countdown-overlay.end{font-size:min(45vw,72vh,36rem);line-height:1;overflow-wrap:anywhere}
-        .sr-outside{display:grid;min-height:70vh;align-content:center}
-        .sr-outside-page{display:none;max-height:78vh;overflow:auto}
-        .sr-outside-page.active{display:block}
-        .sr-outside-page h2{font-size:clamp(1.5rem,4vw,3rem);margin:0 0 .4em}
-        .sr-outside-page table{font-size:clamp(.75rem,2vw,1.5rem);margin:0}
-        .sr-outside-page td,.sr-outside-page th{padding:.35em .5em}
-        .sr-external-link{position:fixed;right:1rem;bottom:1rem;color:inherit}
         #countdown-overlay{color:#fff}
         .schedule-position-team{font:900 1.15rem/1 ui-monospace,monospace}
         body.cue-red{background:${options.countdownBackgroundColor}!important;color:${readableTextColour(options.countdownBackgroundColor)}!important;transition:background-color .15s linear}
@@ -348,22 +296,9 @@ export function registerDisplayPageRoutes(app: FastifyInstance): void {
         .heat li.tbd{font:500 .85rem/1.3 system-ui,sans-serif;opacity:.65}.heat li.through strong{color:#19875b}.heat li.out{opacity:.5;text-decoration:line-through}
         body.cue-green{background:${options.goBackgroundColor}!important;color:${readableTextColour(options.goBackgroundColor)}!important;transition:background-color .15s linear}
         body.cue-end{background:${options.endBackgroundColor}!important;color:${readableTextColour(options.endBackgroundColor)}!important;transition:background-color .15s linear}
-      </style></head><body class="${display.type === 'corner' ? 'corner-board' : ['timer','sr-producer'].includes(display.type) ? `timer-board${options.showTitle ? ' timer-board-has-title' : ' timer-board-no-title'}${options.showPreviousResults ? ' timer-board-with-results' : ''}` : display.type === 'sr-arena' ? 'sr-arena-board' : ''}" style="${theme}"><main>${options.showTitle && display.type !== 'corner' ? `<header>${display.logoDataUrl ? `<img src="${escapeHtml(display.logoDataUrl)}" alt="">` : ''}<div><div class="muted">${escapeHtml(display.competition)}</div><h1>${escapeHtml(display.title)}</h1></div></header>` : ''}
-      ${content}</main>${display.type === 'corner' || ['timer', 'sr-producer'].includes(display.type) ? '' : `<p class="muted board-footer" id="board-updated">Updated ${escapeHtml(formatCompetitionTime(new Date(display.updatedAt), display.competitionTimezone))}</p>`}
+      </style></head><body class="${display.type === 'corner' ? 'corner-board' : ['timer','arena'].includes(display.type) ? `timer-board${display.type === 'arena' ? ' arena-board' : ''}${options.showTitle ? ' timer-board-has-title' : ' timer-board-no-title'}${options.showPreviousResults ? ' timer-board-with-results' : ''}`: ''}" style="${theme}"><main>${options.showTitle && display.type !== 'corner' ? `<header>${display.logoDataUrl ? `<img src="${escapeHtml(display.logoDataUrl)}" alt="">` : ''}<div><div class="muted">${escapeHtml(display.competition)}</div><h1>${escapeHtml(display.title)}</h1></div></header>` : ''}
+      ${content}</main>${liveTimerDisplay ? '' : `<p class="muted board-footer" id="board-updated">Updated ${escapeHtml(formatCompetitionTime(new Date(display.updatedAt), display.competitionTimezone))}</p>`}
       ${liveTimerDisplay ? `<div id="countdown-overlay" class="countdown-overlay" aria-live="assertive" style="background-color:${displayBackground}"></div>` : ''}
-      ${rotatingOutsideDisplay ? `<script>
-        const outsidePages=[...document.querySelectorAll('[data-sr-outside-page]')];
-        let outsidePageIndex=0;
-        const showOutsidePage=index=>{
-          outsidePageIndex=index;
-          outsidePages.forEach((page,pageIndex)=>page.classList.toggle('active',pageIndex===outsidePageIndex));
-        };
-        if(outsidePages.length){
-          showOutsidePage(0);
-          setInterval(()=>showOutsidePage((outsidePageIndex+1)%outsidePages.length),${options.srRotationSeconds * 1000});
-          setInterval(()=>location.reload(),Math.max(30000,outsidePages.length*${options.srRotationSeconds * 1000}));
-        }
-      </script>` : ''}
       ${liveTimerDisplay ? `<script>
         const timerEndpoint=${JSON.stringify(`/api/public/display/${display.slug}`)};
         const timerNode=document.getElementById('timer-display');
@@ -401,7 +336,7 @@ export function registerDisplayPageRoutes(app: FastifyInstance): void {
               cell.style.color=(.2126*rgb[0]+.7152*rgb[1]+.0722*rgb[2])/255>.58?'#111':'#fff';
             }
             if(displayOptions.showPositionNumbers){const spot=document.createElement('span');spot.className='arena-spot';spot.textContent=cell.dataset.spot;cell.append(spot);}
-            const code=document.createElement('span');code.className='arena-code';code.textContent=position.teamCode||'VACANT';cell.append(code);
+            const code=document.createElement('span');code.className='arena-code';code.textContent=position.teamCode||(currentMatch&&currentMatch.state==='pending'?'TBC':'VACANT');cell.append(code);
             if(displayOptions.showTeamNames&&position.teamName){const team=document.createElement('span');team.className='arena-team';team.textContent=position.teamName;cell.append(team);}
             arenaNode.append(cell);
           }
@@ -431,7 +366,8 @@ export function registerDisplayPageRoutes(app: FastifyInstance): void {
         };
         const renderClock=()=>{
           const match=currentMatch;
-          const now=performance.timeOrigin+performance.now()+serverOffset;
+          // Server time from the clock shared with every other screen (falls back to the data-feed estimate).
+          const now=window.ServerClock&&window.ServerClock.synced?window.ServerClock.now():performance.timeOrigin+performance.now()+serverOffset;
           if(!match){
             if(timerNode)timerNode.textContent='--:--.-';
             if(labelNode)labelNode.textContent='NO MATCH SCHEDULED';
@@ -455,14 +391,14 @@ export function registerDisplayPageRoutes(app: FastifyInstance): void {
             remaining=Number(match.duration_seconds)*1000-(new Date(match.paused_at).getTime()-actualStartedAt-Number(match.paused_seconds||0)*1000);
             label='TIME LEFT · PAUSED';
             statusText='MATCH PAUSED';
-          }else if(['scheduled','ready','delayed'].includes(match.state)){
+          }else if(['scheduled','ready','delayed','pending'].includes(match.state)){
             remaining=new Date(match.effective_start).getTime()-now;
             label='STARTS IN';
             statusText='UP NEXT';
             if(remaining<=0&&!match.countdown_started_at){
               // Its time has come but nobody has started it: show the full match time, not a fake 00:00.
               remaining=Number(match.duration_seconds)*1000;
-              label='WAITING TO START';
+              label='MATCH LENGTH';
               statusText='WAITING TO START';
             }
             if(match.countdown_started_at){
@@ -472,8 +408,8 @@ export function registerDisplayPageRoutes(app: FastifyInstance): void {
               statusText=remaining>0?'STARTING IN '+Math.max(1,Math.ceil(remaining/1000)):'GO';
             }
           }else if(match.state==='awaiting_score'){
-            label='AWAITING SCORE';
-            statusText='AWAITING SCORE';
+            label='MATCH OVER';
+            statusText='MATCH OVER';
           }
           remaining=Math.max(0,remaining);
           const cueGoAt=countdownStartedAt!==null?countdownStartedAt+countdownTotalMs:actualStartedAt;
@@ -558,7 +494,7 @@ export function registerDisplayPageRoutes(app: FastifyInstance): void {
             if(cornerDisplay){
               const cornerPosition=currentMatch?.positions?.find(position=>Number(position.spot)===displayOptions.cornerPosition);
               const cornerColour=/^#[0-9a-f]{6}$/i.test(cornerPosition?.colour||'')?cornerPosition.colour:'#777777';
-              if(cornerCodeNode)cornerCodeNode.textContent=cornerPosition?.teamCode||'VACANT';
+              if(cornerCodeNode)cornerCodeNode.textContent=cornerPosition?.teamCode||(currentMatch&&currentMatch.state==='pending'?'TBC':'VACANT');
               if(cornerTeamNode)cornerTeamNode.textContent=cornerPosition?.teamName||'';
               if(cornerPositionNode)cornerPositionNode.textContent=String(displayOptions.cornerPosition);
               cornerDisplay.style.backgroundColor=displayOptions.fillCornerDisplay?cornerColour:${JSON.stringify(displayBackground)};
@@ -596,7 +532,7 @@ export function registerDisplayPageRoutes(app: FastifyInstance): void {
         const renderClockFrame=()=>{renderClock();requestAnimationFrame(renderClockFrame);};
         requestAnimationFrame(renderClockFrame);
       </script>` : ''}
-      ${liveTimerDisplay || rotatingOutsideDisplay ? '' : `<script>
+      ${liveTimerDisplay ? '' : `<script>
         // Boards refresh in place (no full-page reload) so they never flash, and keep the team filter.
         const filterStorageKey=${JSON.stringify(`schedule-team-filter:${display.slug}`)};
         const applyScheduleFilter=()=>{
@@ -620,7 +556,7 @@ export function registerDisplayPageRoutes(app: FastifyInstance): void {
         });
         const renderRelativeTimes=()=>{
           for(const node of document.querySelectorAll('[data-relative-time]')){
-            const delta=Number(node.dataset.relativeTime)-Date.now();
+            const delta=Number(node.dataset.relativeTime)-(window.ServerClock?window.ServerClock.now():Date.now());
             const seconds=Math.floor(Math.abs(delta)/1000);
             let duration;
             if(seconds<60)duration=seconds<=1?'1 second':seconds+' seconds';

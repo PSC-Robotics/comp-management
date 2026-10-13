@@ -330,6 +330,10 @@ ALTER TABLE admin_sessions ADD COLUMN IF NOT EXISTS method text NOT NULL DEFAULT
 ALTER TABLE admin_sessions ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now();
 ALTER TABLE admin_sessions ADD COLUMN IF NOT EXISTS last_seen_at timestamptz NOT NULL DEFAULT now();
 CREATE INDEX IF NOT EXISTS admin_sessions_user_idx ON admin_sessions (user_id);
+ALTER TABLE competition_settings ADD COLUMN IF NOT EXISTS staging_close_minutes integer NOT NULL DEFAULT 5
+  CHECK (staging_close_minutes BETWEEN 0 AND 60);
+ALTER TABLE competition_settings ADD COLUMN IF NOT EXISTS staging_first_lead_minutes integer NOT NULL DEFAULT 10
+  CHECK (staging_first_lead_minutes BETWEEN 0 AND 120);
 `;
 
 /**

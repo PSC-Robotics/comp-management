@@ -47,7 +47,12 @@
             ready: function() {
                 this.updateDisplay({detail: new Date()});
                 this.$.pulses.displayOptions = this.displayOptions;
-                this.$.pulses.addEventListener('pulse', this.updateDisplay.bind(this));
+                this.$.pulses.addEventListener('pulse', function(e) {
+                    this.updateDisplay(e);
+                    // Push the new text to the screen now, not on Polymer's next 125 ms dirty-check,
+                    // so every screen flips on the same server second.
+                    if (window.Polymer && Polymer.flush) Polymer.flush();
+                }.bind(this));
             },
             displayOptionsChanged: function() {
                 if (this.$.pulses) {

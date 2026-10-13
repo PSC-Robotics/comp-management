@@ -1,4 +1,5 @@
 import { type FastifyInstance } from 'fastify';
+import { countdownStartTime } from '../domain/display.js';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { adminEmail, requireAdmin } from '../auth/sessions.js';
@@ -9,7 +10,7 @@ import { buildPlayoffPlan, buildPlayoffSeedRanks, findDecisivePlayoffTies, playo
 import { calculateDelayReduction, planPlayoffHeatTimes } from '../domain/scheduler.js';
 import { escapeHtml } from '../lib/html.js';
 import { findCompetition } from '../services/competitions.js';
-import { playoffHeatHasActiveConflict } from '../services/conflicts.js';
+import { earlierUnplayedHeat, playoffHeatHasActiveConflict } from '../services/conflicts.js';
 import { type PlayoffSeedStanding, fetchPlayoffSeedSnapshot } from '../services/league.js';
 import { heatForDiagram, lockUpcomingPlayoffHeat, persistPlayoffAdvancements, refreshUnstartedPlayoffSeeds } from '../services/playoffs.js';
 import { reflowSchedule } from '../services/reflow.js';
@@ -515,7 +516,11 @@ export function registerPlayoffRoutes(app: FastifyInstance): void {
         if (await playoffHeatHasActiveConflict(client, competitionId, matchId, teamIds, heat.arena_name)) {
           return { status: 409 as const, error: 'A team or the arena is already active in another match' };
         }
-        const now = new Date();
+        const earlier = await earlierUnplayedHeat(client, matchId);
+        if (earlier !== null) {
+          return { status: 409 as const, error: `Heat #${earlier} in ${heat.arena_name} comes first. Play it (or delay it past this heat) before starting this one.` };
+        }
+        const now = new Date(countdownStartTime(Date.now()));
         await client.query(
           `UPDATE playoff_matches SET countdown_restore_start = effective_start,
              countdown_started_at = $2, effective_start = $2

@@ -1,6 +1,6 @@
 import { pool } from '../db/pool.js';
 import { renderBracketDiagram } from '../domain/bracket-diagram.js';
-import { JUST_FINISHED_SECONDS, displayOptionsSchema, publicMatchPriority } from '../domain/display.js';
+import { displayOptionsSchema, publicMatchPriority } from '../domain/display.js';
 import { playoffStages, summarisePlayoffLosses } from '../domain/playoffs.js';
 import { fetchStandings } from './league.js';
 import { heatStatusLabel } from './playoffs.js';
@@ -116,7 +116,8 @@ export async function loadPublicDisplay(slug: string) {
   } else if (['schedule', 'arena', 'timer', 'corner', 'sr-arena', 'sr-producer',
       'sr-shepherding', 'sr-staging'].includes(display.display_type)) {
     // A match that just ended stays on screen long enough for its END cue, whether or not it has scores.
-    const justFinishedWindow = Math.max(JUST_FINISHED_SECONDS, options.endCueDurationSeconds + 2);
+    // A finished match stays only while its END cue shows; then the next match takes over.
+    const justFinishedWindow = options.showEndCue ? options.endCueDurationSeconds + 1 : 1;
     const match = await pool.query(
       `SELECT m.id, m.match_number, m.arena_name, m.effective_start, m.duration_seconds,
               m.state, m.actual_start, m.actual_end, m.countdown_started_at, m.paused_at, m.paused_seconds,
@@ -171,7 +172,8 @@ export async function loadPublicDisplay(slug: string) {
        WHERE pb.competition_id = $1 AND pb.status = 'active'
          AND ($2::text = '' OR pm.arena_name = $2)
          AND (
-           (pm.schedule_state = 'scheduled' AND (pm.status = 'ready' OR pm.timer_state IN ('running', 'paused')))
+           -- Heats waiting for earlier results count too: heats run in order, so screens show that one next.
+           pm.schedule_state = 'scheduled'
            OR (pm.actual_end IS NOT NULL AND pm.actual_end >= now() - make_interval(secs => $3::int)
                AND (pm.schedule_state = 'complete' OR pm.timer_state = 'awaiting_score'))
          )
@@ -260,7 +262,7 @@ export async function loadPublicDisplay(slug: string) {
     } else {
       data = selectedMatch;
     }
-    if (['timer', 'sr-producer'].includes(display.display_type) && options.showPreviousResults) {
+    if (['timer', 'arena'].includes(display.display_type) && options.showPreviousResults) {
       const previousMatch = await pool.query(
         `SELECT * FROM (
            SELECT 'League'::text AS match_type, m.match_number, max(ms.updated_at) AS completed_at,

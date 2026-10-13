@@ -8,8 +8,10 @@
                 var tick = function() {
                     var now = new Date();
                     this.fire('pulse', now);
-                    var clockOffsetMs = this.displayOptions &&
-                        this.displayOptions.clockOffsetMs || 0;
+                    // Screens without display options still tick on the shared server clock.
+                    var clockOffsetMs = this.displayOptions && this.displayOptions.clockOffsetMs != null
+                        ? this.displayOptions.clockOffsetMs
+                        : window.ServerClock ? window.ServerClock.offset : 0;
                     var nextPulse = 1000 - ((now.getTime() + clockOffsetMs) % 1000) + 10;
                     if (nextPulse < 20) {
                         nextPulse += 1000;

@@ -1,7 +1,7 @@
 import { audit } from '../db/audit.js';
 import { pool, transaction } from '../db/pool.js';
-import { MATCH_COUNTDOWN_TOTAL_SECONDS } from '../domain/display.js';
-import { hasTeamInActiveMatch, playoffHeatHasActiveConflict } from './conflicts.js';
+import { COUNTDOWN_PREARM_SECONDS, MATCH_COUNTDOWN_TOTAL_SECONDS, countdownStartTime } from '../domain/display.js';
+import { earlierUnplayedHeat, hasTeamInActiveMatch, playoffHeatHasActiveConflict } from './conflicts.js';
 import { refreshUnstartedPlayoffSeeds } from './playoffs.js';
 import { delayNextMatchesAfterManualStart, reflowSchedule } from './reflow.js';
 
@@ -15,10 +15,10 @@ export async function processMatchClocks(): Promise<void> {
           AND m.countdown_started_at + ($1 * interval '1 second') <= now())
          OR (coalesce(settings.auto_run_enabled, false)
              AND m.countdown_started_at IS NULL
-             AND m.effective_start <= now() + ($1 * interval '1 second'))
+             AND m.effective_start <= now() + ($2 * interval '1 second'))
        )
      ORDER BY m.effective_start, m.match_number LIMIT 25`,
-    [MATCH_COUNTDOWN_TOTAL_SECONDS]
+    [MATCH_COUNTDOWN_TOTAL_SECONDS, MATCH_COUNTDOWN_TOTAL_SECONDS + COUNTDOWN_PREARM_SECONDS]
   );
   for (const candidate of due.rows) {
     await transaction(async (client) => {
@@ -42,16 +42,17 @@ export async function processMatchClocks(): Promise<void> {
           (match.countdown_started_at !== null &&
            new Date(match.countdown_started_at).getTime() + MATCH_COUNTDOWN_TOTAL_SECONDS * 1000 > Date.now())) return;
       if (match.countdown_started_at === null) {
+        // Armed a couple of seconds ahead, on a whole second, so every screen starts it together.
+        const countdownAt = new Date(countdownStartTime(Date.now(), new Date(match.effective_start).getTime()));
         await client.query(
-          `UPDATE matches SET countdown_started_at = effective_start - ($2 * interval '1 second'),
-             revision = revision + 1 WHERE id = $1`,
-          [candidate.id, MATCH_COUNTDOWN_TOTAL_SECONDS]
+          'UPDATE matches SET countdown_started_at = $2, revision = revision + 1 WHERE id = $1',
+          [candidate.id, countdownAt]
         );
         await audit(client, 'system:auto-start', 'match.countdown_started', 'match', candidate.id, {
           trigger: 'competition_auto_run',
-          countdownStartedAt: new Date(match.effective_start.getTime() - MATCH_COUNTDOWN_TOTAL_SECONDS * 1000).toISOString()
+          countdownStartedAt: countdownAt.toISOString()
         });
-        if (match.effective_start.getTime() > Date.now()) return;
+        return;
       }
       const teams = await client.query<{ count: number }>(
         'SELECT count(team_id)::int AS count FROM match_positions WHERE match_id = $1',
@@ -132,7 +133,7 @@ export async function processMatchClocks(): Promise<void> {
        AND pm.countdown_started_at IS NULL
        AND pm.effective_start <= now() + ($1 * interval '1 second')
      ORDER BY pm.effective_start, pm.match_number LIMIT 25`,
-    [MATCH_COUNTDOWN_TOTAL_SECONDS]
+    [MATCH_COUNTDOWN_TOTAL_SECONDS + COUNTDOWN_PREARM_SECONDS]
   );
   for (const candidate of autoHeats.rows) {
     await transaction(async (client) => {
@@ -155,11 +156,13 @@ export async function processMatchClocks(): Promise<void> {
       if (teamIds.length < 2) return;
       // Wait (without logging every tick) until the arena and teams are free.
       if (await playoffHeatHasActiveConflict(client, candidate.competition_id, candidate.id, teamIds, heat.arena_name)) return;
+      // Heats run in order: never jump ahead of an earlier heat that is still waiting for results.
+      if (await earlierUnplayedHeat(client, candidate.id) !== null) return;
+      const heatStart = await client.query<{ effective_start: Date }>('SELECT effective_start FROM playoff_matches WHERE id = $1', [candidate.id]);
       const started = await client.query<{ countdown_started_at: Date }>(
-        `UPDATE playoff_matches SET countdown_restore_start = effective_start,
-           countdown_started_at = greatest(effective_start - ($2 * interval '1 second'), now())
+        `UPDATE playoff_matches SET countdown_restore_start = effective_start, countdown_started_at = $2
          WHERE id = $1 RETURNING countdown_started_at`,
-        [candidate.id, MATCH_COUNTDOWN_TOTAL_SECONDS]
+        [candidate.id, new Date(countdownStartTime(Date.now(), new Date(heatStart.rows[0]!.effective_start).getTime()))]
       );
       await client.query(
         'UPDATE playoff_brackets SET seed_frozen_at = coalesce(seed_frozen_at, now()) WHERE id = $1',

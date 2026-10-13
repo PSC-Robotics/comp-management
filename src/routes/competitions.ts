@@ -109,7 +109,8 @@ export function registerCompetitionRoutes(app: FastifyInstance): void {
       [competition.id]
     );
     const settings = await pool.query(
-      `SELECT theme, logo_data_url, auto_run_enabled, corner_colours, updated_at
+      `SELECT theme, logo_data_url, auto_run_enabled, corner_colours, staging_close_minutes,
+              staging_first_lead_minutes, updated_at
        FROM competition_settings WHERE competition_id = $1`,
       [competition.id]
     );
@@ -184,6 +185,28 @@ export function registerCompetitionRoutes(app: FastifyInstance): void {
     return { ok: true, cornerColours: body.cornerColours };
   });
 
+
+  app.put('/api/admin/competitions/:slug/staging-settings', { preHandler: requireAdmin }, async (request, reply) => {
+    const { slug } = z.object({ slug: z.string() }).parse(request.params);
+    const body = z.object({
+      closeAfterPreviousStartMinutes: z.number().int().min(0).max(60),
+      firstMatchLeadMinutes: z.number().int().min(0).max(120)
+    }).parse(request.body);
+    const competition = await findCompetition(pool, slug);
+    if (!competition) return reply.code(404).send({ error: 'Competition not found' });
+    await transaction(async (client) => {
+      await client.query(
+        `INSERT INTO competition_settings (competition_id, staging_close_minutes, staging_first_lead_minutes, updated_at)
+         VALUES ($1, $2, $3, now())
+         ON CONFLICT (competition_id) DO UPDATE
+         SET staging_close_minutes = EXCLUDED.staging_close_minutes,
+             staging_first_lead_minutes = EXCLUDED.staging_first_lead_minutes, updated_at = now()`,
+        [competition.id, body.closeAfterPreviousStartMinutes, body.firstMatchLeadMinutes]
+      );
+      await audit(client, adminEmail(request), 'competition.staging_updated', 'competition', competition.id, body);
+    });
+    return { ok: true, ...body };
+  });
 
   app.get('/api/admin/competitions/:slug/auto-run', { preHandler: requireAdmin }, async (request, reply) => {
     const { slug } = z.object({ slug: z.string() }).parse(request.params);

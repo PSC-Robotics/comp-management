@@ -100,7 +100,7 @@ export async function refreshUnstartedPlayoffSeeds(
 export function heatStatusLabel(scheduleState: string, timerState: string, effectiveStart: Date | string, timeZone: string): string {
   if (scheduleState === 'complete') return 'Result';
   if (timerState === 'running' || timerState === 'paused') return 'Live';
-  if (timerState === 'awaiting_score') return 'Scoring';
+  if (timerState === 'awaiting_score') return 'Finished';
   return formatCompetitionTime(new Date(effectiveStart), timeZone);
 }
 

@@ -1,10 +1,12 @@
 import { pool } from '../db/pool.js';
 import { playoffStages } from '../domain/playoffs.js';
+import { computeStagingWindows } from '../domain/staging.js';
 import { type SrMatchInput, groupSrKnockoutMatches, toSrMatches } from '../domain/srcomp.js';
-import { findCompetition, getCornerColours } from './competitions.js';
+import { findCompetition, getCornerColours, getStagingSettings } from './competitions.js';
 import { fetchStandings } from './league.js';
 
 export type SrDbMatch = SrMatchInput & {
+  id: string;
   scheduled_start: Date | string;
   delay_seconds: number;
   positions: SrMatchInput['positions'] | null;
@@ -32,7 +34,7 @@ export async function loadSrCompetitionData(competitionId: string) {
     getCornerColours(pool, competitionId),
     fetchStandings(pool, competitionId),
     pool.query<SrDbMatch>(
-      `SELECT m.match_number, m.arena_name, m.scheduled_start, m.effective_start,
+      `SELECT m.id, m.match_number, m.arena_name, m.scheduled_start, m.effective_start,
               m.duration_seconds, m.planned_gap_seconds, m.actual_start, m.actual_end,
               m.countdown_started_at, m.paused_at, m.paused_seconds, m.state,
               greatest(0, ceil(extract(epoch FROM (m.effective_start - m.scheduled_start))))::int
@@ -95,13 +97,29 @@ export async function loadSrCompetitionData(competitionId: string) {
     )
   ]);
 
-  const matches = leagueResult.rows.map((match) => ({
+  // One set of staging windows for every screen, computed from the competition's staging settings.
+  const stagingSettings = await getStagingSettings(pool, competitionId);
+  const time = (value: Date | string | null) => value === null ? null : new Date(value).getTime();
+  const staging = computeStagingWindows([
+    ...leagueResult.rows.map((match) => ({ ...match, key: `league:${match.id}` })),
+    ...playoffResult.rows.map((match) => ({ ...match, key: `playoff:${match.id}` }))
+  ].map((match) => ({
+    key: match.key,
+    arena: match.arena_name,
+    state: match.state,
+    effectiveStart: new Date(match.effective_start).getTime(),
+    actualStart: time(match.actual_start),
+    countdownStartedAt: time(match.countdown_started_at)
+  })), stagingSettings);
+  const matches = leagueResult.rows.map(({ id, ...match }) => ({
     ...match,
-    positions: match.positions ?? []
+    positions: match.positions ?? [],
+    ...(staging.has(`league:${id}`) ? { staging: staging.get(`league:${id}`)! } : {})
   }));
-  const playoffMatches = playoffResult.rows.map(({ id: _id, format: _format, sources: _sources, ...match }) => ({
+  const playoffMatches = playoffResult.rows.map(({ id, format: _format, sources: _sources, ...match }) => ({
     ...match,
-    positions: match.positions ?? []
+    positions: match.positions ?? [],
+    ...(staging.has(`playoff:${id}`) ? { staging: staging.get(`playoff:${id}`)! } : {})
   }));
   // Knockout columns follow the bracket's dependency order, so the final is always the last column.
   const stages = playoffStages(playoffResult.rows.map((match) => ({ key: match.id, sources: match.sources })));
