@@ -22,6 +22,9 @@ for (let attempt = 1; ; attempt += 1) {
   }
 }
 
+// Live audio sessions are held in memory, so none survive a restart: stop any left marked live.
+await pool.query(`UPDATE audio_playback SET mode = 'stopped', live_session = NULL, updated_at = now() WHERE mode = 'live'`);
+
 // Sign-in via the identity provider is optional at start-up: if it is down, the app still
 // starts (passkeys keep working) and discovery keeps retrying in the background.
 startOidcDiscovery(app.log);

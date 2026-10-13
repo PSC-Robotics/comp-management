@@ -132,13 +132,23 @@ CREATE TABLE IF NOT EXISTS public_displays (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
-ALTER TABLE public_displays DROP CONSTRAINT IF EXISTS public_displays_display_type_check;
-UPDATE public_displays SET display_type = 'schedule' WHERE display_type = 'bracket';
-ALTER TABLE public_displays ADD CONSTRAINT public_displays_display_type_check
-  CHECK (display_type IN (
-    'league', 'schedule', 'arena', 'timer', 'corner', 'results', 'playoffs', 'knockout', 'custom',
-    'sr-arena', 'sr-outside', 'sr-producer', 'sr-shepherding', 'sr-staging'
-  ));
+-- Replace the display-type check only when it is out of date: rebuilding it locks the table.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'public_displays_display_type_check'
+      AND pg_get_constraintdef(oid) LIKE '%''custom''%' AND pg_get_constraintdef(oid) LIKE '%''knockout''%'
+  ) THEN
+    ALTER TABLE public_displays DROP CONSTRAINT IF EXISTS public_displays_display_type_check;
+    UPDATE public_displays SET display_type = 'schedule' WHERE display_type = 'bracket';
+    ALTER TABLE public_displays ADD CONSTRAINT public_displays_display_type_check
+      CHECK (display_type IN (
+        'league', 'schedule', 'arena', 'timer', 'corner', 'results', 'playoffs', 'knockout', 'custom',
+        'sr-arena', 'sr-outside', 'sr-producer', 'sr-shepherding', 'sr-staging'
+      ));
+  END IF;
+END $$;
 CREATE TABLE IF NOT EXISTS playoff_brackets (
   id uuid PRIMARY KEY,
   competition_id uuid NOT NULL REFERENCES competitions(id) ON DELETE CASCADE,
@@ -373,8 +383,6 @@ export async function migrate(pool: Pool): Promise<void> {
     await client.query('SELECT pg_advisory_lock(727274)');
     await client.query(schema);
     await client.query(authSchema);
-    // Live audio sessions live in memory, so none survive a restart: stop any left marked live.
-    await client.query(`UPDATE audio_playback SET mode = 'stopped', live_session = NULL, updated_at = now() WHERE mode = 'live'`);
     // Planned reflows used to be recorded as delays; remove those records.
     await client.query(
       `WITH removed_delays AS (
