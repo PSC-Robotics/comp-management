@@ -68,6 +68,8 @@ export const displayOptionsSchema = z.object({
   // This screen plays the competition's music / live audio.
   playAudio: z.boolean().default(false),
   audioVolume: z.number().int().min(0).max(100).default(100),
+  // How late this screen's speaker (TV, soundbar, Bluetooth) plays sound; the screen plays that much early.
+  speakerDelayMs: z.number().int().min(0).max(1000).default(0),
   // Custom screen: a layout of areas, each rotating through its panels.
   customLayout: z.enum(['full', 'split', 'main-side', 'grid']).default('full'),
   customAreas: z.array(z.array(customPanelSchema).max(7)).max(4).default([['schedule', 'league']]),

@@ -1252,7 +1252,8 @@ const DISPLAY_OPTION_GROUPS=[
     {name:'countdownBeeps',kind:'check',label:'Race beeps on 3, 2, 1, GO and a horn at the end',def:false,types:['arena','timer','corner','custom']},
     {name:'beepVolume',kind:'number',label:'Beep volume (0-100)',def:80,min:0,max:100,types:['arena','timer','corner','custom']},
     {name:'playAudio',kind:'check',label:'Play the competition audio (music and live sound)',def:false,types:AUDIO_DISPLAY_TYPES},
-    {name:'audioVolume',kind:'number',label:'This screen’s audio volume (0-100)',def:100,min:0,max:100,types:AUDIO_DISPLAY_TYPES}
+    {name:'audioVolume',kind:'number',label:'This screen’s audio volume (0-100)',def:100,min:0,max:100,types:AUDIO_DISPLAY_TYPES},
+    {name:'speakerDelayMs',kind:'number',label:'Speaker delay to make up for (ms, e.g. 100 for a TV or soundbar)',def:0,min:0,max:1000,types:AUDIO_DISPLAY_TYPES}
   ]},
   {title:'SRComp screen',fields:[
     {name:'srMaxTeams',kind:'number',label:'Leaderboard teams',def:6,min:1,max:32,types:['sr-outside']},

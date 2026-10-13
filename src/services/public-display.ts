@@ -405,15 +405,19 @@ export async function loadPublicDisplay(slug: string, panel?: { type: string; op
   };
 }
 
+/** Changes on every server start, so open screens pick up new display code after a deploy. */
+const serverRelease = String(Date.now());
+
 /**
- * Fingerprint of what a display looks like (type, title, options, theme, logo). Screens compare
- * it after each change notification and reload when it differs, so edits apply remotely.
+ * Fingerprint of what a display looks like (type, title, options, theme, logo) and of the running
+ * server. Screens compare it after each change notification and reload when it differs, so edits
+ * (and deploys) apply to screens that are already open.
  */
 export function displayConfigHash(display: {
   type: string; title: string; options: unknown; theme: string; logoDataUrl: string | null;
 }): string {
   return createHash('sha1')
-    .update(JSON.stringify([display.type, display.title, display.options, display.theme, display.logoDataUrl ?? '']))
+    .update(JSON.stringify([serverRelease, display.type, display.title, display.options, display.theme, display.logoDataUrl ?? '']))
     .digest('base64url');
 }
 

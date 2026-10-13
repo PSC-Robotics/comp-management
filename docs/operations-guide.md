@@ -224,6 +224,11 @@ and send them the printed link; it works once, for 30 minutes.
    **Live audio** and press **Start live audio**. To share a browser tab, pick the tab and tick
    **Share tab audio**. Keep that admin page open; the playlist pauses while live audio is on.
 
+If one screen still sounds behind the others, it is usually the TV or speaker adding its own delay
+(TVs and soundbars often add 50–200 ms, Bluetooth speakers more). Set **Speaker delay** on that
+display, starting at 100 ms and adjusting by ear. In a screen's browser console,
+`ccAudioStatus()` shows its measured delay and buffer.
+
 Race beeps are a separate option on Timer, Arena, Corner and custom screens.
 
 Switch competitions from the card at the top of the sidebar (it shows each

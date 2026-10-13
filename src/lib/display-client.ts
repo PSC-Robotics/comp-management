@@ -6,8 +6,11 @@
 
 const json = (value: unknown) => JSON.stringify(value).replaceAll('<', '\\u003c');
 
-/** How long every screen buffers live audio, so they all play it at the same moment. */
-export const LIVE_AUDIO_BUFFER_MS = 400;
+/**
+ * How long every screen holds live audio between receiving it and it coming out of the speaker
+ * (network + buffer + output). Each screen measures its own and steers its buffer to match.
+ */
+export const LIVE_AUDIO_DELAY_MS = 400;
 
 /**
  * Change feed. Top-level pages open the server's event stream and pass each revision on to
@@ -114,9 +117,16 @@ export function beepScript(config: { volume: number }): string {
  * Plays the competition's audio: the shared playlist (every screen works out the same track
  * and position from server time and corrects drift) or a live WebRTC broadcast.
  */
-export function audioPlayerScript(config: { stateUrl: string; volume: number }): string {
+export function audioPlayerScript(config: { stateUrl: string; volume: number; speakerDelayMs: number }): string {
   return String.raw`(function(cfg){
-  var LIVE_BUFFER_MS=${LIVE_AUDIO_BUFFER_MS};
+  var LIVE_DELAY_MS=${LIVE_AUDIO_DELAY_MS};
+  // Sound leaves the browser this long before it is heard: the device's audio output plus any
+  // delay the screen's own speaker adds (set per display), so playback runs that much ahead.
+  var outputDelayMs=function(){
+    var context=window.CCSound&&window.CCSound.context();
+    var device=context?(context.outputLatency||context.baseLatency||0)*1000:0;
+    return device+(cfg.speakerDelayMs||0);
+  };
   var state=null,players=[new Audio(),new Audio()],active=0,currentTrack=null,live=null;
   players.forEach(function(player){player.preload='auto';});
   var serverNow=function(){return window.ServerClock?window.ServerClock.now():Date.now();};
@@ -153,7 +163,7 @@ export function audioPlayerScript(config: { stateUrl: string; volume: number }):
       if(at.offsetMs>-400)setTimeout(tick,Math.max(0,-at.offsetMs));
       return;
     }
-    var expected=at.offsetMs/1000;
+    var expected=(at.offsetMs+outputDelayMs())/1000;
     if(player.readyState<1)return;
     var drift=player.currentTime-expected;
     if(player.paused){player.currentTime=expected;player.playbackRate=1;play(player);}
@@ -182,6 +192,7 @@ export function audioPlayerScript(config: { stateUrl: string; volume: number }):
     if(!live)return;
     try{live.events.close();}catch(error){}
     if(live.connection)live.connection.close();
+    clearInterval(live.syncTimer);
     live.audio.pause();live.audio.srcObject=null;
     live=null;
   };
@@ -190,7 +201,7 @@ export function audioPlayerScript(config: { stateUrl: string; volume: number }):
     stopLive();
     var id=(Date.now().toString(36)+Math.random().toString(36).slice(2)+Math.random().toString(36).slice(2)).replace(/[^A-Za-z0-9]/g,'').slice(0,40);
     var base='/api/public/audio-live/'+encodeURIComponent(info.session);
-    var current={session:info.session,connection:null,audio:new Audio(),events:null};
+    var current={session:info.session,connection:null,audio:new Audio(),events:null,syncTimer:null,samples:[],bufferMs:LIVE_DELAY_MS/2,latencyMs:null};
     live=current;
     var post=function(message){
       message.from=id;
@@ -202,16 +213,49 @@ export function audioPlayerScript(config: { stateUrl: string; volume: number }):
       if(message.type==='ended'){if(live===current)stopLive();return;}
       if(message.type!=='offer')return;
       if(current.connection)current.connection.close();
+      clearInterval(current.syncTimer);
+      current.samples=[];
       var connection=new RTCPeerConnection({iceServers:info.iceServers||[]});
       current.connection=connection;
       connection.ontrack=function(trackEvent){
-        try{
-          if('jitterBufferTarget' in trackEvent.receiver)trackEvent.receiver.jitterBufferTarget=LIVE_BUFFER_MS;
-          else trackEvent.receiver.playoutDelayHint=LIVE_BUFFER_MS/1000;
-        }catch(error){}
+        var receiver=trackEvent.receiver;
+        var setBuffer=function(ms){
+          current.bufferMs=Math.max(0,Math.min(4000,ms));
+          try{
+            if('jitterBufferTarget' in receiver)receiver.jitterBufferTarget=current.bufferMs;
+            else receiver.playoutDelayHint=current.bufferMs/1000;
+          }catch(error){}
+        };
+        setBuffer(current.bufferMs);
         current.audio.srcObject=trackEvent.streams[0]||new MediaStream([trackEvent.track]);
         current.audio.volume=volume();
         play(current.audio);
+        // Every screen gets the same stream from the same broadcaster, so what differs between screens
+        // is their network delay, how much audio they are holding in their buffer, and their speaker.
+        // Each second, add those up and steer the buffer so the total is the same on every screen.
+        var previous=null;
+        current.syncTimer=setInterval(function(){
+          connection.getStats().then(function(report){
+            var inbound=null,pair=null;
+            report.forEach(function(stat){
+              if(stat.type==='inbound-rtp'&&stat.kind==='audio')inbound=stat;
+              if(stat.type==='candidate-pair'&&stat.nominated&&stat.state==='succeeded')pair=stat;
+            });
+            if(!inbound||inbound.jitterBufferEmittedCount===undefined)return;
+            var sample={delay:inbound.jitterBufferDelay,count:inbound.jitterBufferEmittedCount};
+            if(previous&&sample.count>previous.count){
+              var bufferedMs=(sample.delay-previous.delay)/(sample.count-previous.count)*1000;
+              var networkMs=pair&&pair.currentRoundTripTime?pair.currentRoundTripTime*500:0;
+              current.samples.push(networkMs+bufferedMs+outputDelayMs());
+              if(current.samples.length>4)current.samples.shift();
+              var sorted=current.samples.slice().sort(function(a,b){return a-b;});
+              current.latencyMs=Math.round(sorted[Math.floor(sorted.length/2)]);
+              var error=LIVE_DELAY_MS-current.latencyMs;
+              if(current.samples.length>=3&&Math.abs(error)>6){setBuffer(current.bufferMs+error*.7);current.samples=[];}
+            }
+            previous=sample;
+          }).catch(function(){});
+        },1000);
       };
       connection.setRemoteDescription({type:'offer',sdp:message.sdp})
         .then(function(){return connection.createAnswer();})
@@ -238,8 +282,10 @@ export function audioPlayerScript(config: { stateUrl: string; volume: number }):
     return {mode:state?state.mode:null,track:currentTrack,playing:!player.paused,currentTime:player.currentTime,
       expected:at?at.offsetMs/1000:null,driftMs:at&&!player.paused?Math.round((player.currentTime-at.offsetMs/1000)*1000):null,
       live:live?{connected:Boolean(live.connection&&live.connection.connectionState==='connected'),playing:!live.audio.paused,
-        state:live.connection?live.connection.connectionState+'/'+live.connection.signalingState+'/'+live.connection.iceConnectionState:'waiting for the broadcaster'}:null};
+        state:live.connection?live.connection.connectionState+'/'+live.connection.signalingState+'/'+live.connection.iceConnectionState:'waiting for the broadcaster',
+        delayMs:live.latencyMs,targetMs:LIVE_DELAY_MS,bufferMs:Math.round(live.bufferMs)}:null};
   };
+  window.ccAudioConnection=function(){return live&&live.connection;};
   var pending=null;
   if(window.ccOnRevision)window.ccOnRevision(function(){clearTimeout(pending);pending=setTimeout(load,150);});
   load();

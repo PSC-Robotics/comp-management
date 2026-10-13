@@ -664,5 +664,5 @@ function sendDisplayPage(reply: FastifyReply, display: LoadedDisplay, options: D
       setInterval(renderRelativeTimes,1000);
       setInterval(()=>{void refreshBoard();},5000);
       ccOnRevision(()=>{setTimeout(()=>void refreshBoard(),150);});
-    </script>`}${audio ? `<script>${audioPlayerScript({ stateUrl: `/api/public/audio/${encodeURIComponent(display.competitionSlug)}`, volume: options.audioVolume })}</script>` : ''}${display.type === 'custom' ? `<script>${customScreenScript({ rotateMs: options.customRotateSeconds * 1000, imageMs: options.customImageSeconds * 1000 })}</script>` : ''}</body></html>`);
+    </script>`}${audio ? `<script>${audioPlayerScript({ stateUrl: `/api/public/audio/${encodeURIComponent(display.competitionSlug)}`, volume: options.audioVolume, speakerDelayMs: options.speakerDelayMs })}</script>` : ''}${display.type === 'custom' ? `<script>${customScreenScript({ rotateMs: options.customRotateSeconds * 1000, imageMs: options.customImageSeconds * 1000 })}</script>` : ''}</body></html>`);
 }
