@@ -306,9 +306,9 @@
     @media (max-width: 680px) {
       .shell { display: flex; flex-direction: column; }
       aside { height: auto; flex-direction: row; flex-wrap: wrap; align-items: center; padding: .45rem .55rem .5rem; gap: .35rem .6rem; overflow: visible; }
-      .brand { font-size: .9rem; flex: 1 1 auto; }
-      .brand img { max-height: 26px; }
-      .brand img.brand-mark { width: 28px; height: 28px; max-height: none; flex-basis: 28px; }
+      aside .brand { font-size: .9rem; flex: 1 1 auto; }
+      aside .brand img { max-height: 26px; }
+      aside .brand img.brand-mark { width: 28px; height: 28px; max-height: none; flex-basis: 28px; }
       .nav-label, .aside-bottom { display: none; }
       .nav-group { margin: 0; display: contents; }
       nav { flex: 1 1 100%; display: flex; gap: .3rem; overflow-x: auto; scrollbar-width: none; -webkit-mask-image: linear-gradient(90deg,#000 88%,transparent); mask-image: linear-gradient(90deg,#000 88%,transparent); scroll-padding-inline: 1rem; }
@@ -316,8 +316,9 @@
       nav button { width: auto; flex: 0 0 auto; padding: .45rem .7rem; font-size: .8rem; }
       nav button svg { display: none; }
       .mobile-signout { display: inline-flex !important; order: 2; margin-left: auto; padding: .3rem .65rem; font-size: .78rem; border: 1px solid #2d384b; }
-      .brand { order: 1; }
-      nav { order: 4; }
+      /* Sidebar order only: the sign-in card has a .brand too and must keep it at the top. */
+      aside .brand { order: 1; }
+      aside nav { order: 4; }
       .queue-row { grid-template-columns: auto 1fr; }
       .queue-row .match-actions { grid-column: 1 / -1; }
       main { height: 0; flex: 1; }
@@ -360,7 +361,7 @@
       .cell-value { min-width: 0; overflow-wrap: anywhere; }
       .match-actions { gap: .45rem; }
       .match-actions button, .match-actions .button-link { flex: 1 1 calc(50% - .45rem); min-height: 42px; font-size: .85rem; }
-      dialog { width: 100vw; max-width: 100vw; margin: auto 0 0; max-height: 92vh; border-radius: 16px 16px 0 0; }
+      dialog { width: calc(100vw - 1rem); max-width: calc(100vw - 1rem); margin: .5rem auto auto; max-height: calc(100dvh - 1rem); border-radius: 14px; }
       dialog .actions { position: sticky; bottom: -1.3rem; background: var(--surface); padding: .6rem 0; margin-bottom: -1.3rem; }
       dialog .actions button { flex: 1 1 auto; min-height: 44px; }
       .status { left: .75rem; right: .75rem; bottom: .75rem; max-width: none; }
