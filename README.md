@@ -103,7 +103,16 @@ League standings also have fixed compatibility routes:
 - Schedule JSON: `/public/v1/{competition-slug}/schedule` (`matches`, `events`, and chronologically sorted `items` arrays)
 - Live timer JSON: `/public/v1/{competition-slug}/timer` (current match, position/colour assignments and timer state)
 
-Displays are read-only and are available after the competition is published. Disable or delete displays from the admin page.
+Displays are read-only and are available after the competition is published. Disable or delete displays from the admin page. Editing a display's settings updates every open copy of it within a second (the screen reloads itself), so screens can be reconfigured remotely.
+
+### Custom screens, knockout diagram and sound
+
+- **Knockout diagram** shows only the playoff bracket diagram, scaled to fill the screen.
+- **Custom screen** lays out panels in a full-screen, side-by-side, main-and-sidebar or four-quarter layout. Each area shows one or more panels — schedule, league table, knockout diagram, latest scores, live match timer, an announcement you type in, or rotating sponsor images — and rotates between them. Rotation is timed from the server clock, so copies of the same screen change together. Panels are the standard displays rendered inside the custom screen (`/display/{slug}/panel/{kind}`), sharing one change-feed connection.
+- **Race beeps** (Timer, Arena, Corner and custom screens): short beeps on 3, 2, 1, a long high beep on GO and a horn at the end, scheduled on the browser's audio clock against server time (measured within ~6 ms of each server second).
+- **Audio & media** (Event day) uploads tracks (MP3, M4A, AAC, OGG, WAV, FLAC, up to 50 MB each) and images (PNG, JPEG, WebP, GIF), 2 GB per competition, stored in PostgreSQL and served with byte ranges from `/media/{id}` once the competition is published. Tick **Play the competition audio** on the screens wired to speakers. The playlist is synchronised without streaming: the server stores when the playlist started and every screen works out the same track and position from its server clock, correcting drift by nudging playback speed (screens measured within a few milliseconds of each other).
+- **Live audio** sends a sound source from the admin browser — a line-in or microphone, or a shared browser tab (for example a music service playing in a tab) — to every audio screen over WebRTC. The server only relays signalling; every screen buffers 400 ms so they play together. Keep the broadcasting page open; closing it ends the broadcast after 15 seconds. On one network nothing else is needed; across networks set `WEBRTC_ICE_SERVERS` (STUN/TURN). Spotify itself cannot be played on several devices at once, so play it on the broadcasting computer and share that tab or its sound output.
+- Browsers only play sound after a click on the page; screens show **Click to enable sound** until then. For unattended kiosks start the browser with `--autoplay-policy=no-user-gesture-required`.
 
 ## Development and validation
 

@@ -14,12 +14,15 @@ src/
   auth/              sessions, OIDC client (lazy, retrying), passkey relying party, security hooks
   db/                connection pool and transactions, audit log, schema and migrations
   domain/            pure logic with unit tests: scheduler, playoffs, standings, displays,
-                     SR adapters, bracket diagram
+                     SR adapters, bracket diagram, staging windows, synced playlist positions
   services/          database-backed logic shared by routes: league standings, schedule re-flow,
-                     match clock, conflicts, playoffs, public display data, SR data, change feed
+                     match clock, conflicts, playoffs, public display data, SR data, change feed,
+                     live-audio signalling relay (in memory)
   routes/            one file per area of the API (live, scores, delays, schedule, playoffs, ...)
-  lib/               small helpers (HTML escaping, paths)
-test/                integration tests against a real PostgreSQL (fuzz, auth, passkeys, live, chaos)
+  lib/               small helpers (HTML escaping, paths) and the browser scripts shared by displays:
+                     clock-sync.ts (server clock for every screen), display-client.ts (change feed,
+                     sound unlock, race beeps, synced audio player, custom-screen rotation)
+test/                integration tests against a real PostgreSQL (fuzz, auth, passkeys, live, chaos, media)
 public/index.html    the admin portal (single page, no build step)
 public/srcomp/       vendored SRComp screens, Polymer components and polyfills (MIT; see
                      public/srcomp/LICENSE). public/srcomp/node_modules/ holds the two scripts

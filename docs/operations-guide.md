@@ -207,7 +207,24 @@ and send them the printed link; it works once, for 30 minutes.
 | Pit / queueing area | Schedule | Enable the team filter so teams can find their next match. Delays are shown live. |
 | Main hall during playoffs | Playoff bracket | Heats by stage with results; eliminated teams are struck through. |
 | Website or results screen | League table, Match points history | Embed with **Copy embed**. |
+| Main hall / foyer | Custom screen | Mix the schedule, league, knockout, live timer, announcements and sponsor images; split or rotating. |
+| Playoff hall | Knockout diagram | Just the bracket, filling the screen. |
 | SR-style venue screens | SR — Arena / Outside / Producer / Shepherding / Staging | Original SRComp pages backed by this system. |
+
+### Music, live sound and beeps
+
+1. On **Audio & media**, upload music (only tracks you have the rights to play). New tracks join the
+   playlist; reorder or remove them there.
+2. In **Displays → Configure**, tick **Play the competition audio** on each screen connected to a
+   speaker (and set that screen's volume). Click each screen once so the browser allows sound, or
+   start kiosk browsers with `--autoplay-policy=no-user-gesture-required`.
+3. Press **Play**. Every audio screen plays the same moment of the track. Volume, pause, skip and
+   repeat apply to all of them at once.
+4. For live sound (a DJ, a microphone, or music from a streaming service), choose the source under
+   **Live audio** and press **Start live audio**. To share a browser tab, pick the tab and tick
+   **Share tab audio**. Keep that admin page open; the playlist pauses while live audio is on.
+
+Race beeps are a separate option on Timer, Arena, Corner and custom screens.
 
 Switch competitions from the card at the top of the sidebar (it shows each
 competition's status; **Manage competitions…** opens the full list).

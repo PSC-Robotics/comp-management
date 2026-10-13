@@ -92,6 +92,19 @@
     .topbar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .7rem clamp(1rem, 3vw, 2.25rem); background: var(--surface); border-bottom: 1px solid var(--line); }
     .topbar strong { font-size: .95rem; }
     .topbar-right { display: flex; align-items: center; gap: .9rem; min-width: 0; }
+    .audio-now { display: flex; justify-content: space-between; gap: 1rem; align-items: baseline; flex-wrap: wrap; }
+    .audio-track { height: 8px; border-radius: 999px; background: var(--raised); border: 1px solid var(--line); overflow: hidden; margin-top: .5rem; }
+    .audio-progress { height: 100%; width: 0; background: var(--accent); transition: width .25s linear; }
+    .audio-progress.live { background: var(--good); transition: width .05s linear; }
+    .upload-drop { display: grid; place-items: center; padding: 1.4rem; border: 2px dashed var(--line); border-radius: var(--radius-sm); background: var(--raised); cursor: pointer; color: var(--ink); }
+    .upload-drop input { width: auto; min-height: 0; border: 0; background: transparent; }
+    .media-thumb { width: 44px; height: 30px; object-fit: contain; vertical-align: middle; border-radius: 4px; background: var(--raised); }
+    .image-picker { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: .5rem; }
+    .image-choice { display: grid; gap: .25rem; padding: .4rem; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); cursor: pointer; }
+    .image-choice img { width: 100%; height: 60px; object-fit: contain; }
+    .image-choice span { font-size: .75rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .custom-area-row { display: flex; flex-wrap: wrap; gap: .4rem 1rem; padding: .5rem .8rem; margin: 0 0 .5rem; }
+    .custom-area-row legend { font-weight: 700; color: var(--ink); padding: 0 .3rem; }
     .comp-switcher { position: relative; }
     .comp-switcher-button { width: 100%; justify-content: flex-start; gap: .55rem; padding: .55rem .65rem; background: var(--nav-hover); color: #fff; border: 1px solid #263042; border-radius: 9px; text-align: left; font-weight: 600; }
     .comp-switcher-button:hover { filter: none; border-color: #3a4760; }
@@ -575,6 +588,7 @@ const ICONS={
   challenges:'<path d="M5 21V4M5 4h11l-2 4 2 4H5"/>',
   arena:'<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M12 3v18M3 12h18"/>',
   displays:'<rect x="2.5" y="4" width="19" height="13" rx="2"/><path d="M8 21h8M12 17v4"/>',
+  media:'<path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/>',
   league:'<path d="M5 20V10M12 20V4M19 20v-7"/>',
   competitions:'<path d="M12 3 2.5 8 12 13l9.5-5z"/><path d="m2.5 13 9.5 5 9.5-5"/>',
   settings:'<path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/>',
@@ -582,7 +596,7 @@ const ICONS={
   activity:'<path d="M3 12h4l3-8 4 16 3-8h4"/>'
 };
 const NAV=[
-  ['Event day',[['overview','Overview'],['matches','Live control'],['scores','Scores']]],
+  ['Event day',[['overview','Overview'],['matches','Live control'],['scores','Scores'],['media','Audio & media']]],
   ['Schedule',[['schedule','Schedule'],['playoffs','Playoffs']]],
   ['Setup',[['teams','Teams'],['challenges','Challenges'],['arena','Arena'],['displays','Displays']]],
   ['Results',[['league','League table']]],
@@ -1175,18 +1189,30 @@ const DISPLAY_TYPES=[
   ['arena','Arena diagram','The current or next match laid out on the arena, with a live clock.'],
   ['timer','Match timer','Full-screen synchronized match clock with the arena and optional last result.'],
   ['corner','Corner display','One arena corner: the team in that corner shown large, with the clock.'],
+  ['knockout','Knockout diagram','Just the playoff bracket diagram, filling the screen.'],
+  ['custom','Custom screen','Your own layout: split or rotating panels of schedule, league, knockout, live timer, announcements and sponsor images. Edit it here and open screens update by themselves.'],
   ['sr-arena','SR — Arena','Original SRComp arena screen.'],
   ['sr-outside','SR — Outside','Original SRComp rotating outside screen: leaderboard, schedule and knockout.'],
   ['sr-producer','SR — Producer','Original SRComp producer screen for streaming and commentary.'],
   ['sr-shepherding','SR — Shepherding','Original SRComp shepherding board for collecting teams.'],
   ['sr-staging','SR — Staging','Original SRComp staging board showing who should be queuing.']
 ];
-const LIVE_DISPLAY_TYPES=['arena','timer','corner','sr-arena','sr-producer'];
-const BOARD_DISPLAY_TYPES=['league','schedule','results','playoffs','arena','timer'];
+const LIVE_DISPLAY_TYPES=['arena','timer','corner','custom','sr-arena','sr-producer'];
+const BOARD_DISPLAY_TYPES=['league','schedule','results','playoffs','knockout','arena','timer','custom'];
+const AUDIO_DISPLAY_TYPES=['league','schedule','results','playoffs','knockout','arena','timer','corner','custom'];
 // Screens that can follow one arena (SR Arena falls back to the first arena; the rest show every arena).
-const ARENA_FILTER_TYPES=['schedule','arena','timer','corner','sr-arena','sr-producer','sr-shepherding','sr-staging'];
+const ARENA_FILTER_TYPES=['schedule','arena','timer','corner','custom','sr-arena','sr-producer','sr-shepherding','sr-staging'];
 const secondsOptions=(max)=>Array.from({length:max},(_,index)=>[index+1,`${index+1} second${index?'s':''}`]);
 const DISPLAY_OPTION_GROUPS=[
+  {title:'Custom screen',description:'Pick a layout, then tick what each area shows. Areas with more than one panel rotate between them.',fields:[
+    {name:'customLayout',kind:'select',string:true,label:'Layout',def:'full',types:['custom'],options:[['full','Full screen'],['split','Side by side'],['main-side','Main and sidebar'],['grid','Four quarters']]},
+    {name:'customRotateSeconds',kind:'number',label:'Seconds per panel',def:20,min:5,max:600,types:['custom']},
+    {name:'customAreas',kind:'custom-areas',label:'Areas',def:[],types:['custom'],special:true},
+    {name:'customMessageTitle',kind:'text',label:'Announcement heading',def:'',max:120,types:['custom']},
+    {name:'customMessageBody',kind:'textarea',label:'Announcement text',def:'',max:2000,types:['custom']},
+    {name:'customImageIds',kind:'image-picker',label:'Sponsor images',def:[],types:['custom'],special:true},
+    {name:'customImageSeconds',kind:'number',label:'Seconds per image',def:8,min:3,max:300,types:['custom']}
+  ]},
   {title:'Layout',fields:[
     {name:'srArenaName',kind:'arena',label:'Arena',def:'',max:120,types:ARENA_FILTER_TYPES},
     {name:'showTitle',kind:'check',label:'Show title and competition heading',def:true,types:BOARD_DISPLAY_TYPES},
@@ -1222,6 +1248,12 @@ const DISPLAY_OPTION_GROUPS=[
     {name:'endCueDurationSeconds',kind:'select',label:'Show END for',def:3,types:LIVE_DISPLAY_TYPES,options:secondsOptions(10)},
     {name:'endBackgroundColor',kind:'color',label:'END background',def:'#b3131b',types:LIVE_DISPLAY_TYPES}
   ]},
+  {title:'Sound',description:'Browsers only play sound after someone clicks the screen once (or start the browser with autoplay allowed).',fields:[
+    {name:'countdownBeeps',kind:'check',label:'Race beeps on 3, 2, 1, GO and a horn at the end',def:false,types:['arena','timer','corner','custom']},
+    {name:'beepVolume',kind:'number',label:'Beep volume (0-100)',def:80,min:0,max:100,types:['arena','timer','corner','custom']},
+    {name:'playAudio',kind:'check',label:'Play the competition audio (music and live sound)',def:false,types:AUDIO_DISPLAY_TYPES},
+    {name:'audioVolume',kind:'number',label:'This screen’s audio volume (0-100)',def:100,min:0,max:100,types:AUDIO_DISPLAY_TYPES}
+  ]},
   {title:'SRComp screen',fields:[
     {name:'srMaxTeams',kind:'number',label:'Leaderboard teams',def:6,min:1,max:32,types:['sr-outside']},
     {name:'srMaxKnockoutRounds',kind:'number',label:'Knockout stages shown',def:5,min:1,max:12,types:['sr-outside']},
@@ -1242,12 +1274,25 @@ function displayOptionFieldsHtml() {
     if(field.kind==='select')return `<label ${types}>${h(field.label)}<select name="${field.name}">${field.options.map(([value,label])=>`<option value="${h(value)}" ${value===field.def?'selected':''}>${h(label)}</option>`).join('')}</select></label>`;
     if(field.kind==='number')return `<label ${types}>${h(field.label)}<input type="number" name="${field.name}" min="${field.min}" max="${field.max}" value="${h(field.def)}"></label>`;
     if(field.kind==='color')return `<label ${types}>${h(field.label)}<input type="color" name="${field.name}" value="${h(field.def)}"></label>`;
+    if(field.kind==='textarea')return `<label ${types} style="grid-column:1/-1">${h(field.label)}<textarea name="${field.name}" maxlength="${field.max}" rows="3"></textarea></label>`;
+    if(field.kind==='custom-areas')return `<div ${types} class="custom-areas" style="grid-column:1/-1">${[0,1,2,3].map(area=>`<fieldset class="custom-area-row" data-area-row="${area}"><legend data-area-label="${area}">Area ${area+1}</legend>${CUSTOM_PANELS.map(([value,label])=>`<label class="toggle-control"><input type="checkbox" name="customArea${area}" value="${value}"> ${h(label)}</label>`).join('')}</fieldset>`).join('')}</div>`;
+    if(field.kind==='image-picker'){
+      const choices=mediaFiles.filter(file=>file.kind==='image');
+      return `<div ${types} style="grid-column:1/-1"><div class="subtle" style="font-weight:600;margin-bottom:.3rem">${h(field.label)}</div>${choices.length?`<div class="image-picker">${choices.map(image=>`<label class="image-choice"><input type="checkbox" name="customImage" value="${h(image.id)}"><img src="/api/admin/media/${h(image.id)}" alt=""><span>${h(image.name)}</span></label>`).join('')}</div>`:'<p class="subtle">Upload images on the Audio &amp; media page first.</p>'}</div>`;
+    }
     if(field.kind==='arena')return `<label ${types}>${h(field.label)}<input name="${field.name}" maxlength="${field.max}" value="" list="display-arena-names" placeholder="Every arena"><span class="subtle" data-option-types="sr-arena,sr-producer">Blank uses the first arena (this screen shows one arena).</span></label>`;
     return `<label ${types}>${h(field.label)}<input name="${field.name}" maxlength="${field.max}" value="${h(field.def)}"></label>`;
   }).join('')}</div></fieldset>`).join('')+`<datalist id="display-arena-names">${[...new Set(matches.map(match=>match.arena_name))].sort().map(name=>`<option value="${h(name)}"></option>`).join('')}</datalist>`;
 }
 function fillDisplayOptionForm(form,options) {
   for(const field of DISPLAY_OPTION_FIELDS){
+    if(field.kind==='custom-areas'||field.kind==='image-picker'){
+      if(field.kind==='custom-areas'){
+        const areas=options.customAreas||[['schedule','league']];
+        form.querySelectorAll('[name^="customArea"]').forEach(box=>{box.checked=(areas[Number(box.name.slice(10))]||[]).includes(box.value);});
+      }else form.querySelectorAll('[name="customImage"]').forEach(box=>{box.checked=(options.customImageIds||[]).includes(box.value);});
+      continue;
+    }
     const element=form.elements[field.name];
     if(!element)continue;
     let value=options[field.name]??field.def;
@@ -1259,9 +1304,230 @@ function fillDisplayOptionForm(form,options) {
     else element.value=String(value);
   }
 }
+// ---------- Audio & media ----------
+let mediaFiles=[];
+let audioState=null;
+let liveBroadcast=null;
+const CUSTOM_PANELS=[['schedule','Schedule'],['league','League table'],['knockout','Knockout diagram'],['results','Latest scores'],['timer','Live match timer'],['message','Announcement'],['images','Sponsor images']];
+const CUSTOM_AREA_LABELS={full:['Screen'],split:['Left','Right'],'main-side':['Main','Side'],grid:['Top left','Top right','Bottom left','Bottom right']};
+async function loadMedia(){
+  if(!slug()){mediaFiles=[];audioState=null;return;}
+  const encoded=encodeURIComponent(slug());
+  [mediaFiles,audioState]=await Promise.all([api(`/api/admin/competitions/${encoded}/media`),api(`/api/admin/competitions/${encoded}/audio`)]);
+}
+function formatDuration(ms){
+  const seconds=Math.max(0,Math.floor(Number(ms||0)/1000));
+  return `${Math.floor(seconds/60)}:${String(seconds%60).padStart(2,'0')}`;
+}
+function formatBytes(bytes){return bytes>=1048576?`${(bytes/1048576).toFixed(1)} MB`:`${Math.max(1,Math.round(bytes/1024))} KB`;}
+// Where the shared playlist is now (the same calculation every screen makes).
+function audioPosition(state,now){
+  if(!state)return null;
+  const tracks=state.tracks||[];
+  const total=tracks.reduce((sum,track)=>sum+track.durationMs,0);
+  if(!tracks.length||total<=0)return null;
+  let at=state.mode==='paused'?state.pausedPositionMs:state.mode==='playing'&&state.startedAt!==null?now-state.startedAt:null;
+  if(at===null)return null;
+  if(at<0)return {index:0,offsetMs:0,startsIn:-at};
+  if(at>=total){if(!state.loop)return null;at%=total;}
+  for(let index=0;index<tracks.length;index++){if(at<tracks[index].durationMs)return {index,offsetMs:at};at-=tracks[index].durationMs;}
+  return null;
+}
+function updateAudioProgress(){
+  const bar=$('audio-progress');
+  if(!bar||!audioState)return;
+  const now=window.ServerClock&&window.ServerClock.synced?window.ServerClock.now():Date.now();
+  const at=audioPosition(audioState,now);
+  const track=at?audioState.tracks[at.index]:null;
+  $('audio-now-title').textContent=audioState.mode==='live'?'Live audio':track?track.name:'Nothing playing';
+  $('audio-now-time').textContent=audioState.mode==='live'?`${audioState.listeners||0} screen(s) listening`
+    :track?(at.startsIn?`Starting in ${Math.ceil(at.startsIn/1000)} s`:`${formatDuration(at.offsetMs)} / ${formatDuration(track.durationMs)}`):'';
+  bar.style.width=track?`${Math.min(100,at.offsetMs/track.durationMs*100)}%`:'0%';
+}
+setInterval(updateAudioProgress,250);
+async function audioAction(body){
+  audioState=await api(`/api/admin/competitions/${encodeURIComponent(slug())}/audio`,{method:'POST',body:JSON.stringify(body)});
+  updateAudioProgress();
+}
+async function uploadMediaFiles(files){
+  const status=$('media-upload-status');
+  for(const file of files){
+    const type=file.type||({mp3:'audio/mpeg',m4a:'audio/mp4',aac:'audio/aac',ogg:'audio/ogg',wav:'audio/wav',flac:'audio/flac',png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',webp:'image/webp',gif:'image/gif'})[file.name.split('.').pop().toLowerCase()]||'';
+    if(status)status.textContent=`Uploading ${file.name}…`;
+    let durationMs='';
+    if(type.startsWith('audio/')){
+      durationMs=await new Promise(resolve=>{
+        const probe=new Audio();
+        const url=URL.createObjectURL(file);
+        const done=value=>{URL.revokeObjectURL(url);resolve(value);};
+        probe.preload='metadata';
+        probe.onloadedmetadata=()=>done(Number.isFinite(probe.duration)?Math.round(probe.duration*1000):'');
+        probe.onerror=()=>done('');
+        probe.src=url;
+      });
+    }
+    const name=file.name.replace(/\.[^.]+$/,'').slice(0,200)||'Untitled';
+    const response=await fetch(`/api/admin/competitions/${encodeURIComponent(slug())}/media?name=${encodeURIComponent(name)}${durationMs?`&durationMs=${durationMs}`:''}`,{method:'POST',headers:{'content-type':type||'application/octet-stream'},body:file});
+    if(!response.ok){
+      const error=await response.json().catch(()=>({}));
+      throw new Error(`${file.name}: ${error.error||`upload failed (${response.status})`}`);
+    }
+  }
+  if(status)status.textContent='';
+}
+// Live audio: this browser captures a line-in, microphone or tab and sends it to every audio screen.
+function preferStereo(sdp){
+  const match=/a=rtpmap:(\d+) opus\/48000\/2/i.exec(sdp);
+  if(!match)return sdp;
+  return sdp.replace(new RegExp(`a=fmtp:${match[1]} ([^\\r\\n]*)`),(line,params)=>params.includes('stereo=1')?line:`a=fmtp:${match[1]} ${params};stereo=1;sprop-stereo=1;maxaveragebitrate=256000`);
+}
+function waitForIce(connection){
+  if(connection.iceGatheringState==='complete')return Promise.resolve();
+  return new Promise(resolve=>{
+    const done=()=>{if(connection.iceGatheringState==='complete'){connection.removeEventListener('icegatheringstatechange',done);resolve();}};
+    connection.addEventListener('icegatheringstatechange',done);
+    setTimeout(resolve,3000);
+  });
+}
+async function startLiveBroadcast(source){
+  if(liveBroadcast)return;
+  const audioConstraints={echoCancellation:false,noiseSuppression:false,autoGainControl:false,channelCount:2};
+  let stream;
+  if(source==='tab'){
+    stream=await navigator.mediaDevices.getDisplayMedia({video:true,audio:audioConstraints,systemAudio:'include'});
+    stream.getVideoTracks().forEach(track=>track.stop());
+    if(!stream.getAudioTracks().length)throw new Error('No sound was shared. Choose a tab (or screen) and tick “Share audio”.');
+  }else{
+    stream=await navigator.mediaDevices.getUserMedia({audio:source?{...audioConstraints,deviceId:{exact:source}}:audioConstraints});
+  }
+  const competition=slug();
+  let state;
+  try{state=await api(`/api/admin/competitions/${encodeURIComponent(competition)}/audio`,{method:'POST',body:JSON.stringify({action:'live-start'})});}
+  catch(error){stream.getTracks().forEach(track=>track.stop());throw error;}
+  const session=state.live.session;
+  const iceServers=state.live.iceServers||[];
+  const peers=new Map();
+  const events=new EventSource(`/api/admin/audio-live/${encodeURIComponent(session)}/events`);
+  const broadcast={session,competition,stream,peers,events,meter:null};
+  liveBroadcast=broadcast;
+  audioState=state;
+  events.onmessage=async event=>{
+    const message=JSON.parse(event.data);
+    if(message.type==='ended'){if(liveBroadcast===broadcast)stopLiveBroadcast(false);return;}
+    if(message.type==='join'){
+      peers.get(message.from)?.close();
+      const connection=new RTCPeerConnection({iceServers});
+      peers.set(message.from,connection);
+      stream.getAudioTracks().forEach(track=>connection.addTrack(track,stream));
+      for(const sender of connection.getSenders()){
+        const parameters=sender.getParameters();
+        parameters.encodings=parameters.encodings?.length?parameters.encodings:[{}];
+        parameters.encodings[0].maxBitrate=256000;
+        await sender.setParameters(parameters).catch(()=>{});
+      }
+      const offer=await connection.createOffer();
+      await connection.setLocalDescription({type:'offer',sdp:preferStereo(offer.sdp)});
+      await waitForIce(connection);
+      await api(`/api/admin/audio-live/${encodeURIComponent(session)}/signal`,{method:'POST',body:JSON.stringify({to:message.from,type:'offer',sdp:connection.localDescription.sdp})}).catch(()=>{});
+    }else if(message.type==='answer'){
+      const connection=peers.get(message.from);
+      if(connection&&connection.signalingState==='have-local-offer')await connection.setRemoteDescription({type:'answer',sdp:message.sdp}).catch(error=>console.error(error));
+    }else if(message.type==='leave'){
+      peers.get(message.from)?.close();peers.delete(message.from);
+    }
+    if(liveBroadcast===broadcast&&$('live-listeners'))$('live-listeners').textContent=`${peers.size} screen(s) connected`;
+  };
+  stream.getAudioTracks().forEach(track=>track.addEventListener('ended',()=>{if(liveBroadcast===broadcast)void stopLiveBroadcast(true).then(render);}));
+  // A small level meter so you can see sound is being picked up.
+  try{
+    const context=new AudioContext();
+    const analyser=context.createAnalyser();
+    analyser.fftSize=512;
+    context.createMediaStreamSource(stream).connect(analyser);
+    const samples=new Uint8Array(analyser.fftSize);
+    const draw=()=>{
+      if(liveBroadcast!==broadcast){context.close();return;}
+      analyser.getByteTimeDomainData(samples);
+      let peak=0;for(const sample of samples)peak=Math.max(peak,Math.abs(sample-128));
+      const level=$('live-level');if(level)level.style.width=`${Math.min(100,peak/128*140)}%`;
+      requestAnimationFrame(draw);
+    };
+    draw();
+  }catch{}
+}
+async function stopLiveBroadcast(tellServer=true){
+  const broadcast=liveBroadcast;
+  if(!broadcast)return;
+  liveBroadcast=null;
+  broadcast.events.close();
+  broadcast.peers.forEach(connection=>connection.close());
+  broadcast.stream.getTracks().forEach(track=>track.stop());
+  if(tellServer){
+    audioState=await api(`/api/admin/competitions/${encodeURIComponent(broadcast.competition)}/audio`,{method:'POST',body:JSON.stringify({action:'live-stop'})}).catch(()=>audioState);
+  }
+}
+window.addEventListener('beforeunload',event=>{if(liveBroadcast){event.preventDefault();event.returnValue='';}});
+async function mediaPage(){
+  if(!slug())return `${heading('Audio & media','Select a competition first.')}<div class="card empty">Create or select a competition to continue.</div>`;
+  await loadMedia();
+  const displays=await api(`/api/admin/competitions/${encodeURIComponent(slug())}/displays`);
+  const audioScreens=displays.filter(display=>display.enabled&&display.options?.playAudio);
+  const tracks=mediaFiles.filter(file=>file.kind==='audio');
+  const images=mediaFiles.filter(file=>file.kind==='image');
+  const playlistIds=(audioState?.tracks||[]).map(track=>track.id);
+  const notInPlaylist=tracks.filter(track=>!playlistIds.includes(track.id));
+  const mode=audioState?.mode||'stopped';
+  const devices=liveBroadcast?[]:await navigator.mediaDevices?.enumerateDevices?.().then(list=>list.filter(device=>device.kind==='audioinput')).catch(()=>[])||[];
+  const isLive=mode==='live';
+  const broadcastingHere=Boolean(liveBroadcast&&liveBroadcast.competition===slug());
+  return `${heading('Audio & media','Music, live sound and images for the screens. Choose which screens play audio in each display’s settings (Play the competition audio).')}
+    ${audioScreens.length?'':`<div class="callout warn" style="margin-bottom:1rem">No screen plays audio yet. Open <strong>Displays → Configure</strong> and tick <strong>Play the competition audio</strong> on the screens connected to speakers.</div>`}
+    <div class="grid cols-2">
+      <section class="card">
+        <div class="section-title"><h2>Now playing</h2><span class="badge ${mode==='playing'||isLive?'good':mode==='paused'?'warn':''}">${h(isLive?'Live':mode)}</span></div>
+        <div class="audio-now"><strong id="audio-now-title">—</strong><span class="subtle" id="audio-now-time"></span></div>
+        <div class="audio-track"><div id="audio-progress" class="audio-progress"></div></div>
+        <div class="match-actions" style="margin-top:.8rem">
+          <button class="secondary" data-action="audio" data-audio="previous" ${isLive?'disabled':''}>Previous</button>
+          ${mode==='playing'?'<button data-action="audio" data-audio="pause">Pause</button>':`<button class="success" data-action="audio" data-audio="play" ${tracks.length?'':'disabled'}>Play</button>`}
+          <button class="secondary" data-action="audio" data-audio="next" ${isLive?'disabled':''}>Next</button>
+          <button class="ghost" data-action="audio" data-audio="stop">Stop</button>
+        </div>
+        <div class="form-grid" style="margin-top:.9rem">
+          <label>Volume on every screen<input type="range" id="audio-volume" min="0" max="100" value="${h(audioState?.volume??80)}"></label>
+          <label class="toggle-control" style="align-self:end"><input type="checkbox" id="audio-loop" ${audioState?.loop!==false?'checked':''}> Repeat the playlist</label>
+        </div>
+        <p class="subtle" style="margin:.6rem 0 0">${audioScreens.length} screen(s) set to play audio${audioScreens.length?`: ${h(audioScreens.map(display=>display.title).join(', '))}`:''}. Every screen plays the same moment of the track, timed from the server clock.</p>
+      </section>
+      <section class="card">
+        <div class="section-title"><h2>Live audio</h2>${broadcastingHere?'<span class="badge good">Broadcasting from this browser</span>':isLive?'<span class="badge warn">Live from another browser</span>':''}</div>
+        <p class="subtle" style="margin-top:0">Send this computer’s sound to the audio screens: a mixer or line-in, or a browser tab (for example Spotify in a tab). Keep this page open while you broadcast.</p>
+        ${broadcastingHere?`<div class="audio-track"><div id="live-level" class="audio-progress live"></div></div><p class="subtle" id="live-listeners">${liveBroadcast.peers.size} screen(s) connected</p><button class="danger" data-action="live-stop">Stop live audio</button>`
+          :`<label>Sound source<select id="live-source"><option value="tab">A browser tab or screen (tick “Share audio”)</option>${devices.map(device=>`<option value="${h(device.deviceId)}">${h(device.label||'Microphone / line-in')}</option>`).join('')}${devices.some(device=>device.label)?'':'<option value="">Microphone / line-in (default)</option>'}</select></label>
+          <div class="match-actions" style="margin-top:.7rem"><button class="success" data-action="live-start">Start live audio</button>${isLive?'<button class="ghost" data-action="live-stop">End the other broadcast</button>':''}</div>`}
+        <p class="subtle" style="margin-bottom:0">Starting live audio pauses the playlist. Screens on other networks may need a STUN/TURN server (WEBRTC_ICE_SERVERS).</p>
+      </section>
+    </div>
+    <section class="card">
+      <div class="section-title"><h2>Playlist</h2><span class="subtle">${(audioState?.tracks||[]).length} track(s) · ${formatDuration((audioState?.tracks||[]).reduce((sum,track)=>sum+track.durationMs,0))}</span></div>
+      ${(audioState?.tracks||[]).length?`<div class="queue">${audioState.tracks.map((track,index)=>`<div class="queue-row"><span class="when">${index+1}</span><span><strong>${h(track.name)}</strong> <span class="subtle">${formatDuration(track.durationMs)}</span></span><span class="match-actions"><button class="secondary" data-action="audio-play-track" data-index="${index}">Play</button><button class="ghost" data-action="playlist-move" data-index="${index}" data-delta="-1" ${index?'':'disabled'}>Up</button><button class="ghost" data-action="playlist-move" data-index="${index}" data-delta="1" ${index<audioState.tracks.length-1?'':'disabled'}>Down</button><button class="ghost" data-action="playlist-remove" data-index="${index}">Remove</button></span></div>`).join('')}</div>`:'<div class="empty">The playlist is empty. Upload tracks below; they are added automatically.</div>'}
+      ${notInPlaylist.length?`<h3 class="subtle" style="font-size:.75rem;letter-spacing:.08em;text-transform:uppercase;margin-top:1rem">Not in the playlist</h3><div class="queue">${notInPlaylist.map(track=>`<div class="queue-row"><span class="when">♪</span><span><strong>${h(track.name)}</strong> <span class="subtle">${formatDuration(track.duration_ms)}</span></span><span class="match-actions"><button class="secondary" data-action="playlist-add" data-id="${h(track.id)}">Add</button></span></div>`).join('')}</div>`:''}
+    </section>
+    <section class="card">
+      <h2>Upload</h2>
+      <p class="subtle" style="margin-top:0">Audio (MP3, M4A, AAC, OGG, WAV, FLAC) up to 50 MB each, and images (PNG, JPEG, WebP, GIF) for custom screens. Only upload music you have the rights to play.</p>
+      <label class="upload-drop"><input type="file" id="media-upload" multiple accept="audio/*,image/png,image/jpeg,image/webp,image/gif"><span>Choose files to upload</span></label>
+      <p class="subtle" id="media-upload-status"></p>
+    </section>
+    <section class="card">
+      <h2>Library</h2>
+      ${table(['File','Type','Size','Actions'],mediaFiles.map(file=>`<tr><td>${file.kind==='image'?`<img class="media-thumb" src="/api/admin/media/${h(file.id)}" alt=""> `:''}<strong>${h(file.name)}</strong></td><td>${file.kind==='audio'?`Audio · ${formatDuration(file.duration_ms)}`:'Image'}</td><td>${formatBytes(file.byte_size)}</td><td><div class="match-actions"><a class="button-link" href="/api/admin/media/${h(file.id)}" target="_blank" rel="noopener">Open</a><button class="danger" data-action="media-delete" data-id="${h(file.id)}">Delete</button></div></td></tr>`),'Nothing uploaded yet.')}
+    </section>`;
+}
 async function displaysPage() {
-  const displays=slug()?await api(`/api/admin/competitions/${encodeURIComponent(slug())}/displays`):[];
+  const [displays,media]=slug()?await Promise.all([api(`/api/admin/competitions/${encodeURIComponent(slug())}/displays`),api(`/api/admin/competitions/${encodeURIComponent(slug())}/media`)]):[[],[]];
   displayRecords=displays;
+  mediaFiles=media;
   const typeInfo=new Map(DISPLAY_TYPES.map(([value,label,description])=>[value,{label,description}]));
   const typeOrder=new Map(DISPLAY_TYPES.map(([value],index)=>[value,index]));
   const rows=[...displays].sort((left,right)=>(typeOrder.get(left.display_type)??99)-(typeOrder.get(right.display_type)??99)||left.title.localeCompare(right.title)).map(d=>{
@@ -1541,7 +1807,7 @@ function userIsTyping() {
 }
 const openDetails=new Set();
 async function render({fromRefresh=false}={}) {
-  const pages={competitions:competitionsPage,overview:overviewPage,teams:teamsPage,challenges:challengesPage,schedule:schedulePage,playoffs:playoffsPage,matches:matchesPage,scores:scoresPage,league:leaguePage,arena:arenaPage,displays:displaysPage,settings:settingsPage,access:accessPage,activity:activityPage};
+  const pages={competitions:competitionsPage,overview:overviewPage,teams:teamsPage,challenges:challengesPage,schedule:schedulePage,playoffs:playoffsPage,matches:matchesPage,scores:scoresPage,league:leaguePage,arena:arenaPage,displays:displaysPage,media:mediaPage,settings:settingsPage,access:accessPage,activity:activityPage};
   // A background refresh waits until you stop typing in a field (or close a dialog).
   if(fromRefresh&&(userIsTyping()||document.querySelector('dialog[open]'))){pendingRender=true;return;}
   const pageToRender=page;
@@ -1559,6 +1825,7 @@ async function render({fromRefresh=false}={}) {
   labelTableCells($('view'));
   document.querySelector('#nav button.active')?.scrollIntoView({block:'nearest',inline:'center'});
   if(pageToRender==='displays')updateDisplayOptionVisibility($('display-form'));
+  if(pageToRender==='media')updateAudioProgress();
   if(pageToRender==='playoffs'&&$('playoff-form'))updatePlayoffPreview($('playoff-form'));
 }
 async function postMatch(action,id,body={}) {
@@ -1660,7 +1927,7 @@ function displayOptionsFromForm(form) {
     if(field.special)continue;
     const element=form.elements[field.name];
     if(field.kind==='check')options[field.name]=element.checked;
-    else if(field.kind==='number'||field.kind==='select')options[field.name]=Number(element.value);
+    else if(field.kind==='number'||(field.kind==='select'&&!field.string))options[field.name]=Number(element.value);
     else options[field.name]=element.value.trim();
   }
   if(displayType==='corner')options.darkTheme=false;
@@ -1669,6 +1936,11 @@ function displayOptionsFromForm(form) {
   if(options.srHideOutsidePages.includes('leaderboard')&&options.srHideOutsidePages.includes('schedule')){
     throw new Error('Keep either the schedule or leaderboard visible on the SR Outside display.');
   }
+  const areaCount={full:1,split:2,'main-side':2,grid:4}[options.customLayout]||1;
+  options.customAreas=displayType==='custom'
+    ?Array.from({length:areaCount},(_,area)=>[...form.querySelectorAll(`[name="customArea${area}"]:checked`)].map(box=>box.value))
+    :[['schedule','league']];
+  options.customImageIds=displayType==='custom'?[...form.querySelectorAll('[name="customImage"]:checked')].map(box=>box.value):[];
   options.srStagingCornerOrder=displayType==='sr-staging'
     ?form.elements.srStagingCornerOrder.value.split(',').map(value=>Number(value.trim()))
     :[0,3,2,1];
@@ -1685,6 +1957,13 @@ function updateDisplayOptionVisibility(form) {
   });
   form.querySelectorAll('[data-option-group]').forEach(group=>{
     group.classList.toggle('hidden',!group.querySelector('[data-option-types]:not(.hidden)'));
+  });
+  const layout=form.elements.customLayout?.value||'full';
+  const labels=CUSTOM_AREA_LABELS[layout]||CUSTOM_AREA_LABELS.full;
+  form.querySelectorAll('[data-area-row]').forEach(row=>{
+    const area=Number(row.dataset.areaRow);
+    row.classList.toggle('hidden',area>=labels.length);
+    const legend=row.querySelector('[data-area-label]');if(legend)legend.textContent=labels[area]||`Area ${area+1}`;
   });
   const description=DISPLAY_TYPES.find(([value])=>value===type)?.[2]||'';
   const descriptionNode=form.querySelector('.type-description');
@@ -2029,6 +2308,27 @@ document.addEventListener('click',async(event)=>{
     }else if(action==='delete-display'){
       if(!confirm('Delete this public display?'))return;
       await api(`/api/admin/displays/${id}`,{method:'DELETE'});await render();notify('Public display deleted.');
+    }else if(action==='audio'){
+      await audioAction({action:button.dataset.audio});await render();
+    }else if(action==='audio-play-track'){
+      await audioAction({action:'play',index:Number(button.dataset.index)});await render();
+    }else if(action==='playlist-move'||action==='playlist-remove'||action==='playlist-add'){
+      const ids=(audioState?.tracks||[]).map(track=>track.id);
+      const index=Number(button.dataset.index);
+      if(action==='playlist-add')ids.push(button.dataset.id);
+      else if(action==='playlist-remove')ids.splice(index,1);
+      else{const target=index+Number(button.dataset.delta);[ids[index],ids[target]]=[ids[target],ids[index]];}
+      await audioAction({action:'settings',playlist:ids});await render();
+    }else if(action==='live-start'){
+      button.disabled=true;
+      try{await startLiveBroadcast($('live-source')?.value??'tab');}finally{button.disabled=false;}
+      await render();notify('Live audio is on. Keep this page open.');
+    }else if(action==='live-stop'){
+      if(liveBroadcast)await stopLiveBroadcast(true);else await audioAction({action:'live-stop'});
+      await render();notify('Live audio stopped.');
+    }else if(action==='media-delete'){
+      if(!confirm('Delete this file? It is removed from the playlist and from any custom screens.'))return;
+      await api(`/api/admin/media/${id}`,{method:'DELETE'});await render();notify('File deleted.');
     }else if(action==='copy'){
       await navigator.clipboard.writeText(button.dataset.copy);notify('Copied to clipboard.');
     }
@@ -2282,7 +2582,19 @@ async function handleFormSubmit(event){
     }
   }catch(error){showError(error);}
 }
+document.addEventListener('change',(event)=>{
+  if(event.target.name==='customLayout')updateDisplayOptionVisibility(event.target.form);
+});
 $('view').addEventListener('change',async(event)=>{
+  if(event.target.id==='media-upload'){
+    const files=[...event.target.files];
+    event.target.value='';
+    try{await uploadMediaFiles(files);notify(`${files.length} file(s) uploaded.`);}catch(error){showError(error);}
+    await render();
+    return;
+  }
+  if(event.target.id==='audio-volume'){try{await audioAction({action:'settings',volume:Number(event.target.value)});}catch(error){showError(error);}return;}
+  if(event.target.id==='audio-loop'){try{await audioAction({action:'settings',loop:event.target.checked});}catch(error){showError(error);}return;}
   if(event.target.id==='arena-match'){
     const match=matches.find(m=>m.id===event.target.value);
     if(match){$('arena-position-view').innerHTML=positionsHtml(match);}

@@ -1,11 +1,17 @@
 import { z } from 'zod';
 
 export const displayTypeSchema = z.enum([
-  'league', 'schedule', 'arena', 'timer', 'corner', 'results', 'playoffs',
+  'league', 'schedule', 'arena', 'timer', 'corner', 'results', 'playoffs', 'knockout', 'custom',
   'sr-arena', 'sr-outside', 'sr-producer', 'sr-shepherding', 'sr-staging'
 ]);
 
 const srOutsidePageSchema = z.enum(['leaderboard', 'schedule', 'results', 'knockout']);
+
+/** What a custom screen can show in each of its areas. */
+export const customPanelSchema = z.enum(['schedule', 'league', 'knockout', 'results', 'timer', 'message', 'images']);
+export type CustomPanel = z.infer<typeof customPanelSchema>;
+/** How many areas each custom layout has. */
+export const customLayoutAreas = { full: 1, split: 2, 'main-side': 2, grid: 4 } as const;
 
 export const displayOptionsSchema = z.object({
   showTitle: z.boolean().default(true),
@@ -55,7 +61,21 @@ export const displayOptionsSchema = z.object({
     } catch {
       return false;
     }
-  }, 'External URL must use HTTP or HTTPS').default('')
+  }, 'External URL must use HTTP or HTTPS').default(''),
+  // Race-style beeps for 3, 2, 1, GO (and a horn at END) on live screens.
+  countdownBeeps: z.boolean().default(false),
+  beepVolume: z.number().int().min(0).max(100).default(80),
+  // This screen plays the competition's music / live audio.
+  playAudio: z.boolean().default(false),
+  audioVolume: z.number().int().min(0).max(100).default(100),
+  // Custom screen: a layout of areas, each rotating through its panels.
+  customLayout: z.enum(['full', 'split', 'main-side', 'grid']).default('full'),
+  customAreas: z.array(z.array(customPanelSchema).max(7)).max(4).default([['schedule', 'league']]),
+  customRotateSeconds: z.number().int().min(5).max(600).default(20),
+  customMessageTitle: z.string().trim().max(120).default(''),
+  customMessageBody: z.string().trim().max(2000).default(''),
+  customImageIds: z.array(z.string().uuid()).max(50).default([]),
+  customImageSeconds: z.number().int().min(3).max(300).default(8)
 }).strict();
 
 export const MATCH_COUNTDOWN_PREPARATION_SECONDS = 2;

@@ -79,7 +79,18 @@ test('fills public display options with backward-compatible defaults', () => {
     srHideOutsidePages: [],
     srStagingCornerOrder: [0, 3, 2, 1],
     srRotationSeconds: 15,
-    srExternalUrl: ''
+    srExternalUrl: '',
+    countdownBeeps: false,
+    beepVolume: 80,
+    playAudio: false,
+    audioVolume: 100,
+    customLayout: 'full',
+    customAreas: [['schedule', 'league']],
+    customRotateSeconds: 20,
+    customMessageTitle: '',
+    customMessageBody: '',
+    customImageIds: [],
+    customImageSeconds: 8
   });
   assert.deepEqual(displayOptionsSchema.parse({ cornerPosition: 3, darkTheme: true }), {
     showTitle: true,
@@ -118,7 +129,18 @@ test('fills public display options with backward-compatible defaults', () => {
     srHideOutsidePages: [],
     srStagingCornerOrder: [0, 3, 2, 1],
     srRotationSeconds: 15,
-    srExternalUrl: ''
+    srExternalUrl: '',
+    countdownBeeps: false,
+    beepVolume: 80,
+    playAudio: false,
+    audioVolume: 100,
+    customLayout: 'full',
+    customAreas: [['schedule', 'league']],
+    customRotateSeconds: 20,
+    customMessageTitle: '',
+    customMessageBody: '',
+    customImageIds: [],
+    customImageSeconds: 8
   });
   assert.throws(() => displayOptionsSchema.parse({ cornerPosition: 4 }));
   assert.throws(() => displayOptionsSchema.parse({ countdownBackgroundColor: 'red' }));
@@ -128,6 +150,8 @@ test('fills public display options with backward-compatible defaults', () => {
   assert.throws(() => displayOptionsSchema.parse({ goBackgroundColor: 'green' }));
   assert.throws(() => displayOptionsSchema.parse({ srStagingCornerOrder: [0, 1, 1, 3] }));
   assert.throws(() => displayOptionsSchema.parse({ srExternalUrl: 'javascript:alert(1)' }));
+  assert.throws(() => displayOptionsSchema.parse({ customAreas: [['schedule', 'not-a-panel']] }));
+  assert.throws(() => displayOptionsSchema.parse({ customImageIds: ['not-a-uuid'] }));
   assert.throws(() => displayOptionsSchema.parse({ srShepherdingPastMatches: 6 }));
   assert.throws(() => displayOptionsSchema.parse({ srStagingCloseOffsetMinutes: 31 }));
   assert.throws(() => displayOptionsSchema.parse({ unsupported: true }));

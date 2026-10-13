@@ -136,7 +136,7 @@ ALTER TABLE public_displays DROP CONSTRAINT IF EXISTS public_displays_display_ty
 UPDATE public_displays SET display_type = 'schedule' WHERE display_type = 'bracket';
 ALTER TABLE public_displays ADD CONSTRAINT public_displays_display_type_check
   CHECK (display_type IN (
-    'league', 'schedule', 'arena', 'timer', 'corner', 'results', 'playoffs',
+    'league', 'schedule', 'arena', 'timer', 'corner', 'results', 'playoffs', 'knockout', 'custom',
     'sr-arena', 'sr-outside', 'sr-producer', 'sr-shepherding', 'sr-staging'
   ));
 CREATE TABLE IF NOT EXISTS playoff_brackets (
@@ -334,6 +334,32 @@ ALTER TABLE competition_settings ADD COLUMN IF NOT EXISTS staging_close_minutes 
   CHECK (staging_close_minutes BETWEEN 0 AND 60);
 ALTER TABLE competition_settings ADD COLUMN IF NOT EXISTS staging_first_lead_minutes integer NOT NULL DEFAULT 10
   CHECK (staging_first_lead_minutes BETWEEN 0 AND 120);
+-- Uploaded audio tracks and images (sponsor logos and the like) for displays.
+CREATE TABLE IF NOT EXISTS media_files (
+  id uuid PRIMARY KEY,
+  competition_id uuid NOT NULL REFERENCES competitions(id) ON DELETE CASCADE,
+  kind text NOT NULL CHECK (kind IN ('audio', 'image')),
+  name text NOT NULL,
+  mime_type text NOT NULL,
+  byte_size integer NOT NULL CHECK (byte_size > 0),
+  duration_ms integer CHECK (duration_ms IS NULL OR duration_ms > 0),
+  data bytea NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS media_files_competition ON media_files (competition_id, kind, created_at);
+-- What every audio display should be playing. Positions are derived from started_at on each screen,
+-- so all screens agree without the server sending a stream.
+CREATE TABLE IF NOT EXISTS audio_playback (
+  competition_id uuid PRIMARY KEY REFERENCES competitions(id) ON DELETE CASCADE,
+  mode text NOT NULL DEFAULT 'stopped' CHECK (mode IN ('stopped', 'playing', 'paused', 'live')),
+  playlist uuid[] NOT NULL DEFAULT '{}',
+  loop boolean NOT NULL DEFAULT true,
+  started_at timestamptz,
+  paused_position_ms bigint NOT NULL DEFAULT 0 CHECK (paused_position_ms >= 0),
+  volume integer NOT NULL DEFAULT 80 CHECK (volume BETWEEN 0 AND 100),
+  live_session text,
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
 `;
 
 /**

@@ -5,9 +5,26 @@ import { JUST_FINISHED_SECONDS, MATCH_COUNTDOWN_TOTAL_SECONDS } from '../domain/
 import { escapeHtml } from '../lib/html.js';
 import { findCompetition } from '../services/competitions.js';
 import { fetchStandings } from '../services/league.js';
-import { loadPublicDisplay } from '../services/public-display.js';
+import { customPanelKinds, displayConfigHash, loadCustomPanel, loadDisplayConfig, loadPublicDisplay } from '../services/public-display.js';
 
 export function registerPublicRoutes(app: FastifyInstance): void {
+  app.get('/api/public/display/:slug/panel/:kind', async (request, reply) => {
+    const params = z.object({ slug: z.string(), kind: z.enum(customPanelKinds) }).safeParse(request.params);
+    const panel = params.success ? await loadCustomPanel(params.data.slug, params.data.kind) : undefined;
+    if (!panel) return reply.code(404).send({ error: 'Panel not found' });
+    reply.header('cache-control', 'no-store');
+    return panel.display;
+  });
+
+  // Lightweight: lets an open screen notice that its settings changed and reload itself.
+  app.get('/api/public/display/:slug/config', async (request, reply) => {
+    const { slug } = z.object({ slug: z.string() }).parse(request.params);
+    const config = await loadDisplayConfig(slug);
+    if (!config) return reply.code(404).send({ error: 'Public display not found' });
+    reply.header('cache-control', 'no-store');
+    return { hash: displayConfigHash(config) };
+  });
+
   app.get('/api/public/display/:slug', async (request, reply) => {
     const { slug } = z.object({ slug: z.string() }).parse(request.params);
     const display = await loadPublicDisplay(slug);

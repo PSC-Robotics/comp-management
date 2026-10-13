@@ -62,7 +62,8 @@ export function registerSecurity(app: FastifyInstance): void {
     reply.header('referrer-policy', 'same-origin');
     if (!isEmbeddable(request.url)) {
       reply.header('x-frame-options', 'DENY');
-      reply.header('permissions-policy', 'camera=(), microphone=(), geolocation=()');
+      // The admin page may capture a microphone, line-in or tab for live audio to the screens.
+      reply.header('permissions-policy', 'camera=(), microphone=(self), display-capture=(self), geolocation=()');
       reply.header('content-security-policy',
         "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; " +
         "img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { pool } from '../db/pool.js';
 import { renderBracketDiagram } from '../domain/bracket-diagram.js';
 import { displayOptionsSchema, publicMatchPriority } from '../domain/display.js';
@@ -5,7 +6,11 @@ import { playoffStages, summarisePlayoffLosses } from '../domain/playoffs.js';
 import { fetchStandings } from './league.js';
 import { heatStatusLabel } from './playoffs.js';
 
-export async function loadPublicDisplay(slug: string) {
+/**
+ * Loads a public display and its data. `panel` renders the display as another type with other
+ * options (a custom screen's panels reuse the standard displays this way).
+ */
+export async function loadPublicDisplay(slug: string, panel?: { type: string; options: Record<string, unknown> }) {
   const result = await pool.query<{
     display_slug: string; title: string; display_type: string; options: Record<string, unknown>;
     competition_id: string; competition_name: string; competition_slug: string; status: string;
@@ -23,6 +28,10 @@ export async function loadPublicDisplay(slug: string) {
   );
   const display = result.rows[0];
   if (!display || !['published', 'live', 'complete'].includes(display.status)) return undefined;
+  if (panel) {
+    display.display_type = panel.type;
+    display.options = panel.options;
+  }
   const options = displayOptionsSchema.parse(display.options ?? {});
   let data: unknown;
   let previousResults: unknown = null;
@@ -303,7 +312,19 @@ export async function loadPublicDisplay(slug: string) {
       );
       previousResults = previousMatch.rows[0] ?? null;
     }
-  } else if (display.display_type === 'playoffs') {
+  } else if (display.display_type === 'custom') {
+    const images = options.customImageIds.length
+      ? await pool.query<{ id: string; name: string }>(
+        `SELECT id, name FROM media_files WHERE competition_id = $1 AND kind = 'image' AND id = ANY($2::uuid[])`,
+        [display.competition_id, options.customImageIds]
+      )
+      : { rows: [] };
+    const byId = new Map(images.rows.map((image) => [image.id, image]));
+    data = {
+      images: options.customImageIds.map((id) => byId.get(id)).filter((image) => image !== undefined)
+        .map((image) => ({ id: image.id, name: image.name, url: `/media/${image.id}` }))
+    };
+  } else if (['playoffs', 'knockout'].includes(display.display_type)) {
     const bracket = await pool.query<{
       id: string; match_number: number; bracket_side: 'upper' | 'lower' | 'final'; round_number: number;
       status: string; schedule_state: string; timer_state: string; placements: string[] | null;
@@ -382,4 +403,49 @@ export async function loadPublicDisplay(slug: string) {
     previousResults,
     updatedAt: new Date().toISOString()
   };
+}
+
+/**
+ * Fingerprint of what a display looks like (type, title, options, theme, logo). Screens compare
+ * it after each change notification and reload when it differs, so edits apply remotely.
+ */
+export function displayConfigHash(display: {
+  type: string; title: string; options: unknown; theme: string; logoDataUrl: string | null;
+}): string {
+  return createHash('sha1')
+    .update(JSON.stringify([display.type, display.title, display.options, display.theme, display.logoDataUrl ?? '']))
+    .digest('base64url');
+}
+
+/** The settings of a published display, without loading its data. */
+export async function loadDisplayConfig(slug: string) {
+  const result = await pool.query<{
+    title: string; display_type: string; options: Record<string, unknown>; theme: string; logo_data_url: string | null;
+  }>(
+    `SELECT d.title, d.display_type, d.options, coalesce(s.theme, 'paper') AS theme, s.logo_data_url
+     FROM public_displays d JOIN competitions c ON c.id = d.competition_id
+     LEFT JOIN competition_settings s ON s.competition_id = c.id
+     WHERE d.slug = $1 AND d.enabled = true AND c.status IN ('published', 'live', 'complete')`,
+    [slug]
+  );
+  const row = result.rows[0];
+  if (!row) return undefined;
+  return {
+    type: row.display_type, title: row.title, options: displayOptionsSchema.parse(row.options ?? {}),
+    theme: row.theme, logoDataUrl: row.logo_data_url
+  };
+}
+
+export const customPanelKinds = ['schedule', 'league', 'results', 'knockout', 'timer'] as const;
+
+/** One panel of a custom screen: the standard display of that kind, with the custom screen's settings. */
+export async function loadCustomPanel(slug: string, kind: typeof customPanelKinds[number]) {
+  const base = await loadPublicDisplay(slug);
+  if (!base || base.type !== 'custom') return undefined;
+  const options = displayOptionsSchema.parse({
+    ...base.options, showTitle: false, playAudio: false, enableTeamFilter: false, relativeTime: false,
+    hideCompletedMatches: kind === 'schedule' ? true : base.options.hideCompletedMatches
+  });
+  const display = await loadPublicDisplay(slug, { type: kind, options });
+  return display ? { display, options } : undefined;
 }

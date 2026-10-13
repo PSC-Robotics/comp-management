@@ -37,5 +37,7 @@ export function notifyChangeForRequest(request: FastifyRequest, statusCode: numb
   if (request.method === 'GET' || request.method === 'HEAD' || request.method === 'OPTIONS') return;
   if (statusCode >= 400) return;
   if (!request.url.startsWith('/api/admin/')) return;
+  // Live-audio signalling is not competition data; it must not make every screen refetch.
+  if (request.url.startsWith('/api/admin/audio-live/')) return;
   notifyChange();
 }
