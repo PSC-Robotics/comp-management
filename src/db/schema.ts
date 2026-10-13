@@ -373,6 +373,8 @@ export async function migrate(pool: Pool): Promise<void> {
     await client.query('SELECT pg_advisory_lock(727274)');
     await client.query(schema);
     await client.query(authSchema);
+    // Live audio sessions live in memory, so none survive a restart: stop any left marked live.
+    await client.query(`UPDATE audio_playback SET mode = 'stopped', live_session = NULL, updated_at = now() WHERE mode = 'live'`);
     // Planned reflows used to be recorded as delays; remove those records.
     await client.query(
       `WITH removed_delays AS (
