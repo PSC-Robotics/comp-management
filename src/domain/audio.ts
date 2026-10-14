@@ -44,19 +44,32 @@ export function startedAtForTrack(tracks: AudioTrack[], index: number, startMs: 
   return startMs - playlistDuration(tracks.slice(0, index));
 }
 
-/** Live audio: shortest and longest shared delay, the margin over the slowest screen, the step down. */
-export const LIVE_DELAY_LIMITS = { min: 120, max: 3000, start: 500, margin: 80, step: 20, stepEveryMs: 3000 } as const;
+/** Live audio: shortest, longest and starting shared delay; margin over the slowest screen; timings. */
+export const LIVE_DELAY_LIMITS = {
+  min: 120, max: 3000, start: 600, margin: 120, step: 20,
+  /** After a screen joins or leaves, wait this long for its measurements, then change once. */
+  settleMs: 8000,
+  /** Emergency increases (a screen would drop sound) happen at most this often. */
+  raiseEveryMs: 30_000
+} as const;
+
+/** The shared delay that suits every screen: the slowest screen's need plus a safety margin. */
+export function liveDelayFor(needs: number[]): number {
+  const { min, max, margin, step } = LIVE_DELAY_LIMITS;
+  return Math.min(max, Math.max(min, Math.ceil((Math.max(...needs) + margin) / step) * step));
+}
 
 /**
- * The shared live-audio delay (capture to speaker) for every screen. `needs` are the screens'
- * recent reports of how much delay they need. It rises at once when any screen needs more (so
- * nothing drops out) and falls one 20 ms chunk at a time once every screen has room to spare.
+ * Whether to change the shared live-audio delay now, and to what. Every change makes a small
+ * audible blip, so it changes rarely: once after a screen joins or leaves (when `settleDue`),
+ * or straight away when a screen would otherwise drop sound (no more than every 30 seconds).
  */
-export function nextLiveDelay(current: number, needs: number[], nowMs: number, lastChangeMs: number): number {
+export function nextLiveDelay(
+  current: number, needs: number[], settleDue: boolean, nowMs: number, lastRaiseMs: number
+): number {
   if (!needs.length) return current;
-  const { min, max, margin, step, stepEveryMs } = LIVE_DELAY_LIMITS;
-  const target = Math.min(max, Math.max(min, Math.ceil((Math.max(...needs) + margin) / step) * step));
-  if (target > current) return target;
-  if (target <= current - step && nowMs - lastChangeMs >= stepEveryMs) return current - step;
+  const target = liveDelayFor(needs);
+  if (settleDue) return target;
+  if (Math.max(...needs) > current && target > current && nowMs - lastRaiseMs >= LIVE_DELAY_LIMITS.raiseEveryMs) return target;
   return current;
 }

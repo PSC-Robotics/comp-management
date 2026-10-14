@@ -10,7 +10,7 @@ const json = (value: unknown) => JSON.stringify(value).replaceAll('<', '\\u003c'
  * Live audio delay used until the server announces the shared one (it then adapts to the
  * slowest screen; see nextLiveDelay).
  */
-export const LIVE_AUDIO_DELAY_MS = 500;
+export const LIVE_AUDIO_DELAY_MS = 600;
 
 /**
  * Change feed. Top-level pages open the server's event stream and pass each revision on to
@@ -226,22 +226,28 @@ export function audioPlayerScript(config: { stateUrl: string; volume: number; sp
           // When this chunk should be heard, in server time, then on this screen's audio clock.
           var now=serverNow();
           current.arrivals.push(now-data.timestamp/1000);
-          if(current.arrivals.length>150)current.arrivals.shift();
+          if(current.arrivals.length>500)current.arrivals.shift();
           var heardAt=data.timestamp/1000+delayFor(data.timestamp);
           var startAt=context.currentTime+(heardAt-now-outputDelayMs())/1000;
           current.lastLeadMs=Math.round((startAt-context.currentTime)*1000);
+          var rate=1;
           if(current.nextTime!==null){
-            // Within a few ms of the previous chunk's end: play straight on (no clicks).
-            if(Math.abs(startAt-current.nextTime)<.012)startAt=current.nextTime;
-            // The shared delay just shrank: skip this chunk so playback moves forward seamlessly.
-            else if(startAt<current.nextTime){current.skipped++;return;}
+            var error=startAt-current.nextTime;
+            if(Math.abs(error)<.08){
+              // Small drift (clocks wander by milliseconds): play straight on, a touch faster or
+              // slower (at most 0.3%, inaudible) until back on time. No skips, no gaps.
+              rate=1-Math.max(-.003,Math.min(.003,error*.2));
+              startAt=current.nextTime;
+            }else if(error<0){current.skipped++;return;}
+            // A later start (the shared delay grew) leaves a short silence, once.
           }
           if(startAt<context.currentTime+.005){current.late++;current.nextTime=null;return;}
           var source=context.createBufferSource();
           source.buffer=buffer;
+          source.playbackRate.value=rate;
           source.connect(current.gain);
           source.start(startAt);
-          current.nextTime=startAt+buffer.duration;
+          current.nextTime=startAt+buffer.duration/rate;
           current.played++;
         }finally{data.close();}
       },
@@ -249,12 +255,12 @@ export function audioPlayerScript(config: { stateUrl: string; volume: number; sp
     });
     current.decoder.configure({codec:'opus',sampleRate:48000,numberOfChannels:2});
     current.events=new EventSource('/api/public/audio-live/'+encodeURIComponent(info.session)+'/listen?listener='+id);
-    // Tell the server how much delay this screen needs: its slow arrivals (95th percentile) plus
+    // Tell the server how much delay this screen needs: its slow arrivals (99th percentile) plus
     // its own output and speaker delay. The server sets one delay that suits every screen.
     current.reportTimer=setInterval(function(){
       if(current.arrivals.length<10)return;
       var sorted=current.arrivals.slice().sort(function(a,b){return a-b;});
-      var need=sorted[Math.min(sorted.length-1,Math.floor(sorted.length*.95))]+outputDelayMs()+10;
+      var need=sorted[Math.min(sorted.length-1,Math.floor(sorted.length*.99))]+outputDelayMs()+10;
       fetch('/api/public/audio-live/'+encodeURIComponent(info.session)+'/report',{method:'POST',headers:{'content-type':'application/json'},
         body:JSON.stringify({from:id,needMs:Math.max(0,Math.min(10000,Math.round(need)))})}).catch(function(){});
     },2000);

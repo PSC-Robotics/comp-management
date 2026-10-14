@@ -16,7 +16,9 @@ type Session = {
   /** Shared capture-to-speaker delay, and the capture time (µs) of the first chunk it applies to. */
   delayMs: number;
   delayFrom: number;
-  delayChangedAt: number;
+  lastRaiseAt: number;
+  /** When to settle the delay after a screen joined or left (null: nothing pending). */
+  settleAt: number | null;
   /** Each screen's latest report of the delay it needs. */
   needs: Map<string, { needMs: number; at: number }>;
 };
@@ -29,7 +31,7 @@ export function createLiveSession(competitionId: string): string {
   const id = randomBytes(16).toString('base64url');
   sessions.set(id, {
     competitionId, listeners: new Map(), needs: new Map(),
-    delayMs: LIVE_DELAY_LIMITS.start, delayFrom: 0, delayChangedAt: Date.now()
+    delayMs: LIVE_DELAY_LIMITS.start, delayFrom: 0, lastRaiseAt: 0, settleAt: null
   });
   return id;
 }
@@ -75,12 +77,15 @@ export function attachBroadcaster(id: string, send: Send, onOrphaned: () => void
 export function attachListener(id: string, listenerId: string, send: Send): (() => void) | undefined {
   const session = sessions.get(id);
   if (!session || (session.listeners.size >= MAX_LISTENERS && !session.listeners.has(listenerId))) return undefined;
+  // A new screen (not a reconnect) may need a different delay: settle once it has reported.
+  if (!session.listeners.has(listenerId)) session.settleAt = Date.now() + LIVE_DELAY_LIMITS.settleMs;
   session.listeners.set(listenerId, send);
   session.broadcaster?.({ type: 'join', from: listenerId });
   return () => {
     if (session.listeners.get(listenerId) !== send) return;
     session.listeners.delete(listenerId);
     session.needs.delete(listenerId);
+    session.settleAt = Date.now() + LIVE_DELAY_LIMITS.settleMs;
     session.broadcaster?.({ type: 'leave', from: listenerId });
   };
 }
@@ -95,11 +100,13 @@ export function relayAudio(id: string, chunks: { t: number; d: string }[], now =
   for (const [listener, need] of session.needs) {
     if (now - need.at > 10_000 || !session.listeners.has(listener)) session.needs.delete(listener);
   }
-  const next = nextLiveDelay(session.delayMs, [...session.needs.values()].map((need) => need.needMs), now, session.delayChangedAt);
+  const settleDue = session.settleAt !== null && now >= session.settleAt;
+  const next = nextLiveDelay(session.delayMs, [...session.needs.values()].map((need) => need.needMs), settleDue, now, session.lastRaiseAt);
+  if (settleDue && session.needs.size) session.settleAt = null;
   if (next !== session.delayMs) {
+    if (next > session.delayMs) session.lastRaiseAt = now;
     session.delayMs = next;
     session.delayFrom = chunks[0]!.t;
-    session.delayChangedAt = now;
     session.broadcaster?.({ type: 'delay', delayMs: next });
   }
   const message = { type: 'audio', chunks, delayMs: session.delayMs, delayFrom: session.delayFrom };
