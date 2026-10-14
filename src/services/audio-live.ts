@@ -115,10 +115,13 @@ export function relayAudio(id: string, chunks: { t: number; d: string }[], now =
 }
 
 /** A screen reports how much delay it needs (its slowest recent arrivals plus its own output delay). */
-export function reportListenerNeed(id: string, listenerId: string, needMs: number, now = Date.now()): boolean {
+export function reportListenerNeed(
+  id: string, listenerId: string, needMs: number, health: { late: number; skipped: number } = { late: 0, skipped: 0 }, now = Date.now()
+): boolean {
   const session = sessions.get(id);
   if (!session?.listeners.has(listenerId)) return false;
   session.needs.set(listenerId, { needMs, at: now });
+  session.broadcaster?.({ type: 'report', from: listenerId, needMs: Math.round(needMs), ...health });
   return true;
 }
 

@@ -1379,14 +1379,9 @@ async function uploadMediaFiles(files){
 // Live audio: this browser captures a line-in, microphone or tab, encodes it (Opus) and posts it to
 // the server a few times a second; the server passes it to every audio screen. Each block is
 // stamped with its capture time on the server clock so every screen plays it at the same moment.
-function bytesToBase64(bytes){
-  let binary='';
-  for(let index=0;index<bytes.length;index+=0x8000)binary+=String.fromCharCode(...bytes.subarray(index,index+0x8000));
-  return btoa(binary);
-}
 async function startLiveBroadcast(source){
   if(liveBroadcast)return;
-  if(typeof AudioEncoder==='undefined'||typeof AudioWorkletNode==='undefined')throw new Error('Live audio needs a current Chrome or Edge on this computer.');
+  if(typeof AudioEncoder==='undefined'||typeof AudioWorkletNode==='undefined'||typeof Worker==='undefined')throw new Error('Live audio needs a current Chrome or Edge on this computer.');
   const support=await AudioEncoder.isConfigSupported({codec:'opus',sampleRate:48000,numberOfChannels:2,bitrate:160000}).catch(()=>({supported:false}));
   if(!support.supported)throw new Error('This browser cannot encode Opus audio. Use Chrome or Edge.');
   if(!window.ServerClock||!window.ServerClock.synced)throw new Error('Still synchronising with the server clock; try again in a moment.');
@@ -1399,7 +1394,7 @@ async function startLiveBroadcast(source){
   }else{
     stream=await navigator.mediaDevices.getUserMedia({audio:source?{...audioConstraints,deviceId:{exact:source}}:audioConstraints});
   }
-  const context=new AudioContext({sampleRate:48000});
+  const context=new AudioContext({sampleRate:48000,latencyHint:'interactive'});
   try{await context.audioWorklet.addModule('/assets/audio-capture-worklet.js');}
   catch(error){stream.getTracks().forEach(track=>track.stop());context.close();throw error;}
   const competition=slug();
@@ -1408,57 +1403,51 @@ async function startLiveBroadcast(source){
   catch(error){stream.getTracks().forEach(track=>track.stop());context.close();throw error;}
   const session=state.live.session;
   const listeners=new Set();
-  const pending=[];
-  const broadcast={session,competition,stream,context,listeners,events:null,encoder:null,timer:null,sent:0,failed:0};
+  const worker=new Worker('/assets/audio-broadcast-worker.js');
+  const broadcast={session,competition,stream,context,listeners,health:new Map(),worker,events:null,timer:null,sent:0,failed:0,delayMs:null};
   liveBroadcast=broadcast;
   audioState=state;
-  broadcast.encoder=new AudioEncoder({
-    output:chunk=>{
-      const bytes=new Uint8Array(chunk.byteLength);
-      chunk.copyTo(bytes);
-      pending.push({t:chunk.timestamp,d:bytesToBase64(bytes)});
-    },
-    error:error=>{console.error('Live audio encoding failed',error);}
-  });
-  broadcast.encoder.configure({codec:'opus',sampleRate:48000,numberOfChannels:2,bitrate:160000});
+  // Audio clock ↔ server clock, refreshed every 2 s; the worker stamps each block from it.
+  const anchor=()=>{
+    const stamp=context.getOutputTimestamp();
+    return {context:stamp.contextTime,server:window.ServerClock.now()-(performance.now()-stamp.performanceTime)};
+  };
+  // Captured blocks go straight from the audio thread to the worker, never through this page.
+  const channel=new MessageChannel();
   const input=context.createMediaStreamSource(stream);
   const capture=new AudioWorkletNode(context,'competition-capture',{numberOfInputs:1,numberOfOutputs:0,channelCount:2,channelCountMode:'explicit'});
   const analyser=context.createAnalyser();
   analyser.fftSize=512;
+  worker.postMessage({type:'start',session,sampleRate:context.sampleRate,anchor:anchor(),port:channel.port1},[channel.port1]);
+  capture.port.postMessage({port:channel.port2},[channel.port2]);
   input.connect(capture);
   input.connect(analyser);
-  capture.port.onmessage=event=>{
-    if(liveBroadcast!==broadcast||broadcast.encoder.state!=='configured')return;
-    const {frame,left,right}=event.data;
-    // Map the block's position on the audio clock to server time.
-    const stamp=context.getOutputTimestamp();
-    const performanceAt=stamp.performanceTime+(frame/context.sampleRate-stamp.contextTime)*1000;
-    const serverAt=window.ServerClock.now()-(performance.now()-performanceAt);
-    const planar=new Float32Array(left.length*2);
-    planar.set(left,0);planar.set(right,left.length);
-    const data=new AudioData({format:'f32-planar',sampleRate:48000,numberOfFrames:left.length,numberOfChannels:2,timestamp:Math.round(serverAt*1000),data:planar});
-    broadcast.encoder.encode(data);
-    data.close();
+  worker.onmessage=event=>{
+    const message=event.data;
+    if(message.type==='ended'&&liveBroadcast===broadcast)void stopLiveBroadcast(false).then(render);
+    if(message.type==='error')notify(`Live audio: ${message.message}`,true);
+    if(message.type==='stats'){broadcast.sent=message.sent;broadcast.failed=message.failed;}
   };
-  const flush=async()=>{
-    if(liveBroadcast!==broadcast||!pending.length)return;
-    const chunks=pending.splice(0,pending.length);
-    try{
-      await api(`/api/admin/audio-live/${encodeURIComponent(session)}/audio`,{method:'POST',body:JSON.stringify({chunks})});
-      broadcast.sent+=chunks.length;
-    }catch(error){
-      broadcast.failed+=chunks.length;
-      if(error.status===404&&liveBroadcast===broadcast)void stopLiveBroadcast(false).then(render);
-    }
-  };
-  broadcast.timer=setInterval(()=>void flush(),60);
+  broadcast.timer=setInterval(()=>{
+    if(liveBroadcast!==broadcast)return;
+    worker.postMessage({type:'anchor',anchor:anchor()});
+    worker.postMessage({type:'stats'});
+  },2000);
   broadcast.events=new EventSource(`/api/admin/audio-live/${encodeURIComponent(session)}/events`);
   broadcast.events.onmessage=event=>{
     const message=JSON.parse(event.data);
     if(message.type==='ended'){if(liveBroadcast===broadcast)void stopLiveBroadcast(false).then(render);return;}
     if(message.type==='delay'){broadcast.delayMs=message.delayMs;if($('live-delay'))$('live-delay').textContent=`Delay ${message.delayMs} ms (set automatically for the slowest screen)`;}
     if(message.type==='join')listeners.add(message.from);
-    if(message.type==='leave')listeners.delete(message.from);
+    if(message.type==='leave'){listeners.delete(message.from);broadcast.health.delete(message.from);}
+    if(message.type==='report'){
+      broadcast.health.set(message.from,{needMs:message.needMs,late:message.late,skipped:message.skipped,at:Date.now()});
+      const node=$('live-health');
+      if(node){
+        const screens=[...broadcast.health.values()];
+        node.textContent=screens.length?screens.map((screen,index)=>`Screen ${index+1}: needs ${screen.needMs} ms · ${screen.late} dropped, ${screen.skipped} skipped in the last minute`).join(' | '):'';
+      }
+    }
     if($('live-listeners'))$('live-listeners').textContent=`${listeners.size} screen(s) listening`;
   };
   stream.getAudioTracks().forEach(track=>track.addEventListener('ended',()=>{if(liveBroadcast===broadcast)void stopLiveBroadcast(true).then(render);}));
@@ -1479,7 +1468,8 @@ async function stopLiveBroadcast(tellServer=true){
   liveBroadcast=null;
   clearInterval(broadcast.timer);
   broadcast.events?.close();
-  try{if(broadcast.encoder.state!=='closed')broadcast.encoder.close();}catch{}
+  broadcast.worker.postMessage({type:'stop'});
+  setTimeout(()=>broadcast.worker.terminate(),500);
   broadcast.stream.getTracks().forEach(track=>track.stop());
   broadcast.context.close().catch(()=>{});
   if(tellServer){
@@ -1522,7 +1512,7 @@ async function mediaPage(){
       <section class="card">
         <div class="section-title"><h2>Live audio</h2>${broadcastingHere?'<span class="badge good">Broadcasting from this browser</span>':isLive?'<span class="badge warn">Live from another browser</span>':''}</div>
         <p class="subtle" style="margin-top:0">Send this computer’s sound to the audio screens: a mixer or line-in, or a browser tab (for example Spotify in a tab). Keep this page open while you broadcast.</p>
-        ${broadcastingHere?`<div class="audio-track"><div id="live-level" class="audio-progress live"></div></div><p class="subtle" id="live-listeners">${liveBroadcast.listeners.size} screen(s) listening</p><p class="subtle" id="live-delay">${liveBroadcast.delayMs?`Delay ${liveBroadcast.delayMs} ms (set automatically for the slowest screen)`:'Measuring the delay…'}</p><button class="danger" data-action="live-stop">Stop live audio</button>`
+        ${broadcastingHere?`<div class="audio-track"><div id="live-level" class="audio-progress live"></div></div><p class="subtle" id="live-listeners">${liveBroadcast.listeners.size} screen(s) listening</p><p class="subtle" id="live-health"></p><p class="subtle" id="live-delay">${liveBroadcast.delayMs?`Delay ${liveBroadcast.delayMs} ms (set automatically for the slowest screen)`:'Measuring the delay…'}</p><button class="danger" data-action="live-stop">Stop live audio</button>`
           :`<label>Sound source<select id="live-source"><option value="tab">A browser tab or screen (tick “Share audio”)</option>${devices.map(device=>`<option value="${h(device.deviceId)}">${h(device.label||'Microphone / line-in')}</option>`).join('')}${devices.some(device=>device.label)?'':'<option value="">Microphone / line-in (default)</option>'}</select></label>
           <div class="match-actions" style="margin-top:.7rem"><button class="success" data-action="live-start">Start live audio</button>${isLive?'<button class="ghost" data-action="live-stop">End the other broadcast</button>':''}</div>`}
         <p class="subtle" style="margin-bottom:0">Starting live audio pauses the playlist. Sound goes through the server, so screens on any network can listen. Every screen plays it at the same moment, with the shortest delay the slowest screen allows (set automatically).</p>

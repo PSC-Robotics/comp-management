@@ -203,7 +203,7 @@ export function audioPlayerScript(config: { stateUrl: string; volume: number; sp
     if(!context||typeof AudioDecoder==='undefined'){console.error('This browser cannot play live audio (needs Web Audio and WebCodecs; use Chrome or Edge).');return;}
     if(context.state!=='running')window.CCSound.needUnlock();
     var id=(Date.now().toString(36)+Math.random().toString(36).slice(2)+Math.random().toString(36).slice(2)).replace(/[^A-Za-z0-9]/g,'').slice(0,40);
-    var current={session:info.session,events:null,decoder:null,gain:context.createGain(),nextTime:null,received:0,played:0,late:0,skipped:0,lastLeadMs:null,
+    var current={session:info.session,events:null,decoder:null,gain:context.createGain(),nextTime:null,received:0,played:0,late:0,skipped:0,outOfOrder:0,lastChunk:undefined,lastLeadMs:null,recent:[],
       delays:[{from:0,delay:LIVE_DELAY_MS}],arrivals:[],reportTimer:null};
     // The shared delay in force for a chunk: changes apply from a given chunk, the same on every screen.
     var delayFor=function(timestamp){
@@ -261,8 +261,12 @@ export function audioPlayerScript(config: { stateUrl: string; volume: number; sp
       if(current.arrivals.length<10)return;
       var sorted=current.arrivals.slice().sort(function(a,b){return a-b;});
       var need=sorted[Math.min(sorted.length-1,Math.floor(sorted.length*.99))]+outputDelayMs()+10;
+      // Dropouts over the last minute, for the admin page.
+      current.recent.push({late:current.late,skipped:current.skipped});
+      if(current.recent.length>30)current.recent.shift();
+      var minuteAgo=current.recent[0];
       fetch('/api/public/audio-live/'+encodeURIComponent(info.session)+'/report',{method:'POST',headers:{'content-type':'application/json'},
-        body:JSON.stringify({from:id,needMs:Math.max(0,Math.min(10000,Math.round(need)))})}).catch(function(){});
+        body:JSON.stringify({from:id,needMs:Math.max(0,Math.min(10000,Math.round(need))),late:current.late-minuteAgo.late,skipped:current.skipped-minuteAgo.skipped})}).catch(function(){});
     },2000);
     current.events.onmessage=function(event){
       var message=JSON.parse(event.data);
@@ -275,6 +279,9 @@ export function audioPlayerScript(config: { stateUrl: string; volume: number; sp
       }
       message.chunks.forEach(function(chunk){
         current.received++;
+        // Never feed the decoder out of order (it would garble the sound); drop the straggler.
+        if(current.lastChunk!==undefined&&chunk.t<=current.lastChunk){current.outOfOrder++;return;}
+        current.lastChunk=chunk.t;
         current.decoder.decode(new EncodedAudioChunk({type:'key',timestamp:chunk.t,data:decodeBase64(chunk.d)}));
       });
     };
@@ -295,7 +302,7 @@ export function audioPlayerScript(config: { stateUrl: string; volume: number; sp
     var at=state&&state.mode==='playing'&&state.startedAt!==null?position(state.tracks,state.startedAt,serverNow(),state.loop):null;
     return {mode:state?state.mode:null,track:currentTrack,playing:!player.paused,currentTime:player.currentTime,
       expected:at?at.offsetMs/1000:null,driftMs:at&&!player.paused?Math.round((player.currentTime-at.offsetMs/1000)*1000):null,
-      live:live?{received:live.received,played:live.played,late:live.late,skipped:live.skipped,leadMs:live.lastLeadMs,delayMs:live.delays[live.delays.length-1].delay,
+      live:live?{received:live.received,played:live.played,late:live.late,skipped:live.skipped,outOfOrder:live.outOfOrder,leadMs:live.lastLeadMs,delayMs:live.delays[live.delays.length-1].delay,
         audioRunning:Boolean(window.CCSound&&window.CCSound.context()&&window.CCSound.context().state==='running')}:null};
   };
   var pending=null;
@@ -335,7 +342,8 @@ export function customScreenScript(config: { rotateMs: number; imageMs: number }
 
 /** Audio worklet used by the admin page to capture live sound in 40 ms blocks for encoding. */
 export const captureWorkletSource = String.raw`class CompetitionCapture extends AudioWorkletProcessor{
-  constructor(){super();this.size=960;this.left=new Float32Array(this.size);this.right=new Float32Array(this.size);this.filled=0;this.startFrame=0;}
+  constructor(){super();this.size=960;this.left=new Float32Array(this.size);this.right=new Float32Array(this.size);this.filled=0;this.startFrame=0;this.out=null;
+    var self=this;this.port.onmessage=function(event){if(event.data&&event.data.port)self.out=event.data.port;};}
   process(inputs){
     var input=inputs[0];
     if(!input||!input.length)return true;
@@ -344,7 +352,7 @@ export const captureWorkletSource = String.raw`class CompetitionCapture extends 
       if(this.filled===0)this.startFrame=currentFrame+index;
       this.left[this.filled]=left[index];this.right[this.filled]=right[index];this.filled++;
       if(this.filled===this.size){
-        this.port.postMessage({frame:this.startFrame,left:this.left,right:this.right},[this.left.buffer,this.right.buffer]);
+        (this.out||this.port).postMessage({frame:this.startFrame,left:this.left,right:this.right},[this.left.buffer,this.right.buffer]);
         this.left=new Float32Array(this.size);this.right=new Float32Array(this.size);this.filled=0;
       }
     }
@@ -352,3 +360,51 @@ export const captureWorkletSource = String.raw`class CompetitionCapture extends 
   }
 }
 registerProcessor('competition-capture',CompetitionCapture);`;
+
+/**
+ * Background worker for live-audio broadcasting: receives captured blocks straight from the
+ * audio worklet, encodes them (Opus) and posts them to the server one request at a time. Nothing
+ * runs on the admin page's main thread, so a busy page or background tab cannot stall the sound.
+ * The page sends an anchor (audio-clock time ↔ server time) every couple of seconds.
+ */
+export const broadcastWorkerSource = String.raw`var session=null,anchor=null,sampleRate=48000,encoder=null,pending=[],sending=false,sent=0,failed=0,ended=false;
+var toBase64=function(bytes){var binary='';for(var i=0;i<bytes.length;i+=0x8000)binary+=String.fromCharCode.apply(null,bytes.subarray(i,i+0x8000));return btoa(binary);};
+var send=function(){
+  if(sending||ended||!pending.length)return;
+  sending=true;
+  var chunks=pending.splice(0,100);
+  fetch('/api/admin/audio-live/'+encodeURIComponent(session)+'/audio',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({chunks:chunks}),credentials:'same-origin'})
+    .then(function(response){
+      if(response.status===404){ended=true;postMessage({type:'ended'});return;}
+      if(response.ok)sent+=chunks.length;else failed+=chunks.length;
+    })
+    .catch(function(){failed+=chunks.length;})
+    .then(function(){sending=false;send();});
+};
+var onBlock=function(block){
+  if(!encoder||encoder.state!=='configured'||!anchor||ended)return;
+  var serverAt=anchor.server+(block.frame/sampleRate-anchor.context)*1000;
+  var planar=new Float32Array(block.left.length*2);
+  planar.set(block.left,0);planar.set(block.right,block.left.length);
+  var data=new AudioData({format:'f32-planar',sampleRate:sampleRate,numberOfFrames:block.left.length,numberOfChannels:2,timestamp:Math.round(serverAt*1000),data:planar});
+  encoder.encode(data);
+  data.close();
+};
+onmessage=function(event){
+  var message=event.data;
+  if(message.type==='start'){
+    session=message.session;sampleRate=message.sampleRate;anchor=message.anchor;
+    message.port.onmessage=function(blockEvent){onBlock(blockEvent.data);};
+    encoder=new AudioEncoder({
+      output:function(chunk){var bytes=new Uint8Array(chunk.byteLength);chunk.copyTo(bytes);pending.push({t:chunk.timestamp,d:toBase64(bytes)});send();},
+      error:function(error){postMessage({type:'error',message:String(error&&error.message||error)});}
+    });
+    encoder.configure({codec:'opus',sampleRate:48000,numberOfChannels:2,bitrate:160000});
+  }else if(message.type==='anchor'){
+    anchor=message.anchor;
+  }else if(message.type==='stats'){
+    postMessage({type:'stats',sent:sent,failed:failed,queued:pending.length});
+  }else if(message.type==='stop'){
+    ended=true;try{encoder&&encoder.close();}catch(error){}
+  }
+};`;

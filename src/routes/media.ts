@@ -424,8 +424,15 @@ export function registerMediaRoutes(app: FastifyInstance): void {
   // Screens report the delay they need every couple of seconds; the server sets one shared delay.
   app.post('/api/public/audio-live/:session/report', { bodyLimit: 4 * 1024 }, async (request, reply) => {
     const { session } = z.object({ session: z.string().max(100) }).parse(request.params);
-    const body = z.object({ from: listenerIdSchema, needMs: z.number().finite().min(0).max(10_000) }).parse(request.body);
-    if (!reportListenerNeed(session, body.from, body.needMs)) return reply.code(404).send({ error: 'Not listening to this broadcast' });
+    const body = z.object({
+      from: listenerIdSchema,
+      needMs: z.number().finite().min(0).max(10_000),
+      late: z.number().int().min(0).max(100_000).default(0),
+      skipped: z.number().int().min(0).max(100_000).default(0)
+    }).parse(request.body);
+    if (!reportListenerNeed(session, body.from, body.needMs, { late: body.late, skipped: body.skipped })) {
+      return reply.code(404).send({ error: 'Not listening to this broadcast' });
+    }
     return reply.code(204).send();
   });
 
