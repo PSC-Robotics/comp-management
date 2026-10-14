@@ -43,3 +43,20 @@ export function playlistPosition(
 export function startedAtForTrack(tracks: AudioTrack[], index: number, startMs: number): number {
   return startMs - playlistDuration(tracks.slice(0, index));
 }
+
+/** Live audio: shortest and longest shared delay, the margin over the slowest screen, the step down. */
+export const LIVE_DELAY_LIMITS = { min: 120, max: 3000, start: 500, margin: 80, step: 20, stepEveryMs: 3000 } as const;
+
+/**
+ * The shared live-audio delay (capture to speaker) for every screen. `needs` are the screens'
+ * recent reports of how much delay they need. It rises at once when any screen needs more (so
+ * nothing drops out) and falls one 20 ms chunk at a time once every screen has room to spare.
+ */
+export function nextLiveDelay(current: number, needs: number[], nowMs: number, lastChangeMs: number): number {
+  if (!needs.length) return current;
+  const { min, max, margin, step, stepEveryMs } = LIVE_DELAY_LIMITS;
+  const target = Math.min(max, Math.max(min, Math.ceil((Math.max(...needs) + margin) / step) * step));
+  if (target > current) return target;
+  if (target <= current - step && nowMs - lastChangeMs >= stepEveryMs) return current - step;
+  return current;
+}

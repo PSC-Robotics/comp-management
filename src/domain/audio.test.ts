@@ -21,3 +21,13 @@ test('starting a given track sets the playlist start so that track begins on tim
   assert.equal(startedAt, 40_000);
   assert.deepEqual(playlistPosition(tracks, startedAt, 100_000, true), { index: 1, offsetMs: 0 });
 });
+
+test('the live delay follows the slowest screen: up at once, down one chunk at a time', async () => {
+  const { LIVE_DELAY_LIMITS, nextLiveDelay } = await import('./audio.js');
+  assert.equal(nextLiveDelay(500, [], 10_000, 0), 500, 'no reports: unchanged');
+  assert.equal(nextLiveDelay(300, [120, 410], 10_000, 9_000), 500, 'rises straight to the slowest need plus margin');
+  assert.equal(nextLiveDelay(500, [100], 10_000, 9_000), 500, 'waits before stepping down');
+  assert.equal(nextLiveDelay(500, [100], 10_000, 6_000), 480, 'then steps down one chunk');
+  assert.equal(nextLiveDelay(140, [0], 10_000, 0), LIVE_DELAY_LIMITS.min, 'never below the minimum');
+  assert.equal(nextLiveDelay(500, [99_999], 10_000, 0), LIVE_DELAY_LIMITS.max, 'never beyond the maximum');
+});

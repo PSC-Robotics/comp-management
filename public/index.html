@@ -1451,11 +1451,12 @@ async function startLiveBroadcast(source){
       if(error.status===404&&liveBroadcast===broadcast)void stopLiveBroadcast(false).then(render);
     }
   };
-  broadcast.timer=setInterval(()=>void flush(),200);
+  broadcast.timer=setInterval(()=>void flush(),60);
   broadcast.events=new EventSource(`/api/admin/audio-live/${encodeURIComponent(session)}/events`);
   broadcast.events.onmessage=event=>{
     const message=JSON.parse(event.data);
     if(message.type==='ended'){if(liveBroadcast===broadcast)void stopLiveBroadcast(false).then(render);return;}
+    if(message.type==='delay'){broadcast.delayMs=message.delayMs;if($('live-delay'))$('live-delay').textContent=`Delay ${message.delayMs} ms (set automatically for the slowest screen)`;}
     if(message.type==='join')listeners.add(message.from);
     if(message.type==='leave')listeners.delete(message.from);
     if($('live-listeners'))$('live-listeners').textContent=`${listeners.size} screen(s) listening`;
@@ -1521,10 +1522,10 @@ async function mediaPage(){
       <section class="card">
         <div class="section-title"><h2>Live audio</h2>${broadcastingHere?'<span class="badge good">Broadcasting from this browser</span>':isLive?'<span class="badge warn">Live from another browser</span>':''}</div>
         <p class="subtle" style="margin-top:0">Send this computer’s sound to the audio screens: a mixer or line-in, or a browser tab (for example Spotify in a tab). Keep this page open while you broadcast.</p>
-        ${broadcastingHere?`<div class="audio-track"><div id="live-level" class="audio-progress live"></div></div><p class="subtle" id="live-listeners">${liveBroadcast.listeners.size} screen(s) listening</p><button class="danger" data-action="live-stop">Stop live audio</button>`
+        ${broadcastingHere?`<div class="audio-track"><div id="live-level" class="audio-progress live"></div></div><p class="subtle" id="live-listeners">${liveBroadcast.listeners.size} screen(s) listening</p><p class="subtle" id="live-delay">${liveBroadcast.delayMs?`Delay ${liveBroadcast.delayMs} ms (set automatically for the slowest screen)`:'Measuring the delay…'}</p><button class="danger" data-action="live-stop">Stop live audio</button>`
           :`<label>Sound source<select id="live-source"><option value="tab">A browser tab or screen (tick “Share audio”)</option>${devices.map(device=>`<option value="${h(device.deviceId)}">${h(device.label||'Microphone / line-in')}</option>`).join('')}${devices.some(device=>device.label)?'':'<option value="">Microphone / line-in (default)</option>'}</select></label>
           <div class="match-actions" style="margin-top:.7rem"><button class="success" data-action="live-start">Start live audio</button>${isLive?'<button class="ghost" data-action="live-stop">End the other broadcast</button>':''}</div>`}
-        <p class="subtle" style="margin-bottom:0">Starting live audio pauses the playlist. Sound goes through the server, so screens on any network can listen; they play it about a second after it is captured, all at the same moment.</p>
+        <p class="subtle" style="margin-bottom:0">Starting live audio pauses the playlist. Sound goes through the server, so screens on any network can listen. Every screen plays it at the same moment, with the shortest delay the slowest screen allows (set automatically).</p>
       </section>
     </div>
     <section class="card">

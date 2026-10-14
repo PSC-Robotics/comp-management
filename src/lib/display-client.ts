@@ -7,10 +7,10 @@
 const json = (value: unknown) => JSON.stringify(value).replaceAll('<', '\\u003c');
 
 /**
- * Every screen plays live audio this long after it was captured (server clock), so they play in
- * step. It covers sending in batches, the network and decoding, with room to spare.
+ * Live audio delay used until the server announces the shared one (it then adapts to the
+ * slowest screen; see nextLiveDelay).
  */
-export const LIVE_AUDIO_DELAY_MS = 1000;
+export const LIVE_AUDIO_DELAY_MS = 500;
 
 /**
  * Change feed. Top-level pages open the server's event stream and pass each revision on to
@@ -187,6 +187,7 @@ export function audioPlayerScript(config: { stateUrl: string; volume: number; sp
     if(!live)return;
     try{live.events.close();}catch(error){}
     try{if(live.decoder&&live.decoder.state!=='closed')live.decoder.close();}catch(error){}
+    clearInterval(live.reportTimer);
     if(live.gain)live.gain.disconnect();
     live=null;
   };
@@ -202,7 +203,13 @@ export function audioPlayerScript(config: { stateUrl: string; volume: number; sp
     if(!context||typeof AudioDecoder==='undefined'){console.error('This browser cannot play live audio (needs Web Audio and WebCodecs; use Chrome or Edge).');return;}
     if(context.state!=='running')window.CCSound.needUnlock();
     var id=(Date.now().toString(36)+Math.random().toString(36).slice(2)+Math.random().toString(36).slice(2)).replace(/[^A-Za-z0-9]/g,'').slice(0,40);
-    var current={session:info.session,events:null,decoder:null,gain:context.createGain(),nextTime:null,received:0,played:0,late:0,lastLeadMs:null};
+    var current={session:info.session,events:null,decoder:null,gain:context.createGain(),nextTime:null,received:0,played:0,late:0,skipped:0,lastLeadMs:null,
+      delays:[{from:0,delay:LIVE_DELAY_MS}],arrivals:[],reportTimer:null};
+    // The shared delay in force for a chunk: changes apply from a given chunk, the same on every screen.
+    var delayFor=function(timestamp){
+      for(var index=current.delays.length-1;index>=0;index--)if(current.delays[index].from<=timestamp)return current.delays[index].delay;
+      return current.delays[0].delay;
+    };
     current.gain.gain.value=volume();
     current.gain.connect(context.destination);
     live=current;
@@ -217,10 +224,18 @@ export function audioPlayerScript(config: { stateUrl: string; volume: number; sp
             buffer.copyToChannel(samples,channel);
           }
           // When this chunk should be heard, in server time, then on this screen's audio clock.
-          var heardAt=data.timestamp/1000+LIVE_DELAY_MS;
-          var startAt=context.currentTime+(heardAt-serverNow()-outputDelayMs())/1000;
+          var now=serverNow();
+          current.arrivals.push(now-data.timestamp/1000);
+          if(current.arrivals.length>150)current.arrivals.shift();
+          var heardAt=data.timestamp/1000+delayFor(data.timestamp);
+          var startAt=context.currentTime+(heardAt-now-outputDelayMs())/1000;
           current.lastLeadMs=Math.round((startAt-context.currentTime)*1000);
-          if(current.nextTime!==null&&Math.abs(startAt-current.nextTime)<.02)startAt=current.nextTime;
+          if(current.nextTime!==null){
+            // Within a few ms of the previous chunk's end: play straight on (no clicks).
+            if(Math.abs(startAt-current.nextTime)<.012)startAt=current.nextTime;
+            // The shared delay just shrank: skip this chunk so playback moves forward seamlessly.
+            else if(startAt<current.nextTime){current.skipped++;return;}
+          }
           if(startAt<context.currentTime+.005){current.late++;current.nextTime=null;return;}
           var source=context.createBufferSource();
           source.buffer=buffer;
@@ -234,10 +249,24 @@ export function audioPlayerScript(config: { stateUrl: string; volume: number; sp
     });
     current.decoder.configure({codec:'opus',sampleRate:48000,numberOfChannels:2});
     current.events=new EventSource('/api/public/audio-live/'+encodeURIComponent(info.session)+'/listen?listener='+id);
+    // Tell the server how much delay this screen needs: its slow arrivals (95th percentile) plus
+    // its own output and speaker delay. The server sets one delay that suits every screen.
+    current.reportTimer=setInterval(function(){
+      if(current.arrivals.length<10)return;
+      var sorted=current.arrivals.slice().sort(function(a,b){return a-b;});
+      var need=sorted[Math.min(sorted.length-1,Math.floor(sorted.length*.95))]+outputDelayMs()+10;
+      fetch('/api/public/audio-live/'+encodeURIComponent(info.session)+'/report',{method:'POST',headers:{'content-type':'application/json'},
+        body:JSON.stringify({from:id,needMs:Math.max(0,Math.min(10000,Math.round(need)))})}).catch(function(){});
+    },2000);
     current.events.onmessage=function(event){
       var message=JSON.parse(event.data);
       if(message.type==='ended'){if(live===current)stopLive();return;}
       if(message.type!=='audio'||!current.decoder||current.decoder.state!=='configured')return;
+      var latest=current.delays[current.delays.length-1];
+      if(message.delayMs&&(message.delayMs!==latest.delay||message.delayFrom!==latest.from)){
+        current.delays.push({from:message.delayFrom||0,delay:message.delayMs});
+        if(current.delays.length>8)current.delays.shift();
+      }
       message.chunks.forEach(function(chunk){
         current.received++;
         current.decoder.decode(new EncodedAudioChunk({type:'key',timestamp:chunk.t,data:decodeBase64(chunk.d)}));
@@ -260,7 +289,7 @@ export function audioPlayerScript(config: { stateUrl: string; volume: number; sp
     var at=state&&state.mode==='playing'&&state.startedAt!==null?position(state.tracks,state.startedAt,serverNow(),state.loop):null;
     return {mode:state?state.mode:null,track:currentTrack,playing:!player.paused,currentTime:player.currentTime,
       expected:at?at.offsetMs/1000:null,driftMs:at&&!player.paused?Math.round((player.currentTime-at.offsetMs/1000)*1000):null,
-      live:live?{received:live.received,played:live.played,late:live.late,leadMs:live.lastLeadMs,delayMs:LIVE_DELAY_MS,
+      live:live?{received:live.received,played:live.played,late:live.late,skipped:live.skipped,leadMs:live.lastLeadMs,delayMs:live.delays[live.delays.length-1].delay,
         audioRunning:Boolean(window.CCSound&&window.CCSound.context()&&window.CCSound.context().state==='running')}:null};
   };
   var pending=null;
@@ -300,7 +329,7 @@ export function customScreenScript(config: { rotateMs: number; imageMs: number }
 
 /** Audio worklet used by the admin page to capture live sound in 40 ms blocks for encoding. */
 export const captureWorkletSource = String.raw`class CompetitionCapture extends AudioWorkletProcessor{
-  constructor(){super();this.size=1920;this.left=new Float32Array(this.size);this.right=new Float32Array(this.size);this.filled=0;this.startFrame=0;}
+  constructor(){super();this.size=960;this.left=new Float32Array(this.size);this.right=new Float32Array(this.size);this.filled=0;this.startFrame=0;}
   process(inputs){
     var input=inputs[0];
     if(!input||!input.length)return true;

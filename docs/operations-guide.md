@@ -224,7 +224,9 @@ and send them the printed link; it works once, for 30 minutes.
    **Live audio** and press **Start live audio**. To share a browser tab, pick the tab and tick
    **Share tab audio**. Keep that admin page open; the playlist pauses while live audio is on. Live
    sound goes through the server, so screens on any network (venue Wi-Fi, mobile data, another
-   building) can listen; every screen plays it about one second behind the source, all together.
+   building) can listen. Every screen plays it at the same moment; the delay sets itself to the
+   shortest the slowest screen allows (shown on the page). One screen on poor mobile data raises it
+   for everyone, so keep screens on good connections for the lowest delay.
 
 If one screen still sounds behind the others, it is usually the TV or speaker adding its own delay
 (TVs and soundbars often add 50–200 ms, Bluetooth speakers more). Set **Speaker delay** on that

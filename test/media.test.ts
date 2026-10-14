@@ -79,6 +79,8 @@ test('live audio is relayed through the server and stopping it returns to silenc
   assert.equal((await h.request({ method: 'POST', url: audioUrl, payload: { chunks: [{ t: Date.now() * 1000, d: 'AAEC' }] } })).statusCode, 204);
   assert.equal((await h.request({ method: 'POST', url: audioUrl, payload: { chunks: [{ t: 1, d: '<script>' }] } })).statusCode, 400, 'chunks must be base64');
   assert.equal((await h.request({ method: 'POST', url: audioUrl, payload: { chunks: [{ t: 1, d: 'AAEC' }] }, as: null })).statusCode, 401, 'only admins broadcast');
+  const report = await h.request({ method: 'POST', url: `/api/public/audio-live/${state.live.session}/report`, payload: { from: 'not-listening-1', needMs: 9000 }, as: null });
+  assert.equal(report.statusCode, 404, 'only screens that are listening can influence the shared delay');
   const stopped = await h.api('POST', `/api/admin/competitions/${slug}/audio`, { action: 'live-stop' }, 200);
   assert.equal(stopped.mode, 'stopped');
   assert.equal(stopped.live, null);

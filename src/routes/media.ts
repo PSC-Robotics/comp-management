@@ -10,7 +10,7 @@ import {
 } from '../domain/audio.js';
 import {
   attachBroadcaster, attachListener, createLiveSession, endLiveSession, listenerCount,
-  liveSessionCompetition, relayAudio
+  liveSessionCompetition, relayAudio, reportListenerNeed
 } from '../services/audio-live.js';
 import { notifyChange } from '../services/changes.js';
 import { findCompetition } from '../services/competitions.js';
@@ -418,6 +418,14 @@ export function registerMediaRoutes(app: FastifyInstance): void {
       })).min(1).max(100)
     }).parse(request.body);
     if (!relayAudio(session, chunks)) return reply.code(404).send({ error: 'This live broadcast has ended' });
+    return reply.code(204).send();
+  });
+
+  // Screens report the delay they need every couple of seconds; the server sets one shared delay.
+  app.post('/api/public/audio-live/:session/report', { bodyLimit: 4 * 1024 }, async (request, reply) => {
+    const { session } = z.object({ session: z.string().max(100) }).parse(request.params);
+    const body = z.object({ from: listenerIdSchema, needMs: z.number().finite().min(0).max(10_000) }).parse(request.body);
+    if (!reportListenerNeed(session, body.from, body.needMs)) return reply.code(404).send({ error: 'Not listening to this broadcast' });
     return reply.code(204).send();
   });
 
