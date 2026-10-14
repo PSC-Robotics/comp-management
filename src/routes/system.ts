@@ -25,17 +25,17 @@ export function registerSystemRoutes(app: FastifyInstance): void {
   // Scripts the pages load by URL: always revalidated, so a deploy never leaves a stale copy running.
   app.get('/assets/clock-sync.js', async (_request, reply) => reply
     .type('application/javascript; charset=utf-8')
-    .header('cache-control', 'no-cache')
+    .header('cache-control', 'no-store')
     .send(clockSyncScript));
 
   app.get('/assets/audio-capture-worklet.js', async (_request, reply) => reply
     .type('application/javascript; charset=utf-8')
-    .header('cache-control', 'no-cache')
+    .header('cache-control', 'no-store')
     .send(captureWorkletSource));
 
   app.get('/assets/audio-broadcast-worker.js', async (_request, reply) => reply
     .type('application/javascript; charset=utf-8')
-    .header('cache-control', 'no-cache')
+    .header('cache-control', 'no-store')
     .send(broadcastWorkerSource));
 
   app.get('/', async (_request, reply) => {
