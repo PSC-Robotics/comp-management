@@ -23,12 +23,7 @@ const schema = z.object({
   /** WebAuthn relying party ID; defaults to the PUBLIC_BASE_URL host name. */
   PASSKEY_RP_ID: optionalText,
   PASSKEY_RP_NAME: z.string().default('Competition Control'),
-  LOG_LEVEL: z.string().default('info'),
-  /**
-   * JSON list of WebRTC ICE servers for live audio, e.g. [{"urls":"stun:stun.example.org:3478"}].
-   * Empty works on one LAN; add STUN/TURN when screens are on other networks.
-   */
-  WEBRTC_ICE_SERVERS: z.string().default('')
+  LOG_LEVEL: z.string().default('info')
 });
 
 export type Config = z.infer<typeof schema>;
@@ -50,13 +45,3 @@ export function publicOrigin(): string | undefined {
   return env.PUBLIC_BASE_URL ? new URL(env.PUBLIC_BASE_URL).origin : undefined;
 }
 
-/** ICE servers handed to live-audio broadcasters and listeners (invalid JSON is ignored). */
-export function iceServers(value = env.WEBRTC_ICE_SERVERS): unknown[] {
-  if (!value.trim()) return [];
-  try {
-    const parsed: unknown = JSON.parse(value);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}

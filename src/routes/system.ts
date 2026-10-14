@@ -3,6 +3,7 @@ import { extname, join } from 'node:path';
 import { type FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { clockSyncScript } from '../lib/clock-sync.js';
+import { captureWorkletSource } from '../lib/display-client.js';
 import { publicDir } from '../lib/paths.js';
 
 const assetTypes: Record<string, string> = {
@@ -25,6 +26,11 @@ export function registerSystemRoutes(app: FastifyInstance): void {
     .type('application/javascript; charset=utf-8')
     .header('cache-control', 'public, max-age=300')
     .send(clockSyncScript));
+
+  app.get('/assets/audio-capture-worklet.js', async (_request, reply) => reply
+    .type('application/javascript; charset=utf-8')
+    .header('cache-control', 'public, max-age=300')
+    .send(captureWorkletSource));
 
   app.get('/', async (_request, reply) => {
     const html = await readFile(join(publicDir, 'index.html'), 'utf8');

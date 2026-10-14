@@ -70,18 +70,21 @@ test('the shared playlist plays, pauses, resumes and skips from server time', { 
   assert.equal(state.tracks.length, 1);
 });
 
-test('live audio starts a signalling session and stopping it returns to silence', { skip }, async () => {
+test('live audio is relayed through the server and stopping it returns to silence', { skip }, async () => {
   const { slug } = await h.createCompetition(4);
   const state = await h.api('POST', `/api/admin/competitions/${slug}/audio`, { action: 'live-start' }, 200);
   assert.equal(state.mode, 'live');
   assert.ok(state.live.session.length >= 16);
-  const bogus = await h.request({ method: 'POST', url: `/api/public/audio-live/${state.live.session}/signal`, payload: { from: 'listener-0001', type: 'offer', sdp: 'x' }, as: null });
-  assert.equal(bogus.statusCode, 400, 'screens cannot send offers');
+  const audioUrl = `/api/admin/audio-live/${state.live.session}/audio`;
+  assert.equal((await h.request({ method: 'POST', url: audioUrl, payload: { chunks: [{ t: Date.now() * 1000, d: 'AAEC' }] } })).statusCode, 204);
+  assert.equal((await h.request({ method: 'POST', url: audioUrl, payload: { chunks: [{ t: 1, d: '<script>' }] } })).statusCode, 400, 'chunks must be base64');
+  assert.equal((await h.request({ method: 'POST', url: audioUrl, payload: { chunks: [{ t: 1, d: 'AAEC' }] }, as: null })).statusCode, 401, 'only admins broadcast');
   const stopped = await h.api('POST', `/api/admin/competitions/${slug}/audio`, { action: 'live-stop' }, 200);
   assert.equal(stopped.mode, 'stopped');
   assert.equal(stopped.live, null);
   const ended = await h.request({ method: 'GET', url: `/api/public/audio-live/${state.live.session}/listen?listener=listener-0001`, as: null });
   assert.equal(ended.statusCode, 404);
+  assert.equal((await h.request({ method: 'POST', url: audioUrl, payload: { chunks: [{ t: 1, d: 'AAEC' }] } })).statusCode, 404, 'the session has ended');
 });
 
 test('custom screens serve their panels and change fingerprint when edited', { skip }, async () => {

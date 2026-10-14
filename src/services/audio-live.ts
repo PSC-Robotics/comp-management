@@ -1,9 +1,10 @@
 import { randomBytes } from 'node:crypto';
 
 /**
- * Relays WebRTC signalling for live audio: one broadcaster (an admin browser capturing a
- * line-in, microphone or tab) and the listening screens. Audio itself flows browser to browser;
- * this only passes offers, answers and ICE candidates. Held in memory: a restart ends the broadcast.
+ * Relays live audio: one broadcaster (an admin browser capturing a line-in, microphone or tab)
+ * posts encoded chunks, and every listening screen receives them over its event stream. Going
+ * through the server (over ordinary HTTPS) works on any network. Held in memory: a restart ends
+ * the broadcast.
  */
 type Send = (message: Record<string, unknown>) => void;
 type Session = {
@@ -72,17 +73,12 @@ export function attachListener(id: string, listenerId: string, send: Send): (() 
   };
 }
 
-export function sendToListener(id: string, listenerId: string, message: Record<string, unknown>): boolean {
-  const target = sessions.get(id)?.listeners.get(listenerId);
-  if (!target) return false;
-  target(message);
-  return true;
-}
-
-export function sendToBroadcaster(id: string, listenerId: string, message: Record<string, unknown>): boolean {
+/** Sends audio chunks from the broadcaster to every screen listening to this session. */
+export function relayAudio(id: string, chunks: { t: number; d: string }[]): boolean {
   const session = sessions.get(id);
-  if (!session?.broadcaster || !session.listeners.has(listenerId)) return false;
-  session.broadcaster({ ...message, from: listenerId });
+  if (!session) return false;
+  const message = { type: 'audio', chunks };
+  for (const send of session.listeners.values()) send(message);
   return true;
 }
 

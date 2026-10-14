@@ -222,7 +222,9 @@ and send them the printed link; it works once, for 30 minutes.
    repeat apply to all of them at once.
 4. For live sound (a DJ, a microphone, or music from a streaming service), choose the source under
    **Live audio** and press **Start live audio**. To share a browser tab, pick the tab and tick
-   **Share tab audio**. Keep that admin page open; the playlist pauses while live audio is on.
+   **Share tab audio**. Keep that admin page open; the playlist pauses while live audio is on. Live
+   sound goes through the server, so screens on any network (venue Wi-Fi, mobile data, another
+   building) can listen; every screen plays it about one second behind the source, all together.
 
 If one screen still sounds behind the others, it is usually the TV or speaker adding its own delay
 (TVs and soundbars often add 50–200 ms, Bluetooth speakers more). Set **Speaker delay** on that

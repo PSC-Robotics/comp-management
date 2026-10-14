@@ -1376,22 +1376,20 @@ async function uploadMediaFiles(files){
   }
   if(status)status.textContent='';
 }
-// Live audio: this browser captures a line-in, microphone or tab and sends it to every audio screen.
-function preferStereo(sdp){
-  const match=/a=rtpmap:(\d+) opus\/48000\/2/i.exec(sdp);
-  if(!match)return sdp;
-  return sdp.replace(new RegExp(`a=fmtp:${match[1]} ([^\\r\\n]*)`),(line,params)=>params.includes('stereo=1')?line:`a=fmtp:${match[1]} ${params};stereo=1;sprop-stereo=1;maxaveragebitrate=256000`);
-}
-function waitForIce(connection){
-  if(connection.iceGatheringState==='complete')return Promise.resolve();
-  return new Promise(resolve=>{
-    const done=()=>{if(connection.iceGatheringState==='complete'){connection.removeEventListener('icegatheringstatechange',done);resolve();}};
-    connection.addEventListener('icegatheringstatechange',done);
-    setTimeout(resolve,3000);
-  });
+// Live audio: this browser captures a line-in, microphone or tab, encodes it (Opus) and posts it to
+// the server a few times a second; the server passes it to every audio screen. Each block is
+// stamped with its capture time on the server clock so every screen plays it at the same moment.
+function bytesToBase64(bytes){
+  let binary='';
+  for(let index=0;index<bytes.length;index+=0x8000)binary+=String.fromCharCode(...bytes.subarray(index,index+0x8000));
+  return btoa(binary);
 }
 async function startLiveBroadcast(source){
   if(liveBroadcast)return;
+  if(typeof AudioEncoder==='undefined'||typeof AudioWorkletNode==='undefined')throw new Error('Live audio needs a current Chrome or Edge on this computer.');
+  const support=await AudioEncoder.isConfigSupported({codec:'opus',sampleRate:48000,numberOfChannels:2,bitrate:160000}).catch(()=>({supported:false}));
+  if(!support.supported)throw new Error('This browser cannot encode Opus audio. Use Chrome or Edge.');
+  if(!window.ServerClock||!window.ServerClock.synced)throw new Error('Still synchronising with the server clock; try again in a moment.');
   const audioConstraints={echoCancellation:false,noiseSuppression:false,autoGainControl:false,channelCount:2};
   let stream;
   if(source==='tab'){
@@ -1401,68 +1399,88 @@ async function startLiveBroadcast(source){
   }else{
     stream=await navigator.mediaDevices.getUserMedia({audio:source?{...audioConstraints,deviceId:{exact:source}}:audioConstraints});
   }
+  const context=new AudioContext({sampleRate:48000});
+  try{await context.audioWorklet.addModule('/assets/audio-capture-worklet.js');}
+  catch(error){stream.getTracks().forEach(track=>track.stop());context.close();throw error;}
   const competition=slug();
   let state;
   try{state=await api(`/api/admin/competitions/${encodeURIComponent(competition)}/audio`,{method:'POST',body:JSON.stringify({action:'live-start'})});}
-  catch(error){stream.getTracks().forEach(track=>track.stop());throw error;}
+  catch(error){stream.getTracks().forEach(track=>track.stop());context.close();throw error;}
   const session=state.live.session;
-  const iceServers=state.live.iceServers||[];
-  const peers=new Map();
-  const events=new EventSource(`/api/admin/audio-live/${encodeURIComponent(session)}/events`);
-  const broadcast={session,competition,stream,peers,events,meter:null};
+  const listeners=new Set();
+  const pending=[];
+  const broadcast={session,competition,stream,context,listeners,events:null,encoder:null,timer:null,sent:0,failed:0};
   liveBroadcast=broadcast;
   audioState=state;
-  events.onmessage=async event=>{
-    const message=JSON.parse(event.data);
-    if(message.type==='ended'){if(liveBroadcast===broadcast)stopLiveBroadcast(false);return;}
-    if(message.type==='join'){
-      peers.get(message.from)?.close();
-      const connection=new RTCPeerConnection({iceServers});
-      peers.set(message.from,connection);
-      stream.getAudioTracks().forEach(track=>connection.addTrack(track,stream));
-      for(const sender of connection.getSenders()){
-        const parameters=sender.getParameters();
-        parameters.encodings=parameters.encodings?.length?parameters.encodings:[{}];
-        parameters.encodings[0].maxBitrate=256000;
-        await sender.setParameters(parameters).catch(()=>{});
-      }
-      const offer=await connection.createOffer();
-      await connection.setLocalDescription({type:'offer',sdp:preferStereo(offer.sdp)});
-      await waitForIce(connection);
-      await api(`/api/admin/audio-live/${encodeURIComponent(session)}/signal`,{method:'POST',body:JSON.stringify({to:message.from,type:'offer',sdp:connection.localDescription.sdp})}).catch(()=>{});
-    }else if(message.type==='answer'){
-      const connection=peers.get(message.from);
-      if(connection&&connection.signalingState==='have-local-offer')await connection.setRemoteDescription({type:'answer',sdp:message.sdp}).catch(error=>console.error(error));
-    }else if(message.type==='leave'){
-      peers.get(message.from)?.close();peers.delete(message.from);
+  broadcast.encoder=new AudioEncoder({
+    output:chunk=>{
+      const bytes=new Uint8Array(chunk.byteLength);
+      chunk.copyTo(bytes);
+      pending.push({t:chunk.timestamp,d:bytesToBase64(bytes)});
+    },
+    error:error=>{console.error('Live audio encoding failed',error);}
+  });
+  broadcast.encoder.configure({codec:'opus',sampleRate:48000,numberOfChannels:2,bitrate:160000});
+  const input=context.createMediaStreamSource(stream);
+  const capture=new AudioWorkletNode(context,'competition-capture',{numberOfInputs:1,numberOfOutputs:0,channelCount:2,channelCountMode:'explicit'});
+  const analyser=context.createAnalyser();
+  analyser.fftSize=512;
+  input.connect(capture);
+  input.connect(analyser);
+  capture.port.onmessage=event=>{
+    if(liveBroadcast!==broadcast||broadcast.encoder.state!=='configured')return;
+    const {frame,left,right}=event.data;
+    // Map the block's position on the audio clock to server time.
+    const stamp=context.getOutputTimestamp();
+    const performanceAt=stamp.performanceTime+(frame/context.sampleRate-stamp.contextTime)*1000;
+    const serverAt=window.ServerClock.now()-(performance.now()-performanceAt);
+    const planar=new Float32Array(left.length*2);
+    planar.set(left,0);planar.set(right,left.length);
+    const data=new AudioData({format:'f32-planar',sampleRate:48000,numberOfFrames:left.length,numberOfChannels:2,timestamp:Math.round(serverAt*1000),data:planar});
+    broadcast.encoder.encode(data);
+    data.close();
+  };
+  const flush=async()=>{
+    if(liveBroadcast!==broadcast||!pending.length)return;
+    const chunks=pending.splice(0,pending.length);
+    try{
+      await api(`/api/admin/audio-live/${encodeURIComponent(session)}/audio`,{method:'POST',body:JSON.stringify({chunks})});
+      broadcast.sent+=chunks.length;
+    }catch(error){
+      broadcast.failed+=chunks.length;
+      if(error.status===404&&liveBroadcast===broadcast)void stopLiveBroadcast(false).then(render);
     }
-    if(liveBroadcast===broadcast&&$('live-listeners'))$('live-listeners').textContent=`${peers.size} screen(s) connected`;
+  };
+  broadcast.timer=setInterval(()=>void flush(),200);
+  broadcast.events=new EventSource(`/api/admin/audio-live/${encodeURIComponent(session)}/events`);
+  broadcast.events.onmessage=event=>{
+    const message=JSON.parse(event.data);
+    if(message.type==='ended'){if(liveBroadcast===broadcast)void stopLiveBroadcast(false).then(render);return;}
+    if(message.type==='join')listeners.add(message.from);
+    if(message.type==='leave')listeners.delete(message.from);
+    if($('live-listeners'))$('live-listeners').textContent=`${listeners.size} screen(s) listening`;
   };
   stream.getAudioTracks().forEach(track=>track.addEventListener('ended',()=>{if(liveBroadcast===broadcast)void stopLiveBroadcast(true).then(render);}));
   // A small level meter so you can see sound is being picked up.
-  try{
-    const context=new AudioContext();
-    const analyser=context.createAnalyser();
-    analyser.fftSize=512;
-    context.createMediaStreamSource(stream).connect(analyser);
-    const samples=new Uint8Array(analyser.fftSize);
-    const draw=()=>{
-      if(liveBroadcast!==broadcast){context.close();return;}
-      analyser.getByteTimeDomainData(samples);
-      let peak=0;for(const sample of samples)peak=Math.max(peak,Math.abs(sample-128));
-      const level=$('live-level');if(level)level.style.width=`${Math.min(100,peak/128*140)}%`;
-      requestAnimationFrame(draw);
-    };
-    draw();
-  }catch{}
+  const samples=new Uint8Array(analyser.fftSize);
+  const draw=()=>{
+    if(liveBroadcast!==broadcast)return;
+    analyser.getByteTimeDomainData(samples);
+    let peak=0;for(const sample of samples)peak=Math.max(peak,Math.abs(sample-128));
+    const level=$('live-level');if(level)level.style.width=`${Math.min(100,peak/128*140)}%`;
+    requestAnimationFrame(draw);
+  };
+  draw();
 }
 async function stopLiveBroadcast(tellServer=true){
   const broadcast=liveBroadcast;
   if(!broadcast)return;
   liveBroadcast=null;
-  broadcast.events.close();
-  broadcast.peers.forEach(connection=>connection.close());
+  clearInterval(broadcast.timer);
+  broadcast.events?.close();
+  try{if(broadcast.encoder.state!=='closed')broadcast.encoder.close();}catch{}
   broadcast.stream.getTracks().forEach(track=>track.stop());
+  broadcast.context.close().catch(()=>{});
   if(tellServer){
     audioState=await api(`/api/admin/competitions/${encodeURIComponent(broadcast.competition)}/audio`,{method:'POST',body:JSON.stringify({action:'live-stop'})}).catch(()=>audioState);
   }
@@ -1503,10 +1521,10 @@ async function mediaPage(){
       <section class="card">
         <div class="section-title"><h2>Live audio</h2>${broadcastingHere?'<span class="badge good">Broadcasting from this browser</span>':isLive?'<span class="badge warn">Live from another browser</span>':''}</div>
         <p class="subtle" style="margin-top:0">Send this computer’s sound to the audio screens: a mixer or line-in, or a browser tab (for example Spotify in a tab). Keep this page open while you broadcast.</p>
-        ${broadcastingHere?`<div class="audio-track"><div id="live-level" class="audio-progress live"></div></div><p class="subtle" id="live-listeners">${liveBroadcast.peers.size} screen(s) connected</p><button class="danger" data-action="live-stop">Stop live audio</button>`
+        ${broadcastingHere?`<div class="audio-track"><div id="live-level" class="audio-progress live"></div></div><p class="subtle" id="live-listeners">${liveBroadcast.listeners.size} screen(s) listening</p><button class="danger" data-action="live-stop">Stop live audio</button>`
           :`<label>Sound source<select id="live-source"><option value="tab">A browser tab or screen (tick “Share audio”)</option>${devices.map(device=>`<option value="${h(device.deviceId)}">${h(device.label||'Microphone / line-in')}</option>`).join('')}${devices.some(device=>device.label)?'':'<option value="">Microphone / line-in (default)</option>'}</select></label>
           <div class="match-actions" style="margin-top:.7rem"><button class="success" data-action="live-start">Start live audio</button>${isLive?'<button class="ghost" data-action="live-stop">End the other broadcast</button>':''}</div>`}
-        <p class="subtle" style="margin-bottom:0">Starting live audio pauses the playlist. Screens on other networks may need a STUN/TURN server (WEBRTC_ICE_SERVERS).</p>
+        <p class="subtle" style="margin-bottom:0">Starting live audio pauses the playlist. Sound goes through the server, so screens on any network can listen; they play it about a second after it is captured, all at the same moment.</p>
       </section>
     </div>
     <section class="card">

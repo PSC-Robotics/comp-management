@@ -3,7 +3,6 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { PoolClient } from 'pg';
 import { z } from 'zod';
 import { adminEmail, requireAdmin } from '../auth/sessions.js';
-import { iceServers } from '../config.js';
 import { audit } from '../db/audit.js';
 import { pool, transaction } from '../db/pool.js';
 import {
@@ -11,7 +10,7 @@ import {
 } from '../domain/audio.js';
 import {
   attachBroadcaster, attachListener, createLiveSession, endLiveSession, listenerCount,
-  liveSessionCompetition, sendToBroadcaster, sendToListener
+  liveSessionCompetition, relayAudio
 } from '../services/audio-live.js';
 import { notifyChange } from '../services/changes.js';
 import { findCompetition } from '../services/competitions.js';
@@ -66,7 +65,7 @@ async function audioState(competitionId: string) {
     startedAt: row.started_at ? row.started_at.getTime() : null,
     pausedPositionMs: Number(row.paused_position_ms),
     tracks: tracks.map((track) => ({ ...track, url: `/media/${track.id}` })),
-    live: row.mode === 'live' && row.live_session ? { session: row.live_session, iceServers: iceServers() } : null,
+    live: row.mode === 'live' && row.live_session ? { session: row.live_session } : null,
     serverTime: Date.now()
   };
 }
@@ -139,11 +138,6 @@ function openEventStream(request: FastifyRequest, reply: FastifyReply) {
   return { send, onClose: (closer: () => void) => closers.push(closer), end: () => { response.end(); close(); } };
 }
 
-const signalBody = z.object({
-  type: z.enum(['offer', 'answer', 'candidate']),
-  sdp: z.string().max(30_000).optional(),
-  candidate: z.record(z.string(), z.unknown()).nullable().optional()
-});
 const listenerIdSchema = z.string().regex(/^[A-Za-z0-9_-]{8,64}$/);
 
 export function registerMediaRoutes(app: FastifyInstance): void {
@@ -413,11 +407,17 @@ export function registerMediaRoutes(app: FastifyInstance): void {
     stream.onClose(detach);
   });
 
-  app.post('/api/admin/audio-live/:session/signal', { preHandler: requireAdmin, bodyLimit: 64 * 1024 }, async (request, reply) => {
+  // The broadcaster posts Opus chunks (stamped with their capture time on the server clock) a few
+  // times a second; they go straight out to every listening screen.
+  app.post('/api/admin/audio-live/:session/audio', { preHandler: requireAdmin, bodyLimit: 512 * 1024 }, async (request, reply) => {
     const { session } = z.object({ session: z.string().max(100) }).parse(request.params);
-    const body = signalBody.extend({ to: listenerIdSchema }).parse(request.body);
-    const { to, ...message } = body;
-    if (!sendToListener(session, to, message)) return reply.code(404).send({ error: 'That screen is no longer listening' });
+    const { chunks } = z.object({
+      chunks: z.array(z.object({
+        t: z.number().finite(),
+        d: z.string().max(16_384).regex(/^[A-Za-z0-9+/]*={0,2}$/)
+      })).min(1).max(100)
+    }).parse(request.body);
+    if (!relayAudio(session, chunks)) return reply.code(404).send({ error: 'This live broadcast has ended' });
     return reply.code(204).send();
   });
 
@@ -431,12 +431,4 @@ export function registerMediaRoutes(app: FastifyInstance): void {
     stream.onClose(detach);
   });
 
-  app.post('/api/public/audio-live/:session/signal', { bodyLimit: 64 * 1024 }, async (request, reply) => {
-    const { session } = z.object({ session: z.string().max(100) }).parse(request.params);
-    const body = signalBody.extend({ from: listenerIdSchema }).parse(request.body);
-    const { from, ...message } = body;
-    if (message.type === 'offer') return reply.code(400).send({ error: 'Screens cannot send offers' });
-    if (!sendToBroadcaster(session, from, message)) return reply.code(404).send({ error: 'The broadcaster is not connected' });
-    return reply.code(204).send();
-  });
 }
