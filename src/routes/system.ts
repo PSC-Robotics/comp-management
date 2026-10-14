@@ -22,24 +22,25 @@ export function registerSystemRoutes(app: FastifyInstance): void {
     return { serverTime: Date.now() };
   });
 
+  // Scripts the pages load by URL: always revalidated, so a deploy never leaves a stale copy running.
   app.get('/assets/clock-sync.js', async (_request, reply) => reply
     .type('application/javascript; charset=utf-8')
-    .header('cache-control', 'public, max-age=300')
+    .header('cache-control', 'no-cache')
     .send(clockSyncScript));
 
   app.get('/assets/audio-capture-worklet.js', async (_request, reply) => reply
     .type('application/javascript; charset=utf-8')
-    .header('cache-control', 'public, max-age=300')
+    .header('cache-control', 'no-cache')
     .send(captureWorkletSource));
 
   app.get('/assets/audio-broadcast-worker.js', async (_request, reply) => reply
     .type('application/javascript; charset=utf-8')
-    .header('cache-control', 'public, max-age=300')
+    .header('cache-control', 'no-cache')
     .send(broadcastWorkerSource));
 
   app.get('/', async (_request, reply) => {
     const html = await readFile(join(publicDir, 'index.html'), 'utf8');
-    return reply.type('text/html; charset=utf-8').send(html);
+    return reply.type('text/html; charset=utf-8').header('cache-control', 'no-cache').send(html);
   });
 
   // Branding images (logo, favicon). Plain file names only, so nothing outside public/assets is reachable.

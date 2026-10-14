@@ -115,7 +115,7 @@ export function beepScript(config: { volume: number }): string {
 
 /**
  * Plays the competition's audio: the shared playlist (every screen works out the same track
- * and position from server time and corrects drift) or a live WebRTC broadcast.
+ * and position from server time and corrects drift) or live sound relayed through the server.
  */
 export function audioPlayerScript(config: { stateUrl: string; volume: number; speakerDelayMs: number }): string {
   return String.raw`(function(cfg){

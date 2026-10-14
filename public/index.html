@@ -1395,15 +1395,19 @@ async function startLiveBroadcast(source){
     stream=await navigator.mediaDevices.getUserMedia({audio:source?{...audioConstraints,deviceId:{exact:source}}:audioConstraints});
   }
   const context=new AudioContext({sampleRate:48000,latencyHint:'interactive'});
-  try{await context.audioWorklet.addModule('/assets/audio-capture-worklet.js');}
-  catch(error){stream.getTracks().forEach(track=>track.stop());context.close();throw error;}
+  try{
+    await context.audioWorklet.addModule(`/assets/audio-capture-worklet.js?v=${Date.now()}`);
+    // The audio engine must be running before its clock can be tied to the server clock.
+    await context.resume();
+    if(context.state!=='running')throw new Error('The browser did not start audio capture. Click Start live audio again.');
+  }catch(error){stream.getTracks().forEach(track=>track.stop());context.close();throw error;}
   const competition=slug();
   let state;
   try{state=await api(`/api/admin/competitions/${encodeURIComponent(competition)}/audio`,{method:'POST',body:JSON.stringify({action:'live-start'})});}
   catch(error){stream.getTracks().forEach(track=>track.stop());context.close();throw error;}
   const session=state.live.session;
   const listeners=new Set();
-  const worker=new Worker('/assets/audio-broadcast-worker.js');
+  const worker=new Worker(`/assets/audio-broadcast-worker.js?v=${Date.now()}`);
   const broadcast={session,competition,stream,context,listeners,health:new Map(),worker,events:null,timer:null,sent:0,failed:0,delayMs:null};
   liveBroadcast=broadcast;
   audioState=state;
@@ -1433,6 +1437,12 @@ async function startLiveBroadcast(source){
     worker.postMessage({type:'anchor',anchor:anchor()});
     worker.postMessage({type:'stats'});
   },2000);
+  // Never fail silently: if nothing has gone out after a few seconds, say so and stop.
+  setTimeout(()=>{
+    if(liveBroadcast!==broadcast||broadcast.sent>0)return;
+    notify('No sound is being sent. Reload this page and start live audio again; if it keeps happening, check the sound source is playing.',true);
+    void stopLiveBroadcast(true).then(render);
+  },8000);
   broadcast.events=new EventSource(`/api/admin/audio-live/${encodeURIComponent(session)}/events`);
   broadcast.events.onmessage=event=>{
     const message=JSON.parse(event.data);
