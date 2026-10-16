@@ -6,7 +6,7 @@ import { adminEmail, requireAdmin } from '../auth/sessions.js';
 import { audit } from '../db/audit.js';
 import { pool, transaction } from '../db/pool.js';
 import { renderBracketDiagram } from '../domain/bracket-diagram.js';
-import { buildPlayoffPlan, buildPlayoffSeedRanks, findDecisivePlayoffTies, playoffDependencies, playoffFormats, playoffSeedSnapshotMatchesRanks, playoffStages, rankPlayoffScores, summarisePlayoffLosses, validateTieBreakOrder } from '../domain/playoffs.js';
+import { buildCustomPlayoffPlan, buildPlayoffPlan, buildPlayoffSeedRanks, findDecisivePlayoffTies, playoffDependencies, playoffFormats, playoffSeedSnapshotMatchesRanks, playoffStages, rankPlayoffScores, summarisePlayoffLosses, validateTieBreakOrder } from '../domain/playoffs.js';
 import { calculateDelayReduction, planPlayoffHeatTimes } from '../domain/scheduler.js';
 import { escapeHtml } from '../lib/html.js';
 import { findCompetition } from '../services/competitions.js';
@@ -108,11 +108,15 @@ export function registerPlayoffRoutes(app: FastifyInstance): void {
     const query = z.object({
       fieldSize: z.coerce.number().int().min(2).max(256),
       format: z.enum(playoffFormats).default('double-elimination'),
-      finalSize: z.coerce.number().int().min(2).max(4).default(4),
-      finalByes: z.coerce.number().int().min(0).max(3).default(0)
+      finalSize: z.coerce.number().int().min(2).max(4).optional(),
+      finalByes: z.coerce.number().int().min(0).max(3).default(0),
+      heatSize: z.coerce.number().int().min(2).max(4).default(4)
     }).parse(request.query);
     try {
-      const plan = buildPlayoffPlan(query.fieldSize, query);
+      const plan = buildPlayoffPlan(query.fieldSize, {
+        format: query.format, finalByes: query.finalByes, heatSize: query.heatSize,
+        finalSize: query.finalSize ?? query.heatSize
+      });
       const stages = playoffStages(plan);
       const number = new Map(plan.map((match, index) => [match.key, index + 1]));
       return {
@@ -133,6 +137,37 @@ export function registerPlayoffRoutes(app: FastifyInstance): void {
       };
     } catch (error) {
       if (error instanceof RangeError) return reply.code(400).send({ error: error.message });
+      throw error;
+    }
+  });
+
+  // Live check and diagram for the custom playoff builder (nothing is saved).
+  app.post('/api/admin/competitions/:slug/playoffs/custom-preview', { preHandler: requireAdmin }, async (request, reply) => {
+    const { slug } = z.object({ slug: z.string() }).parse(request.params);
+    const { heats } = z.object({
+      heats: z.array(z.object({
+        key: z.string().regex(/^[A-Za-z0-9-]{1,40}$/),
+        side: z.enum(['upper', 'lower', 'final']),
+        sources: z.array(z.string().max(60)).min(0).max(4)
+      })).max(64)
+    }).parse(request.body);
+    const competition = await findCompetition(pool, slug);
+    if (!competition) return reply.code(404).send({ error: 'Competition not found' });
+    try {
+      const custom = buildCustomPlayoffPlan(heats, competition.match_size);
+      const number = new Map(custom.plan.map((match, index) => [match.key, index + 1]));
+      return {
+        valid: true,
+        fieldSize: custom.fieldSize,
+        // Builder heat id -> heat number it will get, in playing order.
+        numbers: Object.fromEntries(custom.order.map((key, index) => [key, index + 1])),
+        diagram: renderBracketDiagram(custom.plan.map((match) => ({
+          id: match.key, number: number.get(match.key)!, side: match.side, sources: [...match.sources],
+          advancing: match.side === 'final' ? null : match.advancing
+        })), { format: 'custom' })
+      };
+    } catch (error) {
+      if (error instanceof RangeError) return { valid: false, error: error.message };
       throw error;
     }
   });
@@ -236,9 +271,19 @@ export function registerPlayoffRoutes(app: FastifyInstance): void {
   app.post('/api/admin/competitions/:slug/playoffs', { preHandler: requireAdmin }, async (request, reply) => {
     const { slug } = z.object({ slug: z.string() }).parse(request.params);
     const body = z.object({
-      fieldSize: z.number().int().min(2),
-      format: z.enum(playoffFormats).default('double-elimination'),
-      finalSize: z.number().int().min(2).max(4).default(4),
+      fieldSize: z.number().int().min(2).optional(),
+      format: z.enum([...playoffFormats, 'custom']).default('double-elimination'),
+      // Custom bracket from the playoff builder: the heats and where each slot's team comes from.
+      heats: z.array(z.object({
+        key: z.string().regex(/^[A-Za-z0-9-]{1,40}$/),
+        side: z.enum(['upper', 'lower', 'final']),
+        sources: z.array(z.string().max(60)).min(2).max(4),
+        // Manual scheduling: this heat's start and arena (otherwise heats are timed automatically).
+        start: z.string().datetime({ offset: true }).optional(),
+        arenaName: z.string().trim().min(1).max(80).optional()
+      })).max(64).optional(),
+      scheduleMode: z.enum(['auto', 'manual']).default('auto'),
+      finalSize: z.number().int().min(2).max(4).optional(),
       finalByes: z.number().int().min(0).max(3).default(0),
       replaceExisting: z.boolean().default(false),
       scheduledStart: z.string().datetime({ offset: true }).optional(),
@@ -248,17 +293,41 @@ export function registerPlayoffRoutes(app: FastifyInstance): void {
       arenaNames: z.array(z.string().trim().min(1).max(80)).min(1).max(8).optional()
     }).parse(request.body);
     const arenaNames = [...new Set(body.arenaNames ?? [body.arenaName])];
+    const competition = await findCompetition(pool, slug);
+    if (!competition) return reply.code(404).send({ error: 'Competition not found' });
+    // Heats hold as many teams as a match in this competition.
+    const heatSize = competition.match_size;
+    let finalSize = body.finalSize ?? heatSize;
+    let fieldSize = body.fieldSize ?? 0;
     let plan: ReturnType<typeof buildPlayoffPlan>;
+    // Manual times for custom brackets, by plan key.
+    const manualTimes = new Map<string, { start: Date; arenaName: string }>();
     try {
-      plan = buildPlayoffPlan(body.fieldSize, {
-        format: body.format, finalSize: body.finalSize, finalByes: body.finalByes
-      });
+      if (body.format === 'custom') {
+        if (!body.heats?.length) return reply.code(400).send({ error: 'Add heats to the custom bracket first' });
+        const custom = buildCustomPlayoffPlan(body.heats, heatSize);
+        plan = custom.plan;
+        fieldSize = custom.fieldSize;
+        finalSize = plan.at(-1)!.sources.filter((source) => source !== 'bye').length;
+        if (body.scheduleMode === 'manual') {
+          for (const [index, key] of custom.order.entries()) {
+            const heat = body.heats.find((candidate) => candidate.key === key)!;
+            if (!heat.start) return reply.code(400).send({ error: `Give heat ${index + 1} a start time, or schedule automatically` });
+            const start = new Date(heat.start);
+            if (start.getTime() <= Date.now()) return reply.code(400).send({ error: `Heat ${index + 1} must start in the future` });
+            manualTimes.set(plan[index]!.key, { start, arenaName: heat.arenaName ?? arenaNames[0]! });
+          }
+        }
+      } else {
+        if (!body.fieldSize) return reply.code(400).send({ error: 'Choose how many teams go into the playoffs' });
+        plan = buildPlayoffPlan(body.fieldSize, {
+          format: body.format, finalSize, finalByes: body.finalByes, heatSize
+        });
+      }
     } catch (error) {
       if (error instanceof RangeError) return reply.code(400).send({ error: error.message });
       throw error;
     }
-    const competition = await findCompetition(pool, slug);
-    if (!competition) return reply.code(404).send({ error: 'Competition not found' });
     const result = await transaction(async (client) => {
       await client.query('SELECT id FROM competitions WHERE id = $1 FOR UPDATE', [competition.id]);
       const existing = await client.query<{ id: string }>(
@@ -270,12 +339,12 @@ export function registerPlayoffRoutes(app: FastifyInstance): void {
       }
       const seedSnapshot = await fetchPlayoffSeedSnapshot(client, competition.id);
       const standings = seedSnapshot.standings;
-      if (standings.length < body.fieldSize) {
-        return { status: 400, error: `At least ${body.fieldSize} teams with standings are required` };
+      if (standings.length < fieldSize) {
+        return { status: 400, error: `At least ${fieldSize} teams with standings are required` };
       }
-      const selectedTeams = standings.slice(0, body.fieldSize);
+      const selectedTeams = standings.slice(0, fieldSize);
       const { seedRanks, seedTeams } = buildPlayoffSeedRanks(
-        selectedTeams.map((team) => team.id), body.fieldSize
+        selectedTeams.map((team) => team.id), fieldSize
       );
       const scheduleEnd = await client.query<{ last_match_end: Date | null }>(
         `SELECT max(match_end) AS last_match_end FROM (
@@ -323,9 +392,9 @@ export function registerPlayoffRoutes(app: FastifyInstance): void {
             seed_match_number, seed_snapshot_at, format, final_size, final_byes)
          VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6, $7, $8, $9, $10)`,
         [
-          bracketId, competition.id, body.fieldSize, JSON.stringify(seedRanks),
+          bracketId, competition.id, fieldSize, JSON.stringify(seedRanks),
           JSON.stringify(standings), seedSnapshot.latestScoredMatchNumber, seedSnapshot.capturedAt,
-          body.format, body.finalSize, body.finalByes
+          body.format, finalSize, body.finalByes
         ]
       );
       const ids = new Map(plan.map((match) => [match.key, randomUUID()]));
@@ -344,7 +413,10 @@ export function registerPlayoffRoutes(app: FastifyInstance): void {
       ).map((timing) => [timing.key, timing]));
       for (const [index, match] of plan.entries()) {
         const id = ids.get(match.key)!;
-        const timing = timings.get(match.key)!;
+        const manual = manualTimes.get(match.key);
+        const timing = manual
+          ? { start: manual.start.getTime(), arenaName: manual.arenaName, plannedGapSeconds: 0 }
+          : timings.get(match.key)!;
         const source = (value: string) => value.startsWith('seed:')
           ? value
           : value.replace(/:(playoff-\d+)$/, (_whole, key: string) => `:${ids.get(key)!}`);
@@ -372,9 +444,11 @@ export function registerPlayoffRoutes(app: FastifyInstance): void {
       // Moves made while first placing the bracket are part of its plan, not delays.
       await client.query('UPDATE playoff_matches SET scheduled_start = effective_start WHERE bracket_id = $1', [bracketId]);
       await audit(client, adminEmail(request), 'playoffs.generated', 'playoff_bracket', bracketId, {
-        fieldSize: body.fieldSize,
+        fieldSize,
         format: body.format,
-        finalSize: body.finalSize,
+        scheduleMode: body.format === 'custom' ? body.scheduleMode : 'auto',
+        finalSize,
+        heatSize,
         finalByes: body.finalByes,
         seededTeams: selectedTeams.map((team) => team.code),
         replacedPreviousBrackets: Boolean(existing.rowCount),

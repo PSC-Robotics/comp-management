@@ -11,6 +11,8 @@ export type SrPosition = {
 };
 
 export type SrMatchInput = {
+  /** Teams per match in this competition (2-4); the SR screens show that many corners. */
+  match_size?: number;
   match_number: number;
   arena_name: string;
   scheduled_start: Date | string;
@@ -53,8 +55,10 @@ export function toSrMatch(input: SrMatchInput): Record<string, unknown> {
     slotStart.getTime() + (input.duration_seconds + input.planned_gap_seconds) * 1000
   );
   const teams: Record<string, string | null> = {};
-  for (let position = 0; position < 4; position += 1) teams[String(position)] = null;
+  const size = input.match_size ?? 4;
+  for (let position = 0; position < size; position += 1) teams[String(position)] = null;
   for (const entry of input.positions) {
+    if (entry.position_number > size) continue;
     teams[String(entry.position_number - 1)] = entry.team_code;
   }
 

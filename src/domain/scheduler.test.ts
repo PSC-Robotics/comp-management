@@ -316,3 +316,20 @@ test('running matches occupy their arena when re-flowing the schedule', () => {
     { id: 'heat', effectiveStart: 360_000 }
   ]);
 });
+
+test('balanced schedules work for two- and three-team matches', () => {
+  const codes = ['AAA', 'BBB', 'CCC', 'DDD', 'EEE', 'FFF'];
+  for (const size of [2, 3]) {
+    const result = generateBalancedMatches(codes, 6, 42, size);
+    assert.equal(result.matches.length, 6);
+    assert.equal(result.appearancesPerTeam, (6 * size) / codes.length);
+    for (const match of result.matches) {
+      assert.equal(match.positions.length, size);
+      assert.equal(new Set(match.positions).size, size, 'no team twice in one match');
+    }
+    const appearances = new Map<string, number>();
+    for (const match of result.matches) for (const code of match.codes) appearances.set(code, (appearances.get(code) ?? 0) + 1);
+    assert.deepEqual([...new Set(appearances.values())], [result.appearancesPerTeam], 'every team plays equally often');
+  }
+  assert.throws(() => generateBalancedMatches(codes, 5, 1, 2), /equal appearances/, '5 two-team matches cannot share 6 teams evenly');
+});

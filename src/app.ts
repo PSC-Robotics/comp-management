@@ -12,6 +12,7 @@ import { registerDisplayAdminRoutes } from './routes/displays-admin.js';
 import { registerDisplayPageRoutes } from './routes/display-page.js';
 import { registerEventRoutes } from './routes/events.js';
 import { registerLiveRoutes } from './routes/live.js';
+import { registerKitRoutes } from './routes/kit.js';
 import { registerMediaRoutes } from './routes/media.js';
 import { registerPasskeyRoutes } from './routes/passkeys.js';
 import { registerPlayoffRoutes } from './routes/playoffs.js';
@@ -65,6 +66,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   registerScoreRoutes(app);
   registerPlayoffRoutes(app);
   registerMediaRoutes(app);
+  registerKitRoutes(app);
   registerAuditRoutes(app);
   registerPublicRoutes(app);
   registerDisplayPageRoutes(app);

@@ -227,7 +227,7 @@ ALTER TABLE playoff_brackets ADD COLUMN IF NOT EXISTS final_size integer NOT NUL
 ALTER TABLE playoff_brackets ADD COLUMN IF NOT EXISTS final_byes integer NOT NULL DEFAULT 0;
 ALTER TABLE playoff_brackets DROP CONSTRAINT IF EXISTS playoff_brackets_format_check;
 ALTER TABLE playoff_brackets ADD CONSTRAINT playoff_brackets_format_check
-  CHECK (format IN ('double-elimination', 'single-elimination', 'direct-final')
+  CHECK (format IN ('double-elimination', 'single-elimination', 'direct-final', 'custom')
     AND final_size BETWEEN 2 AND 4 AND final_byes >= 0 AND final_byes < final_size);
 ALTER TABLE playoff_matches ADD COLUMN IF NOT EXISTS advancing_places integer;
 ALTER TABLE playoff_matches ADD COLUMN IF NOT EXISTS countdown_restore_start timestamptz;
@@ -340,10 +340,43 @@ ALTER TABLE admin_sessions ADD COLUMN IF NOT EXISTS method text NOT NULL DEFAULT
 ALTER TABLE admin_sessions ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now();
 ALTER TABLE admin_sessions ADD COLUMN IF NOT EXISTS last_seen_at timestamptz NOT NULL DEFAULT now();
 CREATE INDEX IF NOT EXISTS admin_sessions_user_idx ON admin_sessions (user_id);
+-- Teams per match (league matches and playoff heats): two to four.
+ALTER TABLE competitions ADD COLUMN IF NOT EXISTS match_size integer NOT NULL DEFAULT 4
+  CHECK (match_size BETWEEN 2 AND 4);
 ALTER TABLE competition_settings ADD COLUMN IF NOT EXISTS staging_close_minutes integer NOT NULL DEFAULT 5
   CHECK (staging_close_minutes BETWEEN 0 AND 60);
 ALTER TABLE competition_settings ADD COLUMN IF NOT EXISTS staging_first_lead_minutes integer NOT NULL DEFAULT 10
   CHECK (staging_first_lead_minutes BETWEEN 0 AND 120);
+-- Kit lent to teams: items, and each time one is checked out and back in.
+CREATE TABLE IF NOT EXISTS kit_items (
+  id uuid PRIMARY KEY,
+  competition_id uuid NOT NULL REFERENCES competitions(id) ON DELETE CASCADE,
+  name text NOT NULL CHECK (length(trim(name)) > 0),
+  category text NOT NULL DEFAULT '',
+  asset_tag text NOT NULL DEFAULT '',
+  notes text NOT NULL DEFAULT '',
+  condition text NOT NULL DEFAULT 'good'
+    CHECK (condition IN ('good', 'worn', 'damaged', 'faulty', 'lost', 'retired')),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS kit_items_asset_tag ON kit_items (competition_id, lower(asset_tag)) WHERE asset_tag <> '';
+CREATE TABLE IF NOT EXISTS kit_loans (
+  id uuid PRIMARY KEY,
+  kit_item_id uuid NOT NULL REFERENCES kit_items(id) ON DELETE CASCADE,
+  team_id uuid NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  checked_out_at timestamptz NOT NULL DEFAULT now(),
+  checked_out_by text NOT NULL,
+  due_back_at timestamptz,
+  out_notes text NOT NULL DEFAULT '',
+  returned_at timestamptz,
+  returned_by text,
+  return_condition text CHECK (return_condition IN ('good', 'worn', 'damaged', 'faulty', 'lost')),
+  return_notes text NOT NULL DEFAULT ''
+);
+-- An item can only be out with one team at a time.
+CREATE UNIQUE INDEX IF NOT EXISTS kit_loans_one_open ON kit_loans (kit_item_id) WHERE returned_at IS NULL;
+CREATE INDEX IF NOT EXISTS kit_loans_team ON kit_loans (team_id, returned_at);
 -- Uploaded audio tracks and images (sponsor logos and the like) for displays.
 CREATE TABLE IF NOT EXISTS media_files (
   id uuid PRIMARY KEY,

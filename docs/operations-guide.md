@@ -33,7 +33,8 @@ explained in the preview and cannot be submitted.
 
 ### Heat sizes and seeding rules
 
-- Every heat has two to four robots. A round of *n* teams uses heats of four
+- Every heat has at most the competition's **teams per match** (Arena page). With two teams per match every heat is head-to-head and the winner progresses; an odd team out gets a bye to the next round.
+- With four teams per match, every heat has two to four robots. A round of *n* teams uses heats of four
   where possible; a remainder of two or three becomes a smaller heat, and a
   remainder of one becomes a 3-team plus a 2-team heat, so **no one ever gets a
   single-team bye**.
@@ -108,6 +109,21 @@ winner and the lower winner.
 
 Replacing a bracket archives the old one (its heats and playoff scores are kept
 for the audit trail but no longer shown).
+
+### Building a custom bracket
+
+Choose **Custom bracket** under *Route to the final*.
+
+1. **Add heats**: upper/knockout heats, lower-bracket heats and one final. Use − and + to set
+   how many teams a heat holds (up to the teams per match).
+2. **Fill each slot**: pick a league seed or another heat's finishing place from the list, or
+   click a heat's **1st →** (or 2nd, 3rd…) button and then click the slot it should go to.
+   Each button shows where that place goes; a place that goes nowhere is eliminated.
+3. Or **start from** single or double elimination for a number of teams and adjust it.
+4. The diagram underneath updates as you go and says what is still missing.
+5. **Schedule automatically** (uses the first heat time, gap and arenas above) or **set each
+   heat's time and arena**. Heats still move later if a feeder heat runs late.
+6. Press **Generate and schedule playoffs**. The draft stays in this browser until then.
 
 ## Handling delays
 
@@ -235,6 +251,19 @@ display, starting at 100 ms and adjusting by ear. In a screen's browser console,
 `ccAudioStatus()` shows its measured delay and buffer.
 
 Race beeps are a separate option on Timer, Arena, Corner and custom screens.
+
+## Kit
+
+**Setup → Kit** tracks equipment lent to teams.
+
+- **Add kit**: name, category, optional asset tag and how many. Several identical items are
+  numbered so each can be tracked.
+- **Check out** to a team, with an optional due-back time and notes. An item can only be with one
+  team at a time; overdue items are flagged.
+- **Check in** with the condition it came back in: good, worn, damaged, faulty, or lost if it
+  never came back. Damaged or faulty items show as *needs repair*; lost and retired items cannot be
+  lent until their condition is changed (Edit).
+- **History** shows every loan of an item; **Who has what** lists the kit each team holds.
 
 Switch competitions from the card at the top of the sidebar (it shows each
 competition's status; **Manage competitions…** opens the full list).

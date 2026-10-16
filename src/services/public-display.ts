@@ -14,11 +14,11 @@ export async function loadPublicDisplay(slug: string, panel?: { type: string; op
   const result = await pool.query<{
     display_slug: string; title: string; display_type: string; options: Record<string, unknown>;
     competition_id: string; competition_name: string; competition_slug: string; status: string;
-    theme: string; logo_data_url: string | null; competition_timezone: string;
+    theme: string; logo_data_url: string | null; competition_timezone: string; match_size: number;
   }>(
     `SELECT d.slug AS display_slug, d.title, d.display_type, d.options,
             c.id AS competition_id, c.name AS competition_name, c.slug AS competition_slug,
-            c.timezone AS competition_timezone,
+            c.timezone AS competition_timezone, c.match_size,
             c.status, coalesce(s.theme, 'paper') AS theme, s.logo_data_url
      FROM public_displays d
      JOIN competitions c ON c.id = d.competition_id
@@ -212,6 +212,11 @@ export async function loadPublicDisplay(slug: string, panel?: { type: string; op
         left.match_number - right.match_number;
     });
     const selectedMatch = displayMatches[0] ?? null;
+    // Matches have match_size positions (playoff heats are stored with four slots).
+    if (selectedMatch && Array.isArray(selectedMatch.positions)) {
+      selectedMatch.positions = (selectedMatch.positions as Array<{ position: number }>)
+        .filter((position) => Number(position.position) <= display.match_size);
+    }
     if (['schedule', 'sr-staging', 'sr-shepherding'].includes(display.display_type)) {
       const schedule = await pool.query(
         `SELECT 'match' AS item_type, m.match_number, m.arena_name, m.effective_start, m.state,
@@ -396,6 +401,7 @@ export async function loadPublicDisplay(slug: string, panel?: { type: string; op
     competition: display.competition_name,
     competitionSlug: display.competition_slug,
     competitionTimezone: display.competition_timezone,
+    matchSize: display.match_size,
     theme: display.theme,
     logoDataUrl: display.logo_data_url,
     options,

@@ -63,6 +63,8 @@ type Placed = DiagramHeat & {
  */
 export function renderBracketDiagram(heats: DiagramHeat[], options: DiagramOptions = {}): string {
   if (!heats.length) return '';
+  // Upper/lower wording whenever the bracket has a lower half (double elimination or a custom bracket).
+  const twoSided = options.format === 'double-elimination' || heats.some((heat) => heat.side === 'lower');
   const stages = playoffStages(heats.map((heat) => ({ key: heat.id, sources: heat.sources })));
   const numberById = new Map(heats.map((heat) => [heat.id, heat.number]));
   const eliminated = new Set(options.eliminated ?? []);
@@ -151,7 +153,7 @@ export function renderBracketDiagram(heats: DiagramHeat[], options: DiagramOptio
   }
 
   const sideLabel = (side: BracketSide) => side === 'final' ? 'Final'
-    : side === 'lower' ? 'Lower' : options.format === 'double-elimination' ? 'Upper' : 'Knockout';
+    : side === 'lower' ? 'Lower' : twoSided ? 'Upper' : 'Knockout';
   const describe = (source: string) => {
     if (source.startsWith('seed:')) return `Seed ${source.slice(5)}`;
     const match = /^place:(\d):(.+)$/.exec(source);
@@ -166,7 +168,7 @@ export function renderBracketDiagram(heats: DiagramHeat[], options: DiagramOptio
       ? heat.results.map((result, index) => {
         const outcome = heat.side === 'final' ? (index === 0 ? 'champion' : 'placed')
           : index < (heat.advancing ?? 0) ? 'advance'
-            : eliminated.has(result.team) ? 'out' : heat.side === 'upper' && options.format === 'double-elimination' ? 'drop' : 'out';
+            : eliminated.has(result.team) ? 'out' : heat.side === 'upper' && twoSided ? 'drop' : 'out';
         return { label: `${index + 1}. ${result.team}`, detail: `${result.points}`, kind: outcome, code: true };
       })
       : entrants.map((entry) => entry.team
@@ -191,7 +193,7 @@ export function renderBracketDiagram(heats: DiagramHeat[], options: DiagramOptio
   }).join('');
 
   const labels = hasLower
-    ? `<text class="bd-band" x="${MARGIN}" y="${upperTop - 8}">${escapeXml(options.format === 'double-elimination' ? 'UPPER BRACKET' : 'KNOCKOUT')}</text>`
+    ? `<text class="bd-band" x="${MARGIN}" y="${upperTop - 8}">${escapeXml(twoSided ? 'UPPER BRACKET' : 'KNOCKOUT')}</text>`
       + `<line class="bd-divider" x1="${MARGIN}" x2="${width - MARGIN}" y1="${upperBottom + BAND_GAP / 2}" y2="${upperBottom + BAND_GAP / 2}"/>`
       + `<text class="bd-band" x="${MARGIN}" y="${lowerTop - 8}">LOWER BRACKET</text>`
     : '';

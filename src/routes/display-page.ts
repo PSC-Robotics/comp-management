@@ -61,6 +61,8 @@ function sendDisplayPage(reply: FastifyReply, display: LoadedDisplay, options: D
       ? 'background:#edf3ec;color:#18332b;border-color:#adc4b4'
       : 'background:#fffefa;color:#17242b;border-color:#c9ceca';
   const data = display.data as Array<Record<string, unknown>> | Record<string, unknown> | null;
+  // Positions in a match (competition setting: two to four teams).
+  const spots = Array.from({ length: display.matchSize }, (_, index) => index);
   let content = '';
   if (display.type === 'league') {
     const rows = (Array.isArray(data) ? data : []).map((team, index) =>
@@ -72,7 +74,7 @@ function sendDisplayPage(reply: FastifyReply, display: LoadedDisplay, options: D
   } else if (display.type === 'results') {
     const rows = (Array.isArray(data) ? data : []).map((match) => {
       const scores = Array.isArray(match.scores) ? match.scores as Array<Record<string, unknown>> : [];
-      const positions = Array.from({ length: 4 }, (_, index) =>
+      const positions = spots.map((index) =>
         scores.find((score) => Number(score.position) === index + 1)
       );
       const cells = positions.map((score) => score
@@ -81,7 +83,7 @@ function sendDisplayPage(reply: FastifyReply, display: LoadedDisplay, options: D
       return `<tr><th scope="row">${escapeHtml(match.match_type)} ${escapeHtml(match.match_number)}</th><td>${escapeHtml(formatCompetitionDateTime(String(match.effective_start), display.competitionTimezone))}</td><td>${escapeHtml(match.arena_name)}</td>${cells}</tr>`;
     }).join('');
     content = rows
-      ? `<table><thead><tr><th>Match</th><th>Time</th><th>Arena</th>${[0,1,2,3].map((position) => `<th><span class="long-label">Position </span><span class="short-label">P</span>${position}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table>`
+      ? `<table><thead><tr><th>Match</th><th>Time</th><th>Arena</th>${spots.map((position) => `<th><span class="long-label">Position </span><span class="short-label">P</span>${position}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table>`
       : '<p class="empty-board">No completed matches yet. Scores appear here as matches finish.</p>';
   } else if (display.type === 'schedule') {
     const showArena = options.showArena && !options.hideScheduleArena;
@@ -116,10 +118,10 @@ function sendDisplayPage(reply: FastifyReply, display: LoadedDisplay, options: D
       const teams = Array.isArray(match.teams) ? match.teams as Array<Record<string, unknown>> : [];
       if (match.item_type === 'event') {
         const event = teams[0] ?? {};
-        return `<tr data-schedule-event="true"><td colspan="${showArena ? 8 : 7}"><strong>${timeContent(match.effective_start)} · ${escapeHtml(event.title)}</strong>${showArena ? ` · ${escapeHtml(event.location || '—')}` : ''} · ${escapeHtml(event.durationMinutes)} minutes${event.description ? ` · ${escapeHtml(event.description)}` : ''}</td></tr>`;
+        return `<tr data-schedule-event="true"><td colspan="${spots.length + (showArena ? 4 : 3)}"><strong>${timeContent(match.effective_start)} · ${escapeHtml(event.title)}</strong>${showArena ? ` · ${escapeHtml(event.location || '—')}` : ''} · ${escapeHtml(event.durationMinutes)} minutes${event.description ? ` · ${escapeHtml(event.description)}` : ''}</td></tr>`;
       }
       const teamCodes = teams.map((team) => String(team.code ?? '')).filter(Boolean);
-      const positions = [0, 1, 2, 3].map((spot) =>
+      const positions = spots.map((spot) =>
         teams.find((team) => Number(team.position) === spot + 1)
       );
       const positionCells = positions.map((team, index) => {
@@ -131,20 +133,20 @@ function sendDisplayPage(reply: FastifyReply, display: LoadedDisplay, options: D
       const expectedTeams = Number(match.entrant_count ?? match.team_count);
       const lateMinutes = minutesLate(match);
       const status = statusLabel(match, lateMinutes);
-      const fillStatus = `${match.is_playoff ? '<span class="tag">Playoff</span> ' : ''}${escapeHtml(status)}${expectedTeams < 4
-        ? ` <strong class="warning">${escapeHtml(expectedTeams)}/4 TEAM HEAT</strong>` : ''}`;
+      const fillStatus = `${match.is_playoff ? '<span class="tag">Playoff</span> ' : ''}${escapeHtml(status)}${expectedTeams < display.matchSize
+        ? ` <strong class="warning">${escapeHtml(expectedTeams)}/${display.matchSize} TEAM HEAT</strong>` : ''}`;
       const wasTime = lateMinutes > 0 && !options.relativeTime && !['complete', 'running', 'paused', 'awaiting_score'].includes(String(match.state))
         ? `<s class="muted">${escapeHtml(formatCompetitionTime(new Date(String(match.scheduled_start)), display.competitionTimezone))}</s> `
         : '';
       const rowState = ['running', 'paused'].includes(String(match.state)) || match.countdown_started_at
         ? ' class="row-live"' : match === nextUp ? ' class="row-next"' : String(match.state) === 'complete' ? ' class="row-done"' : '';
-      const mobileStatus = status === 'Scheduled' && expectedTeams >= 4
+      const mobileStatus = status === 'Scheduled' && expectedTeams >= display.matchSize
         ? (match.is_playoff ? '<span class="tag">Playoff</span>' : '')
         : fillStatus;
       return `<tr${rowState} data-team-codes="${escapeHtml(teamCodes.join(','))}"><td><strong>${escapeHtml(match.match_number)}</strong>${showArena ? `<div class="mobile-only muted">${escapeHtml(match.arena_name)}</div>` : ''}</td>${showArena ? `<td class="arena-col">${escapeHtml(match.arena_name)}</td>` : ''}<td>${wasTime}${timeContent(match.effective_start)}${mobileStatus ? `<div class="mobile-status">${mobileStatus}</div>` : ''}</td>${positionCells}<td class="status-cell">${fillStatus}</td></tr>`;
     }).join('');
     content = rows
-      ? `${behindBanner}<table><thead><tr><th>Match</th>${showArena ? '<th class="arena-col">Arena</th>' : ''}<th>${options.relativeTime ? 'Starts in / elapsed' : 'Time'}</th>${[0, 1, 2, 3].map((position) => `<th><span class="long-label">Position </span><span class="short-label">P</span>${position}</th>`).join('')}<th class="status-cell">Status</th></tr></thead><tbody>${rows}</tbody></table>`
+      ? `${behindBanner}<table><thead><tr><th>Match</th>${showArena ? '<th class="arena-col">Arena</th>' : ''}<th>${options.relativeTime ? 'Starts in / elapsed' : 'Time'}</th>${spots.map((position) => `<th><span class="long-label">Position </span><span class="short-label">P</span>${position}</th>`).join('')}<th class="status-cell">Status</th></tr></thead><tbody>${rows}</tbody></table>`
       : '<p class="empty-board">Nothing scheduled yet.</p>';
     if (options.enableTeamFilter) {
       const teams = new Map<string, string>();
@@ -185,7 +187,7 @@ function sendDisplayPage(reply: FastifyReply, display: LoadedDisplay, options: D
     const heats = Array.isArray(bracket.heats) ? bracket.heats as Array<Record<string, unknown>> : [];
     const eliminated = new Set(Array.isArray(bracket.eliminated) ? bracket.eliminated.map(String) : []);
     const sideLabel = (side: unknown) => side === 'final' ? 'Final' : side === 'lower' ? 'Lower bracket'
-      : bracket.format === 'double-elimination' ? 'Upper bracket' : 'Knockout';
+      : bracket.format === 'double-elimination' || heats.some((heat) => heat.bracket_side === 'lower') ? 'Upper bracket' : 'Knockout';
     const ordinalPlace = (place: string) => `${place}${({ '1': 'st', '2': 'nd', '3': 'rd' } as Record<string, string>)[place] ?? 'th'}`;
     const describe = (source: string) => source.startsWith('seed:')
       ? `Seed ${source.slice(5)}`
@@ -261,6 +263,7 @@ function sendDisplayPage(reply: FastifyReply, display: LoadedDisplay, options: D
       .empty-board{text-align:center;margin-top:3rem;opacity:.7}
       ${liveTimerDisplay ? '' : '@media(min-width:1200px){html{font-size:clamp(16px,1.25vw,34px)}main,.board-footer{max-width:72rem}}'}
       .arena-square{width:min(100%,640px);aspect-ratio:1;margin:1.5rem auto;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:3px;background:currentColor;border:3px solid currentColor}
+      .arena-square[data-size="2"]{aspect-ratio:2/1;grid-template-rows:1fr}.arena-square[data-size="2"] .arena-cell{grid-row:1!important}.arena-square[data-size="2"] .arena-cell[data-spot="0"]{grid-column:1!important}.arena-square[data-size="2"] .arena-cell[data-spot="1"]{grid-column:2!important}
       .arena-cell{min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:clamp(.4rem,2vw,1.2rem);border:6px solid}
       .arena-cell[data-spot="1"],.arena-cell[data-spot="2"]{grid-row:1}.arena-cell[data-spot="0"],.arena-cell[data-spot="3"]{grid-row:2}
       .arena-cell[data-spot="1"],.arena-cell[data-spot="0"]{grid-column:1}.arena-cell[data-spot="2"],.arena-cell[data-spot="3"]{grid-column:2}
@@ -277,6 +280,7 @@ function sendDisplayPage(reply: FastifyReply, display: LoadedDisplay, options: D
       body.timer-board #timer-state,body.timer-board #timer-label{margin:.1rem 0;font-size:clamp(.7rem,1.6vh,1rem)}
       body.timer-board #timer-display{font-size:clamp(2rem,min(16vh,14vw),12rem);padding:0;line-height:.95}
       body.timer-board #timer-arena{width:min(100%,70dvh);height:auto;max-width:100%;max-height:100%;aspect-ratio:1;margin:0 auto;min-height:0}
+      body.timer-board #timer-arena[data-size="2"]{aspect-ratio:2/1;width:min(100%,140dvh)}body.arena-board #timer-arena[data-size="2"]{width:min(100%,160dvh)}
       body.timer-board .arena-cell{padding:clamp(.15rem,1vh,.8rem);border-width:clamp(2px,.6vh,6px)}
       body.timer-board .arena-spot{top:50%;left:50%;transform:translate(-50%,-50%);font-size:clamp(4rem,min(24vw,24vh),14rem);opacity:.24}
       body.timer-board .arena-code{font-size:clamp(1.25rem,5vh,3.5rem);margin:.15rem 0}
@@ -383,12 +387,14 @@ function sendDisplayPage(reply: FastifyReply, display: LoadedDisplay, options: D
       const displayDarkTheme=${JSON.stringify(darkTheme)};
       const countdownPreparationMs=${MATCH_COUNTDOWN_PREPARATION_SECONDS * 1000};
       const countdownTotalMs=${MATCH_COUNTDOWN_TOTAL_SECONDS * 1000};
+      const matchSize=${JSON.stringify(display.matchSize)};
       let currentMatch=null,serverOffset=0;
       let bestClockRoundTrip=Infinity;
       let syncing=false;
       const renderArena=positions=>{
         if(!arenaNode)return;
         arenaNode.replaceChildren();
+        arenaNode.dataset.size=String(matchSize);
         for(const position of positions||[]){
           const cell=document.createElement('div');
           cell.className='arena-cell';
@@ -585,8 +591,8 @@ function sendDisplayPage(reply: FastifyReply, display: LoadedDisplay, options: D
             ?'Match '+currentMatch.match_number+(displayOptions.showArena?' · '+currentMatch.arena_name:'')
             :'No upcoming match';
           if(stateNode)stateNode.textContent=currentMatch?String(currentMatch.state).replaceAll('_',' ').toUpperCase():'';
-          if(warningNode)warningNode.textContent=currentMatch&&Number(currentMatch.team_count)<4
-            ?'UNDERFILLED MATCH · '+currentMatch.team_count+'/4 POSITIONS':'';
+          if(warningNode)warningNode.textContent=currentMatch&&Number(currentMatch.team_count)<matchSize
+            ?'UNDERFILLED MATCH · '+currentMatch.team_count+'/'+matchSize+' POSITIONS':'';
           renderArena(currentMatch&&currentMatch.positions);
           if(connectionNode){connectionNode.textContent='Live · synchronized '+new Date(payload.updatedAt).toLocaleTimeString();connectionNode.style.color='';}
           renderClock();

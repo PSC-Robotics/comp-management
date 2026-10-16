@@ -131,16 +131,20 @@ export function registerScheduleRoutes(app: FastifyInstance): void {
       seed: z.number().int().nonnegative().max(0xffffffff).optional(),
       positions: z.array(z.object({
         label: z.string().trim().min(1).max(80)
-      })).length(4)
+      })).min(2).max(4)
     }).parse(request.body);
     if (new Set(body.arenas).size !== body.arenas.length) {
       return reply.code(400).send({ error: 'Arena names must be unique' });
     }
-    if (new Set(body.positions.map((position) => position.label)).size !== 4) {
+    if (new Set(body.positions.map((position) => position.label)).size !== body.positions.length) {
       return reply.code(400).send({ error: 'Corner labels must be unique' });
     }
     const competition = await findCompetition(pool, slug);
     if (!competition) return reply.code(404).send({ error: 'Competition not found' });
+    const matchSize = competition.match_size;
+    if (body.positions.length !== matchSize) {
+      return reply.code(400).send({ error: `This competition has ${matchSize} teams per match; give ${matchSize} position labels` });
+    }
     const durationSeconds = body.durationSeconds ?? competition.match_duration_seconds;
     if (body.intervalSeconds < durationSeconds) {
       return reply.code(400).send({ error: 'Start-to-start interval must be at least as long as the match duration' });
@@ -150,11 +154,11 @@ export function registerScheduleRoutes(app: FastifyInstance): void {
       [competition.id]
     );
     const teamCodes = roster.rows.map((team) => team.code);
-    if (teamCodes.length < 4) {
-      return reply.code(422).send({ error: 'At least four active teams are required for a balanced full-match schedule' });
+    if (teamCodes.length < matchSize) {
+      return reply.code(422).send({ error: `At least ${matchSize} active teams are required for a balanced full-match schedule` });
     }
-    if ((body.matchCount * 4) % teamCodes.length !== 0) {
-      const step = teamCodes.length / greatestCommonDivisor(teamCodes.length, 4);
+    if ((body.matchCount * matchSize) % teamCodes.length !== 0) {
+      const step = teamCodes.length / greatestCommonDivisor(teamCodes.length, matchSize);
       const suggestedMatchCount = Math.ceil(body.matchCount / step) * step;
       return reply.code(422).send({
         error: `Equal appearances are impossible with ${body.matchCount} matches and ${teamCodes.length} teams`,
@@ -162,7 +166,7 @@ export function registerScheduleRoutes(app: FastifyInstance): void {
       });
     }
     const seed = body.seed ?? randomBytes(4).readUInt32BE(0);
-    const schedule = generateBalancedMatches(teamCodes, body.matchCount, seed);
+    const schedule = generateBalancedMatches(teamCodes, body.matchCount, seed, matchSize);
     const waveAssignments = assignMatchesToWaves(schedule.matches, body.arenas.length);
     const waveCount = Math.max(...waveAssignments.map((assignment) => assignment.wave)) + 1;
     const result = await transaction(async (client) => {
@@ -201,7 +205,7 @@ export function registerScheduleRoutes(app: FastifyInstance): void {
             body.intervalSeconds - durationSeconds
           ]
         );
-        for (let position = 0; position < 4; position += 1) {
+        for (let position = 0; position < matchSize; position += 1) {
           await client.query(
             `INSERT INTO match_positions (match_id, position_number, position_label, colour, team_id)
              VALUES ($1, $2, $3, $4, $5)`,
@@ -290,7 +294,7 @@ export function registerScheduleRoutes(app: FastifyInstance): void {
        ORDER BY pm.effective_start, pm.match_number`,
       [competition.id, ...cornerColours]
     );
-    const leagueMatches = result.rows.map((match) => ({ ...match, underfilled: Number(match.team_count) < 4 }));
+    const leagueMatches = result.rows.map((match) => ({ ...match, underfilled: Number(match.team_count) < competition.match_size }));
     const playoffMatches = playoffs.rows.map((match) => ({
       ...match,
       state: match.schedule_state === 'complete' ? 'complete'
@@ -321,15 +325,19 @@ export function registerScheduleRoutes(app: FastifyInstance): void {
         number: z.number().int().min(1).max(4),
         label: z.string().trim().min(1).max(80),
         teamCode: z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/).optional()
-      })).length(4),
+      })).min(2).max(4),
     }).parse(request.body);
     const competition = await findCompetition(pool, slug);
     if (!competition) return reply.code(404).send({ error: 'Competition not found' });
+    const matchSize = competition.match_size;
     const numbers = new Set(body.positions.map((position) => position.number));
-    if (numbers.size !== 4) return reply.code(400).send({ error: 'Each arena position 1–4 must appear exactly once' });
+    if (body.positions.length !== matchSize || numbers.size !== matchSize ||
+        body.positions.some((position) => position.number > matchSize)) {
+      return reply.code(400).send({ error: `Each arena position 1–${matchSize} must appear exactly once` });
+    }
     const assigned = body.positions.filter((position) => position.teamCode);
-    if (assigned.length < 4 && !body.underfilledReason) {
-      return reply.code(400).send({ error: 'Matches with fewer than four teams require an underfilled reason' });
+    if (assigned.length < matchSize && !body.underfilledReason) {
+      return reply.code(400).send({ error: `Matches with fewer than ${matchSize} teams require an underfilled reason` });
     }
 
     const matchId = randomUUID();
@@ -343,7 +351,7 @@ export function registerScheduleRoutes(app: FastifyInstance): void {
          VALUES ($1, $2, $3, $4, $5, $5, $6, 'manual', 'scheduled', $7, $8)`,
         [matchId, competition.id, body.matchNumber, body.arenaName, body.scheduledStart,
           body.durationSeconds ?? competition.match_duration_seconds,
-          assigned.length < 4 ? adminEmail(request) : null, body.underfilledReason ?? null]
+          assigned.length < matchSize ? adminEmail(request) : null, body.underfilledReason ?? null]
       );
       for (const position of body.positions) {
         let teamId: string | null = null;
@@ -374,7 +382,7 @@ export function registerScheduleRoutes(app: FastifyInstance): void {
     });
     return reply.code(201).send({
       id: matchId, matchNumber: body.matchNumber, teamCount: assigned.length,
-      underfilled: assigned.length < 4, shiftedMatchIds
+      underfilled: assigned.length < matchSize, shiftedMatchIds
     });
   });
 
@@ -388,23 +396,26 @@ export function registerScheduleRoutes(app: FastifyInstance): void {
         number: z.number().int().min(1).max(4),
         label: z.string().trim().min(1).max(80),
         teamCode: z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/).optional()
-      })).length(4)
+      })).min(2).max(4)
     }).parse(request.body);
-    if (new Set(body.positions.map((position) => position.number)).size !== 4) {
-      return reply.code(400).send({ error: 'Each arena position must appear exactly once' });
-    }
     const assigned = body.positions.filter((position) => position.teamCode);
     if (assigned.length === 0) return reply.code(400).send({ error: 'A match must have at least one team' });
-    if (assigned.length < 4 && !body.underfilledReason) {
-      return reply.code(400).send({ error: 'Matches with fewer than four teams require an underfilled reason' });
-    }
     const outcome = await transaction(async (client) => {
-      const initial = await client.query<{ competition_id: string }>(
-        'SELECT competition_id FROM matches WHERE id = $1',
+      const initial = await client.query<{ competition_id: string; match_size: number }>(
+        'SELECT m.competition_id, c.match_size FROM matches m JOIN competitions c ON c.id = m.competition_id WHERE m.id = $1',
         [matchId]
       );
       if (!initial.rows[0]) return { status: 404, error: 'Match not found' };
       const competitionId = initial.rows[0].competition_id;
+      const matchSize = initial.rows[0].match_size;
+      if (body.positions.length !== matchSize ||
+          new Set(body.positions.map((position) => position.number)).size !== matchSize ||
+          body.positions.some((position) => position.number > matchSize)) {
+        return { status: 400, error: `Each arena position 1–${matchSize} must appear exactly once` };
+      }
+      if (assigned.length < matchSize && !body.underfilledReason) {
+        return { status: 400, error: `Matches with fewer than ${matchSize} teams require an underfilled reason` };
+      }
       await client.query('SELECT id FROM competitions WHERE id = $1 FOR UPDATE', [competitionId]);
       const locked = await client.query<{
         state: string; match_number: number; duration_seconds: number; planned_gap_seconds: number;
@@ -441,12 +452,12 @@ export function registerScheduleRoutes(app: FastifyInstance): void {
         `UPDATE matches SET arena_name = $2, scheduled_start = $3, effective_start = $4,
            start_mode = 'manual', countdown_started_at = NULL,
            state = CASE WHEN $5::int > 0 THEN 'delayed' ELSE 'scheduled' END,
-           underfilled_acknowledged_by = CASE WHEN $6::int < 4 THEN $7 ELSE NULL END,
+           underfilled_acknowledged_by = CASE WHEN $6::boolean THEN $7 ELSE NULL END,
            underfilled_reason = $8, revision = revision + 1
          WHERE id = $1`,
         [matchId, body.arenaName, scheduledStart, effectiveStart,
-          delayTotal.rows[0]!.seconds, assigned.length, adminEmail(request),
-          assigned.length < 4 ? body.underfilledReason : null]
+          delayTotal.rows[0]!.seconds, assigned.length < matchSize, adminEmail(request),
+          assigned.length < matchSize ? body.underfilledReason : null]
       );
       await client.query('DELETE FROM match_positions WHERE match_id = $1', [matchId]);
       for (const position of body.positions) {

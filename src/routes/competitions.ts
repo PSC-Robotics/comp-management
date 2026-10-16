@@ -10,7 +10,7 @@ import { findCompetition } from '../services/competitions.js';
 export function registerCompetitionRoutes(app: FastifyInstance): void {
   app.get('/api/admin/competitions', { preHandler: requireAdmin }, async () => {
     const result = await pool.query(
-      `SELECT c.id, c.name, c.slug, c.status, c.timezone, c.match_duration_seconds,
+      `SELECT c.id, c.name, c.slug, c.status, c.timezone, c.match_duration_seconds, c.match_size,
               (SELECT count(*)::int FROM teams t WHERE t.competition_id = c.id AND t.active) AS team_count,
               (SELECT count(*)::int FROM matches m WHERE m.competition_id = c.id) AS match_count,
               (SELECT count(*)::int FROM challenges ch WHERE ch.competition_id = c.id) AS challenge_count,
@@ -27,14 +27,15 @@ export function registerCompetitionRoutes(app: FastifyInstance): void {
       name: z.string().trim().min(1).max(120),
       slug: z.string().trim().toLowerCase().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).max(80),
       timezone: z.string().trim().min(1).max(80).default('UTC'),
-      matchDurationSeconds: z.number().int().min(1).max(7200).default(120)
+      matchDurationSeconds: z.number().int().min(1).max(7200).default(120),
+      matchSize: z.number().int().min(2).max(4).default(4)
     }).parse(request.body);
     const id = randomUUID();
     await transaction(async (client) => {
       await client.query(
-        `INSERT INTO competitions (id, name, slug, timezone, match_duration_seconds)
-         VALUES ($1, $2, $3, $4, $5)`,
-        [id, body.name, body.slug, body.timezone, body.matchDurationSeconds]
+        `INSERT INTO competitions (id, name, slug, timezone, match_duration_seconds, match_size)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [id, body.name, body.slug, body.timezone, body.matchDurationSeconds, body.matchSize]
       );
       await audit(client, adminEmail(request), 'competition.created', 'competition', id, body);
     });
@@ -185,6 +186,32 @@ export function registerCompetitionRoutes(app: FastifyInstance): void {
     return { ok: true, cornerColours: body.cornerColours };
   });
 
+
+  // Teams per match. Changing it would leave existing matches with the wrong number of places, so
+  // it can only change before any league match or playoff bracket exists.
+  app.put('/api/admin/competitions/:slug/match-size', { preHandler: requireAdmin }, async (request, reply) => {
+    const { slug } = z.object({ slug: z.string() }).parse(request.params);
+    const { matchSize } = z.object({ matchSize: z.number().int().min(2).max(4) }).parse(request.body);
+    const competition = await findCompetition(pool, slug);
+    if (!competition) return reply.code(404).send({ error: 'Competition not found' });
+    const outcome = await transaction(async (client) => {
+      await client.query('SELECT id FROM competitions WHERE id = $1 FOR UPDATE', [competition.id]);
+      const used = await client.query(
+        `SELECT 1 FROM matches WHERE competition_id = $1
+         UNION ALL SELECT 1 FROM playoff_brackets WHERE competition_id = $1 AND status <> 'replaced' LIMIT 1`,
+        [competition.id]
+      );
+      if (used.rowCount && matchSize !== competition.match_size) {
+        return { status: 409, error: 'Matches or a playoff bracket already exist. Clear matches on the Schedule page before changing teams per match.' };
+      }
+      await client.query('UPDATE competitions SET match_size = $2 WHERE id = $1', [competition.id, matchSize]);
+      await audit(client, adminEmail(request), 'competition.match_size_updated', 'competition', competition.id, {
+        from: competition.match_size, to: matchSize
+      });
+      return { status: 200, matchSize };
+    });
+    return reply.code(outcome.status).send(outcome);
+  });
 
   app.put('/api/admin/competitions/:slug/staging-settings', { preHandler: requireAdmin }, async (request, reply) => {
     const { slug } = z.object({ slug: z.string() }).parse(request.params);

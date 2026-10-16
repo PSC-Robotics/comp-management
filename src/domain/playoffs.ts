@@ -9,6 +9,8 @@ export type PlayoffPlanOptions = {
   finalSize?: number;
   /** Top league seeds that skip the knockout rounds and go straight to the final. */
   finalByes?: number;
+  /** Most teams in any heat: the competition's teams per match (2-4). */
+  heatSize?: number;
 };
 
 export type PlannedPlayoffMatch = {
@@ -81,19 +83,26 @@ export function rankPlayoffScores(
 }
 
 /**
- * Splits a round into heats of four where possible. A remainder of one is
- * never left as a bye: the last full heat and the single team become 3 + 2.
+ * Splits a round into heats of `heatSize` where possible. A remainder of one is
+ * never a heat on its own: with heats of three or four the last full heat and the
+ * single team are split into two smaller heats (4+1 → 3+2, 3+1 → 2+2). Heats of
+ * two cannot be split, so the odd team out is left for planRound to pass through.
  */
-export function playoffHeatSizes(entrantCount: number): number[] {
+export function playoffHeatSizes(entrantCount: number, heatSize = 4): number[] {
   if (!Number.isInteger(entrantCount) || entrantCount < 2) {
     throw new RangeError('A playoff round needs at least two entrants');
   }
-  if (entrantCount <= 4) return [entrantCount];
-  const fullHeats = Math.floor(entrantCount / 4);
-  const remainder = entrantCount % 4;
-  if (remainder === 0) return Array<number>(fullHeats).fill(4);
-  if (remainder >= 2) return [...Array<number>(fullHeats).fill(4), remainder];
-  return [...Array<number>(fullHeats - 1).fill(4), 3, 2];
+  if (!Number.isInteger(heatSize) || heatSize < 2 || heatSize > 4) {
+    throw new RangeError('Heats must have two to four teams');
+  }
+  if (entrantCount <= heatSize) return [entrantCount];
+  const fullHeats = Math.floor(entrantCount / heatSize);
+  const remainder = entrantCount % heatSize;
+  if (remainder === 0) return Array<number>(fullHeats).fill(heatSize);
+  if (remainder >= 2) return [...Array<number>(fullHeats).fill(heatSize), remainder];
+  if (heatSize === 2) return Array<number>(fullHeats).fill(2);
+  const joined = heatSize + 1;
+  return [...Array<number>(fullHeats - 1).fill(heatSize), Math.ceil(joined / 2), Math.floor(joined / 2)];
 }
 
 type PlannedEntrant = {
@@ -147,14 +156,18 @@ function distributeEntrants(entrants: PlannedEntrant[], sizes: number[]): Planne
  */
 export function buildPlayoffPlan(teamCount: number, options: PlayoffPlanOptions = {}): PlannedPlayoffMatch[] {
   const format = options.format ?? 'double-elimination';
-  const finalSize = options.finalSize ?? 4;
+  const heatSize = options.heatSize ?? 4;
+  const finalSize = options.finalSize ?? heatSize;
   const finalByes = options.finalByes ?? 0;
+  if (!Number.isInteger(heatSize) || heatSize < 2 || heatSize > 4) {
+    throw new RangeError('Heats must have two to four teams');
+  }
   if (!Number.isInteger(teamCount) || teamCount < 2) {
     throw new RangeError('A playoff needs at least two teams');
   }
   if (!playoffFormats.includes(format)) throw new RangeError(`Unknown playoff format: ${format}`);
-  if (!Number.isInteger(finalSize) || finalSize < 2 || finalSize > 4) {
-    throw new RangeError('The final must have two to four teams');
+  if (!Number.isInteger(finalSize) || finalSize < 2 || finalSize > heatSize) {
+    throw new RangeError(`The final must have two to ${heatSize} teams`);
   }
   if (!Number.isInteger(finalByes) || finalByes < 0 || finalByes >= finalSize) {
     throw new RangeError('Final byes must leave at least one final place to be earned');
@@ -200,15 +213,23 @@ export function buildPlayoffPlan(teamCount: number, options: PlayoffPlanOptions 
   const planRound = (
     entrants: PlannedEntrant[], side: BracketSide, round: number, target: number
   ): { advancing: PlannedEntrant[]; losing: PlannedEntrant[] } => {
-    const sizes = playoffHeatSizes(entrants.length);
+    const sizes = playoffHeatSizes(entrants.length, heatSize);
+    const seated = sizes.reduce((sum, size) => sum + size, 0);
+    if (seated < entrants.length) {
+      // Heats of two with an odd number of entrants: the strongest gets a bye this round.
+      const ordered = [...entrants].sort((left, right) => left.strength - right.strength);
+      const passing = ordered.slice(0, entrants.length - seated);
+      const played = planRound(ordered.slice(entrants.length - seated), side, round, Math.max(1, target - passing.length));
+      return { advancing: [...passing, ...played.advancing], losing: played.losing };
+    }
     const eliminations = entrants.length - target;
     if (eliminations < sizes.length) {
       // Too few places to lose for a full round (e.g. five teams into a four-team
       // final): the weakest entrants play one heat and the strongest pass through.
       const ordered = [...entrants].sort((left, right) => left.strength - right.strength);
-      const heatSize = Math.min(4, entrants.length);
-      const passing = ordered.slice(0, entrants.length - heatSize);
-      const played = planRound(ordered.slice(entrants.length - heatSize), side, round, heatSize - eliminations);
+      const playing = Math.min(heatSize, entrants.length);
+      const passing = ordered.slice(0, entrants.length - playing);
+      const played = planRound(ordered.slice(entrants.length - playing), side, round, playing - eliminations);
       return { advancing: [...passing, ...played.advancing], losing: played.losing };
     }
     const heats = distributeEntrants(entrants, sizes);
@@ -430,4 +451,112 @@ export function validateTieBreakOrder(
     }
   }
   return null;
+}
+
+/** One heat as drawn in the custom playoff builder. */
+export type CustomPlayoffHeat = {
+  /** The builder's own id for the heat (letters, digits and dashes). */
+  key: string;
+  side: BracketSide;
+  /** Where each slot's team comes from: `seed:N` or `place:P:<key of another heat>`. */
+  sources: string[];
+};
+
+/**
+ * Checks a hand-drawn bracket and turns it into a playoff plan: every league seed 1..N is used
+ * exactly once, each finishing place feeds at most one slot, heats have two to `heatSize`
+ * entrants, there are no loops, and exactly one final that feeds nothing. Heats come back in
+ * playing order (feeders first) with plan keys, and each heat's advancing places are the
+ * finishing places that go on to a non-lower heat (the rest drop to the lower bracket or out).
+ */
+export function buildCustomPlayoffPlan(
+  heats: CustomPlayoffHeat[], heatSize = 4
+): { plan: PlannedPlayoffMatch[]; fieldSize: number; order: string[] } {
+  if (!heats.length || heats.length > 64) throw new RangeError('A custom bracket needs between one and 64 heats');
+  const byKey = new Map<string, CustomPlayoffHeat>();
+  for (const heat of heats) {
+    if (!/^[A-Za-z0-9-]{1,40}$/.test(heat.key)) throw new RangeError('Heat ids may only use letters, digits and dashes');
+    if (byKey.has(heat.key)) throw new RangeError(`Heat ${heat.key} appears twice`);
+    byKey.set(heat.key, heat);
+  }
+  const finals = heats.filter((heat) => heat.side === 'final');
+  if (finals.length !== 1) throw new RangeError('Mark exactly one heat as the final');
+  const seeds = new Set<number>();
+  const usedPlaces = new Set<string>();
+  const label = (key: string) => `heat ${heats.findIndex((heat) => heat.key === key) + 1}`;
+  for (const heat of heats) {
+    if (heat.sources.length < 2 || heat.sources.length > heatSize) {
+      throw new RangeError(`${label(heat.key)} needs two to ${heatSize} teams`);
+    }
+    for (const source of heat.sources) {
+      const seed = /^seed:(\d{1,3})$/.exec(source);
+      const place = /^place:([1-4]):([A-Za-z0-9-]{1,40})$/.exec(source);
+      if (seed) {
+        const rank = Number(seed[1]);
+        if (rank < 1) throw new RangeError('Seeds start at 1');
+        if (seeds.has(rank)) throw new RangeError(`Seed ${rank} is used more than once`);
+        seeds.add(rank);
+      } else if (place) {
+        const feeder = byKey.get(place[2]!);
+        if (!feeder) throw new RangeError(`${label(heat.key)} takes a place from a heat that does not exist`);
+        if (feeder.key === heat.key) throw new RangeError(`${label(heat.key)} cannot feed itself`);
+        if (feeder.side === 'final') throw new RangeError('The final cannot feed another heat');
+        if (Number(place[1]) > feeder.sources.length) {
+          throw new RangeError(`${label(feeder.key)} has only ${feeder.sources.length} teams, so it has no place ${place[1]}`);
+        }
+        if (usedPlaces.has(`${place[1]}:${feeder.key}`)) {
+          throw new RangeError(`Place ${place[1]} of ${label(feeder.key)} is sent to more than one slot`);
+        }
+        usedPlaces.add(`${place[1]}:${feeder.key}`);
+      } else {
+        throw new RangeError(`${label(heat.key)} has a slot with no team source`);
+      }
+    }
+  }
+  const fieldSize = seeds.size;
+  if (fieldSize < 2) throw new RangeError('A bracket needs at least two league seeds');
+  for (let rank = 1; rank <= fieldSize; rank += 1) {
+    if (!seeds.has(rank)) throw new RangeError(`Seeds must run from 1 to ${fieldSize} with none skipped (seed ${rank} is missing)`);
+  }
+  // Playing order: a heat comes after every heat that feeds it (and loops are refused).
+  const order: string[] = [];
+  const state = new Map<string, 'visiting' | 'done'>();
+  const visit = (key: string) => {
+    if (state.get(key) === 'done') return;
+    if (state.get(key) === 'visiting') throw new RangeError('The bracket has a loop: a heat feeds into itself through other heats');
+    state.set(key, 'visiting');
+    for (const source of byKey.get(key)!.sources) {
+      const place = /^place:[1-4]:(.+)$/.exec(source);
+      if (place) visit(place[1]!);
+    }
+    state.set(key, 'done');
+    order.push(key);
+  };
+  for (const heat of heats) visit(heat.key);
+  // The final is played last.
+  const finalKey = finals[0]!.key;
+  order.splice(order.indexOf(finalKey), 1);
+  order.push(finalKey);
+  const planKey = new Map(order.map((key, index) => [key, `playoff-${index + 1}`]));
+  const stages = playoffStages(heats.map((heat) => ({ key: heat.key, sources: heat.sources })));
+  const plan = order.map((key) => {
+    const heat = byKey.get(key)!;
+    const sources = heat.sources.map((source) =>
+      source.replace(/^place:([1-4]):(.+)$/, (_whole, place: string, feeder: string) => `place:${place}:${planKey.get(feeder)}`));
+    const padded = [...sources, ...Array<string>(4 - sources.length).fill('bye')];
+    // Places that carry on along the winning path (into upper heats or the final).
+    let advancing = 0;
+    for (let place = 1; place <= heat.sources.length; place += 1) {
+      const target = heats.find((other) => other.sources.includes(`place:${place}:${key}`));
+      if (target && (target.side !== 'lower' || heat.side === 'lower')) advancing = place; else break;
+    }
+    return {
+      key: planKey.get(key)!,
+      side: heat.side,
+      round: stages.get(key) ?? 1,
+      sources: [padded[0]!, padded[1]!, padded[2]!, padded[3]!] as [string, string, string, string],
+      advancing: heat.side === 'final' ? 0 : Math.max(1, advancing)
+    };
+  });
+  return { plan, fieldSize, order };
 }

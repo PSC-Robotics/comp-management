@@ -105,6 +105,30 @@
     .image-choice span { font-size: .75rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .custom-area-row { display: flex; flex-wrap: wrap; gap: .4rem 1rem; padding: .5rem .8rem; margin: 0 0 .5rem; }
     .custom-area-row legend { font-weight: 700; color: var(--ink); padding: 0 .3rem; }
+    .builder-toolbar { display: flex; flex-wrap: wrap; gap: .5rem; align-items: end; }
+    .builder-spacer { flex: 1; }
+    .builder-inline { display: flex; align-items: center; gap: .35rem; font-size: .8rem; }
+    .builder-inline input { width: 4.5rem; }
+    .builder-heats { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: .75rem; margin-top: .8rem; }
+    .builder-heat { border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: var(--radius-sm); background: var(--surface); padding: .6rem .7rem; display: grid; gap: .45rem; }
+    .builder-heat.side-lower { border-left-color: var(--warn); }
+    .builder-heat.side-final { border-left-color: var(--good); }
+    .builder-heat header { display: flex; align-items: center; gap: .4rem; flex-wrap: wrap; }
+    .builder-heat header select { width: auto; min-height: 30px; padding: .2rem .4rem; font-size: .8rem; }
+    .builder-heat header .ghost { padding: .15rem .45rem; min-height: 0; }
+    .builder-count { display: inline-flex; align-items: center; gap: .25rem; font-size: .8rem; color: var(--muted); margin-left: auto; }
+    .builder-slots { list-style: none; margin: 0; padding: 0; display: grid; gap: .3rem; }
+    .builder-slots li { display: grid; grid-template-columns: 1fr; gap: .2rem; }
+    .builder-slot { justify-content: flex-start; background: var(--raised); color: var(--ink); border: 1px solid var(--line); font-weight: 650; min-height: 32px; padding: .3rem .55rem; }
+    .builder-slot.empty { color: var(--muted); border-style: dashed; }
+    .builder-slot.target { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+    .builder-slots select { min-height: 30px; font-size: .78rem; padding: .2rem .4rem; }
+    .builder-outputs { display: flex; flex-wrap: wrap; gap: .3rem; }
+    .builder-out { background: transparent; color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line)); font-size: .76rem; padding: .2rem .5rem; min-height: 0; }
+    .builder-out.out { color: var(--muted); border-color: var(--line); }
+    .builder-out.active { background: var(--accent); color: #fff; }
+    .builder-times { display: grid; grid-template-columns: 1fr 1fr; gap: .4rem; }
+    .builder-schedule { display: grid; gap: .3rem; margin: .9rem 0 .6rem; }
     .comp-switcher { position: relative; }
     .comp-switcher-button { width: 100%; justify-content: flex-start; gap: .55rem; padding: .55rem .65rem; background: var(--nav-hover); color: #fff; border: 1px solid #263042; border-radius: 9px; text-align: left; font-weight: 600; }
     .comp-switcher-button:hover { filter: none; border-color: #3a4760; }
@@ -237,6 +261,10 @@
     .score-row input { text-align: right; font: 700 1rem var(--mono); }
 
     /* Arena diagram */
+    .arena-square[data-size="2"] { aspect-ratio: 2 / 1; grid-template-rows: 1fr; }
+    .arena-square[data-size="2"] .arena-cell { grid-row: 1 !important; }
+    .arena-square[data-size="2"] .arena-cell[data-spot="0"] { grid-column: 1 !important; }
+    .arena-square[data-size="2"] .arena-cell[data-spot="1"] { grid-column: 2 !important; }
     .arena-square { width: min(100%, 520px); aspect-ratio: 1; margin: 1rem auto; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 3px; background: var(--ink); border: 3px solid var(--ink); border-radius: 6px; overflow: hidden; }
     .arena-cell { position: relative; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: clamp(.4rem, 2vw, 1.2rem); border: 5px solid; }
     .arena-cell[data-spot="1"], .arena-cell[data-spot="2"] { grid-row: 1; }
@@ -446,6 +474,15 @@
       </div>
     </form>
   </dialog>
+  <dialog id="kit-dialog">
+    <form id="kit-dialog-form">
+      <h2 id="kit-dialog-title">Kit</h2>
+      <div id="kit-dialog-body"></div>
+      <div class="actions" style="justify-content:flex-end;margin-top:1rem">
+        <button type="button" class="secondary" data-close="kit-dialog">Close</button><button id="kit-dialog-submit">Save</button>
+      </div>
+    </form>
+  </dialog>
   <dialog id="display-config-dialog">
     <form id="display-config-form">
       <h2>Configure public display</h2>
@@ -514,10 +551,10 @@
       <div class="form-grid cols-3">
         <label>Arena<input name="arenaName" maxlength="80" required></label>
         <label>Scheduled start<input name="scheduledStart" type="datetime-local" required></label>
-        <label>Position 0<select name="team1"></select></label>
-        <label>Position 1<select name="team2"></select></label>
-        <label>Position 2<select name="team3"></select></label>
-        <label>Position 3<select name="team4"></select></label>
+        <label data-position="1">Position 0<select name="team1"></select></label>
+        <label data-position="2">Position 1<select name="team2"></select></label>
+        <label data-position="3">Position 2<select name="team3"></select></label>
+        <label data-position="4">Position 3<select name="team4"></select></label>
         <label class="wide">Underfilled reason<input name="underfilledReason" maxlength="500"></label>
       </div>
       <div class="actions" style="justify-content:flex-end;margin-top:1rem">
@@ -588,6 +625,7 @@ const ICONS={
   challenges:'<path d="M5 21V4M5 4h11l-2 4 2 4H5"/>',
   arena:'<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M12 3v18M3 12h18"/>',
   displays:'<rect x="2.5" y="4" width="19" height="13" rx="2"/><path d="M8 21h8M12 17v4"/>',
+  kit:'<path d="M4 8h16v11a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"/><path d="M9 8V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3M4 12h16"/>',
   media:'<path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/>',
   league:'<path d="M5 20V10M12 20V4M19 20v-7"/>',
   competitions:'<path d="M12 3 2.5 8 12 13l9.5-5z"/><path d="m2.5 13 9.5 5 9.5-5"/>',
@@ -598,7 +636,7 @@ const ICONS={
 const NAV=[
   ['Event day',[['overview','Overview'],['matches','Live control'],['scores','Scores'],['media','Audio & media']]],
   ['Schedule',[['schedule','Schedule'],['playoffs','Playoffs']]],
-  ['Setup',[['teams','Teams'],['challenges','Challenges'],['arena','Arena'],['displays','Displays']]],
+  ['Setup',[['teams','Teams'],['challenges','Challenges'],['arena','Arena'],['kit','Kit'],['displays','Displays']]],
   ['Results',[['league','League table']]],
   ['Admin',[['competitions','Competitions'],['settings','Settings'],['access','Access & passkeys'],['activity','Activity']]]
 ];
@@ -726,6 +764,9 @@ function setPage(next) {
   render().catch(showError);
 }
 function compOption() { return competitions.find((c) => c.slug === slug()); }
+// Teams per match in the selected competition (2-4), and their position numbers (0-based).
+function matchSize() { return Number(compOption()?.match_size) || 4; }
+function spots() { return Array.from({ length: matchSize() }, (_, index) => index); }
 async function loadCore() {
   competitions = await api('/api/admin/competitions');
   renderCompetitionOptions();
@@ -794,6 +835,7 @@ function competitionsPage() {
         <label>Competition name<input name="name" maxlength="120" required></label>
         <label>URL slug<input name="slug" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" maxlength="80" required></label>
         <label>Match duration (seconds)<input name="matchDurationSeconds" type="number" value="120" min="1" max="7200" required></label>
+        <label>Teams per match<select name="matchSize"><option value="4" selected>4 teams</option><option value="3">3 teams</option><option value="2">2 teams (head-to-head)</option></select></label>
         <div class="wide"><button>Create competition</button></div>
       </form></section>
       <section class="card"><div class="metric">${competitions.length}</div><div class="metric-label">Competition instances</div>${compOption()?`<p style="margin-top:1rem"><strong>Selected:</strong> ${h(compOption().name)}</p>`:'<p class="subtle" style="margin-top:1rem">No competition selected.</p>'}</section>
@@ -801,7 +843,7 @@ function competitionsPage() {
     <section class="card" style="margin-top:1rem"><h2>Competition instances</h2>${table(['Competition','Status','Teams','Matches','Challenges',''],rows,'Create a competition to get started.')}</section>`;
 }
 function positionsHtml(match) {
-  return `<div class="arena-square">${(match.positions || []).map(p=>{
+  return `<div class="arena-square" data-size="${matchSize()}">${(match.positions || []).map(p=>{
     const spot=Number(p.position)-1;
     return `<div class="arena-cell" data-spot="${spot}" style="border-color:${h(p.colour)};background-color:color-mix(in srgb, ${h(p.colour)} 18%, var(--surface))">
       <span class="arena-spot">${spot}</span>${p.teamCode?`<span class="arena-code">${h(p.teamCode)}</span><span class="arena-team">${h(p.teamName)}</span>`:'<span class="arena-code vacant">VACANT</span>'}
@@ -836,7 +878,7 @@ function matchRows(source=matches, actions=false, edit=false) {
       :actions?`<td><div class="match-actions">${['scheduled','ready','delayed'].includes(m.state)?`<button data-action="${m.countdown_started_at?'cancel-start':'start'}" data-id="${h(m.id)}">${m.countdown_started_at?'Cancel countdown':'Start'}</button>`:''}${m.state==='running'?`<button class="secondary" data-action="pause" data-id="${h(m.id)}">Pause</button><button data-action="finish" data-id="${h(m.id)}">Finish</button><button class="danger" data-action="reset-match" data-id="${h(m.id)}">Reset timer</button>`:''}${m.state==='paused'?`<button class="secondary" data-action="resume" data-id="${h(m.id)}">Resume</button><button class="danger" data-action="reset-match" data-id="${h(m.id)}">Reset timer</button>`:''}${m.state==='awaiting_score'?`<button class="secondary" data-action="score" data-id="${h(m.id)}">${m.has_scores?'Correct score':'Enter score'}</button><button class="secondary" data-action="close-without-score" data-id="${h(m.id)}">No score</button><button class="danger" data-action="reset-match" data-id="${h(m.id)}">Reset timer</button>`:''}${['scheduled','ready','delayed'].includes(m.state)&&!m.countdown_started_at?`<button class="secondary" data-action="delay" data-id="${h(m.id)}">Add delay</button>${Number(m.delay_seconds)>0?`<button class="secondary" data-action="undelay" data-id="${h(m.id)}">Reduce delay</button>`:''}`:''}${m.state==='complete'?`<button class="secondary" data-action="score" data-id="${h(m.id)}">${m.has_scores?'Correct score':'Enter score'}</button>`:''}</div></td>`:'';
     const fill=m.isPlayoff
       ?`<span class="badge ${m.state==='pending'?'warn':'good'}">${h(m.team_count)}/${h(m.entrant_count)} teams assigned</span>${Number(m.delay_seconds)>0?` <span class="badge warn">Delayed by ${h(formatDelay(m.delay_seconds))}</span>`:''}`
-      :`${m.underfilled?`<span class="badge warn">UNDERFILLED ${h(m.team_count)}/4</span>`:'<span class="badge good">4 teams</span>'}${Number(m.delay_seconds)>0?` <span class="badge warn">Delayed by ${h(formatDelay(m.delay_seconds))}</span>`:''}`;
+      :`${m.underfilled?`<span class="badge warn">UNDERFILLED ${h(m.team_count)}/${matchSize()}</span>`:`<span class="badge good">${matchSize()} teams</span>`}${Number(m.delay_seconds)>0?` <span class="badge warn">Delayed by ${h(formatDelay(m.delay_seconds))}</span>`:''}`;
     return `<tr><td><strong>#${h(m.match_number)}</strong>${playoffTag}<br><span class="subtle">${h(m.arena_name)}</span></td>
       <td>${h(formatCompetitionDateTime(m.effective_start))}<br><span class="badge">${h(m.state.replaceAll('_',' '))}</span>${actions&&isDueToStart(m)?' <span class="badge warn">Due now · press Start</span>':''}${m.has_scores?` <span class="badge good">Score entered</span>`:''}${m.countdown_started_at?` <span class="badge warn" data-countdown="${h(new Date(m.countdown_started_at).getTime())}"></span>`:''}${m.actual_start?`<br><span class="match-clock" data-clock data-state="${h(m.state)}" data-start="${h(new Date(m.actual_start).getTime())}" data-paused="${h(m.paused_at?new Date(m.paused_at).getTime():'')}" data-paused-seconds="${h(m.paused_seconds)}" data-duration="${h(m.duration_seconds)}"></span>`:''}</td>
       <td>${compactPositionsHtml(m)}</td><td>${fill}</td>${edit&&!m.isPlayoff?controls:''}${actions?controls:''}</tr>`;
@@ -860,13 +902,13 @@ function scheduleMatchRow(match) {
         :match.status==='ready'?'<span class="badge">Start in Live Control to enter scores</span>':'<span class="badge">Waiting for previous results</span>';
     return `<tr><td><strong>#${h(match.match_number)}</strong><br><span class="badge warn">PLAYOFF · ${h(match.bracket_side)} ${h(match.round_number)}</span></td>
       <td>${h(formatCompetitionDateTime(match.effective_start))}<br><span class="badge">${h(match.state)}</span></td>
-      <td>${h(match.arena_name)}</td>${[0,1,2,3].map(spot=>schedulePosition(match,spot)).join('')}
-      <td>${entrantCount<4?`<span class="badge warn">${entrantCount}/4 teams · smaller heat</span>`:'<span class="badge good">4 teams</span>'}</td><td><div class="match-actions">${match.state!=='complete'?`<button class="secondary" data-action="edit-playoff-schedule" data-id="${h(match.id)}">Edit schedule</button>`:''}${result}</div></td></tr>`;
+      <td>${h(match.arena_name)}</td>${spots().map(spot=>schedulePosition(match,spot)).join('')}
+      <td>${entrantCount<matchSize()?`<span class="badge warn">${entrantCount}/${matchSize()} teams · smaller heat</span>`:`<span class="badge good">${matchSize()} teams</span>`}</td><td><div class="match-actions">${match.state!=='complete'?`<button class="secondary" data-action="edit-playoff-schedule" data-id="${h(match.id)}">Edit schedule</button>`:''}${result}</div></td></tr>`;
   }
   return `<tr><td><strong>#${h(match.match_number)}</strong><br><span class="badge">${h(match.state.replaceAll('_',' '))}</span></td>
     <td>${h(formatCompetitionDateTime(match.effective_start))}${match.countdown_started_at?`<br><span class="badge warn" data-countdown="${h(new Date(match.countdown_started_at).getTime())}"></span>`:''}</td>
-    <td>${h(match.arena_name)}</td>${[0,1,2,3].map(spot=>schedulePosition(match,spot)).join('')}
-    <td>${match.underfilled?`<span class="badge warn">UNDERFILLED ${h(match.team_count)}/4</span>`:'<span class="badge good">4 teams</span>'}</td>
+    <td>${h(match.arena_name)}</td>${spots().map(spot=>schedulePosition(match,spot)).join('')}
+    <td>${match.underfilled?`<span class="badge warn">UNDERFILLED ${h(match.team_count)}/${matchSize()}</span>`:`<span class="badge good">${matchSize()} teams</span>`}</td>
     <td><div class="match-actions">${['scheduled','ready','delayed'].includes(match.state)?`<button class="secondary" data-action="edit-schedule" data-id="${h(match.id)}">Edit</button>`:''}${!['running','paused'].includes(match.state)&&!match.countdown_started_at?`<button class="danger" data-action="delete-match" data-id="${h(match.id)}">Delete</button>`:''}</div></td></tr>`;
 }
 function positionEditor(index) {
@@ -878,25 +920,31 @@ const PLAYOFF_FORMAT_HELP={
   'direct-final':'No knockout rounds: the top league teams play a single final heat.'
 };
 function playoffFormatLabel(format) {
-  return {'double-elimination':'Double elimination','single-elimination':'Single elimination','direct-final':'Straight to the final'}[format]||format||'Double elimination';
+  return {'double-elimination':'Double elimination','single-elimination':'Single elimination','direct-final':'Straight to the final','custom':'Custom bracket'}[format]||format||'Double elimination';
 }
 function ordinal(value) {
   const number=Number(value);
   return number+(['th','st','nd','rd'][(number%100-20)%10]||['th','st','nd','rd'][number%100]||'th');
 }
 function playoffSideLabel(side,format) {
-  return side==='final'?'Final':side==='lower'?'Lower bracket':format==='double-elimination'?'Upper bracket':'Knockout';
+  return side==='final'?'Final':side==='lower'?'Lower bracket':format==='double-elimination'||format==='custom'?'Upper bracket':'Knockout';
 }
 let playoffPreviewTimer=null;
 let playoffPreviewRequest=0;
 function updatePlayoffPreview(form) {
+  const custom=form.elements.format.value==='custom';
+  form.querySelectorAll('[data-standard]').forEach(node=>node.classList.toggle('hidden',custom));
+  form.querySelectorAll('[data-custom]').forEach(node=>node.classList.toggle('hidden',!custom));
+  if(form.elements.fieldSize)form.elements.fieldSize.required=!custom;
+  if($('playoff-submit')&&custom)$('playoff-submit').disabled=false;
+  if(custom){renderPlayoffBuilder();refreshBuilderPreview();return;}
   clearTimeout(playoffPreviewTimer);
   playoffPreviewTimer=setTimeout(async()=>{
     const box=$('playoff-preview');
     if(!box||!form.isConnected)return;
     const values=formData(form);
     const request=++playoffPreviewRequest;
-    const params=new URLSearchParams({fieldSize:values.fieldSize||'0',format:values.format,finalSize:values.finalSize,finalByes:values.finalByes});
+    const params=new URLSearchParams({fieldSize:values.fieldSize||'0',format:values.format,finalSize:values.finalSize,finalByes:values.finalByes,heatSize:String(matchSize())});
     try{
       const preview=await api(`/api/admin/playoff-formats/preview?${params}`);
       if(request!==playoffPreviewRequest)return;
@@ -978,7 +1026,7 @@ async function schedulePage() {
   const tabs=tabsHtml('schedule',[['timeline','Timeline',matches.length],['build','Build schedule'],['events','Timed events',scheduleEvents.length],['clear','Clear']],tab);
   let body='';
   if(tab==='timeline'){
-    body=`<section class="card"><div class="section-title"><h2>Competition schedule</h2><span class="subtle">${h(matches.filter(m=>!m.isPlayoff).length)} league · ${h(matches.filter(m=>m.isPlayoff).length)} playoff · ${h(scheduleEvents.length)} events</span></div>${table(['Match','Time / status','Arena','Position 0','Position 1','Position 2','Position 3','Fill','Actions'],scheduleRows,'No matches or events yet. Use “Build schedule” to generate one.')}</section>`;
+    body=`<section class="card"><div class="section-title"><h2>Competition schedule</h2><span class="subtle">${h(matches.filter(m=>!m.isPlayoff).length)} league · ${h(matches.filter(m=>m.isPlayoff).length)} playoff · ${h(scheduleEvents.length)} events</span></div>${table(['Match','Time / status','Arena',...spots().map(spot=>`Position ${spot}`),'Fill','Actions'],scheduleRows,'No matches or events yet. Use “Build schedule” to generate one.')}</section>`;
   }else if(tab==='build'){
     body=`<section class="card"><h2>Generate a balanced league schedule</h2><p class="subtle">Every team plays the same number of matches, opponents are spread out, and positions are balanced.</p><form id="generate-form" class="form-grid cols-3">
       <label>Number of matches<input name="matchCount" type="number" min="1" value="${Math.max(1,teams.filter(t=>t.active).length*3)}" required></label>
@@ -993,8 +1041,8 @@ async function schedulePage() {
         <label>Match number<input name="matchNumber" type="number" min="1" value="${nextNumber}" required></label>
         <label>Arena<input name="arenaName" value="Arena 1" required></label>
         <label>Scheduled start<input name="scheduledStart" type="datetime-local" value="${toLocalDate(nextStart)}" required></label>
-        ${[1,2,3,4].map(positionEditor).join('')}
-        <label class="wide">Reason for an underfilled match<input name="underfilledReason" maxlength="500" placeholder="Required when fewer than four teams are assigned"></label>
+        ${spots().map(spot=>positionEditor(spot+1)).join('')}
+        <label class="wide">Reason for an underfilled match<input name="underfilledReason" maxlength="500" placeholder="Required when fewer than ${matchSize()} teams are assigned"></label>
       </div><div style="margin-top:1rem"><button>Add match</button></div>
     </form></section>`;
   }else if(tab==='events'){
@@ -1054,21 +1102,23 @@ async function playoffsPage() {
         <a href="${seedCheckUrl}" style="display:inline-block;margin-left:.5rem">Open standings sanity check</a>
       </div>`:''}
       ${seedTieWarning}
-      <p class="subtle">Choose how teams get from the league to the final. Every heat has two to four robots; seeds are spread across first-round heats and nobody gets a single-team bye. Seeds follow the live league table until the first playoff countdown, then freeze. Ties that decide who advances are settled by the judge, and playoff points never change league standings.</p>
+      <p class="subtle">Choose how teams get from the league to the final. Every heat has up to ${matchSize()} robots (this competition's teams per match); seeds are spread across first-round heats and nobody gets a single-team bye. Seeds follow the live league table until the first playoff countdown, then freeze. Ties that decide who advances are settled by the judge, and playoff points never change league standings.</p>
       <form id="playoff-form" data-replace="${playoffData.bracket?'true':'false'}" class="form-grid cols-3">
         <label>Route to the final<select name="format">
           <option value="double-elimination">Double elimination</option>
           <option value="single-elimination">Single elimination knockout</option>
           <option value="direct-final">Straight to the final</option>
+          <option value="custom">Custom bracket (build it yourself)</option>
         </select></label>
-        <label>Playoff entrants<select name="fieldSize" ${fieldSizes.length?'':'disabled'}>${fieldSizes.map(size=>`<option value="${size}" ${size===fieldSize?'selected':''}>Top ${size} teams</option>`).join('')}</select></label>
-        <label>Teams in the final<select name="finalSize"><option value="4" selected>4 teams</option><option value="3">3 teams</option><option value="2">2 teams (head-to-head)</option></select></label>
-        <label>Top seeds straight to the final<select name="finalByes"><option value="0" selected>None</option><option value="1">League winner</option><option value="2">Top 2 seeds</option><option value="3">Top 3 seeds</option></select></label>
+        <label data-standard>Playoff entrants<select name="fieldSize" ${fieldSizes.length?'':'disabled'}>${fieldSizes.map(size=>`<option value="${size}" ${size===fieldSize?'selected':''}>Top ${size} teams</option>`).join('')}</select></label>
+        <label data-standard>Teams in the final<select name="finalSize">${[4,3,2].filter(size=>size<=matchSize()).map(size=>`<option value="${size}" ${size===matchSize()?'selected':''}>${size===2?'2 teams (head-to-head)':`${size} teams`}</option>`).join('')}</select></label>
+        <label data-standard>Top seeds straight to the final<select name="finalByes"><option value="0" selected>None</option><option value="1">League winner</option><option value="2">Top 2 seeds</option><option value="3">Top 3 seeds</option></select></label>
         <label>First playoff heat<input name="scheduledStart" type="datetime-local" value="${toLocalDate(playoffStart)}" required></label>
         <label>Arenas (comma-separated)<input name="arenaNames" value="${h(defaultArenas)}" required></label>
         <label>Minutes between heats<input name="intervalMinutes" type="number" min="${intervalMinutes}" max="1440" value="${intervalMinutes}" required></label>
         <label>Extra delay before final (minutes)<input name="finalDelayMinutes" type="number" min="0" max="1440" value="0" required></label>
-        <div class="wide preview-box subtle" id="playoff-preview" aria-live="polite">Choose options to preview the bracket.</div>
+        <div class="wide preview-box subtle" id="playoff-preview" data-standard aria-live="polite">Choose options to preview the bracket.</div>
+        <div class="wide hidden" id="playoff-builder" data-custom></div>
         <p class="subtle wide">With several arenas, independent heats run side by side; a heat never starts until the heats feeding it have finished and been scored, plus the gap. If anything runs late, later heats move automatically, keeping their gaps and the final buffer.</p>
         <div class="wide"><button id="playoff-submit" ${fieldSizes.length?'':'disabled'}>${playoffData.bracket?'Replace and reschedule':'Generate and schedule playoffs'}</button></div>
       </form>
@@ -1076,6 +1126,179 @@ async function playoffsPage() {
     </section>
 `;
 }
+// ---------- Custom playoff builder ----------
+// The draft lives in this browser (per competition) until the bracket is created.
+let playoffDraft=null;
+let playoffLink=null;
+let builderPreview={valid:false,error:'Add heats to start.',numbers:{},diagram:''};
+let builderPreviewTimer=null;
+let builderPreviewRequest=0;
+function playoffDraftKey(){return `playoffDraft:${slug()}`;}
+function loadPlayoffDraft(){
+  if(playoffDraft&&playoffDraft.slug===slug())return playoffDraft;
+  playoffDraft=null;
+  try{playoffDraft=JSON.parse(localStorage.getItem(playoffDraftKey())||'null');}catch{}
+  if(!playoffDraft||playoffDraft.slug!==slug())playoffDraft={slug:slug(),heats:[],scheduleMode:'auto',next:1};
+  return playoffDraft;
+}
+function savePlayoffDraft(){try{localStorage.setItem(playoffDraftKey(),JSON.stringify(playoffDraft));}catch{}}
+function draftHeat(key){return loadPlayoffDraft().heats.find(heat=>heat.key===key);}
+function heatName(key){const number=builderPreview.numbers?.[key];const index=loadPlayoffDraft().heats.findIndex(heat=>heat.key===key);return `Heat ${number||(index>=0?`#${index+1}`:'?')}`;}
+function sourceLabel(source){
+  if(!source)return 'Empty slot';
+  const seed=/^seed:(\d+)$/.exec(source);
+  if(seed)return `Seed ${seed[1]}`;
+  const place=/^place:(\d):(.+)$/.exec(source);
+  if(place)return `${ordinal(Number(place[1]))} of ${heatName(place[2])}`;
+  return source;
+}
+// Where a heat's finishing place goes (or "out").
+function placeTarget(key,place){
+  const source=`place:${place}:${key}`;
+  const target=loadPlayoffDraft().heats.find(heat=>heat.sources.includes(source));
+  return target?heatName(target.key):'out';
+}
+function builderSourceOptions(heat,current){
+  const teamsAvailable=Math.max(2,teams.filter(team=>team.active!==false).length);
+  const seeds=Array.from({length:teamsAvailable},(_,index)=>`seed:${index+1}`);
+  const places=loadPlayoffDraft().heats.filter(other=>other.key!==heat.key&&other.side!=='final')
+    .flatMap(other=>other.sources.map((_,index)=>`place:${index+1}:${other.key}`));
+  return `<option value="">Choose a team source…</option><optgroup label="League seeds">${seeds.map(source=>`<option value="${source}" ${source===current?'selected':''}>${h(sourceLabel(source))}</option>`).join('')}</optgroup>${places.length?`<optgroup label="Finishing places">${places.map(source=>`<option value="${h(source)}" ${source===current?'selected':''}>${h(sourceLabel(source))}</option>`).join('')}</optgroup>`:''}`;
+}
+function builderHeatHtml(heat){
+  const manual=loadPlayoffDraft().scheduleMode==='manual';
+  const linking=Boolean(playoffLink)&&playoffLink.key!==heat.key;
+  return `<article class="builder-heat side-${h(heat.side)}" data-heat-card="${h(heat.key)}">
+    <header><strong>${h(heatName(heat.key))}</strong>
+      <select data-builder="side" data-heat="${h(heat.key)}" aria-label="Bracket">${[['upper','Upper / knockout'],['lower','Lower bracket'],['final','Final']].map(([value,label])=>`<option value="${value}" ${value===heat.side?'selected':''}>${label}</option>`).join('')}</select>
+      <span class="builder-count"><button type="button" class="ghost" data-builder="slots" data-delta="-1" data-heat="${h(heat.key)}" ${heat.sources.length<=2?'disabled':''} aria-label="One team fewer">−</button>${heat.sources.length} teams<button type="button" class="ghost" data-builder="slots" data-delta="1" data-heat="${h(heat.key)}" ${heat.sources.length>=matchSize()?'disabled':''} aria-label="One team more">+</button></span>
+      <button type="button" class="ghost" data-builder="remove" data-heat="${h(heat.key)}" aria-label="Remove heat">✕</button>
+    </header>
+    <ol class="builder-slots">${heat.sources.map((source,index)=>`<li>
+      <button type="button" class="builder-slot ${source?'':'empty'} ${linking?'target':''}" data-builder="slot" data-heat="${h(heat.key)}" data-slot="${index}">${linking?'Connect here':h(sourceLabel(source))}</button>
+      <select data-builder="source" data-heat="${h(heat.key)}" data-slot="${index}" aria-label="Team source for slot ${index+1}">${builderSourceOptions(heat,source)}</select>
+    </li>`).join('')}</ol>
+    ${heat.side==='final'?'':`<div class="builder-outputs">${heat.sources.map((_,index)=>{
+      const place=index+1;
+      const active=playoffLink&&playoffLink.key===heat.key&&playoffLink.place===place;
+      const target=placeTarget(heat.key,place);
+      return `<button type="button" class="builder-out ${active?'active':''} ${target==='out'?'out':''}" data-builder="link" data-heat="${h(heat.key)}" data-place="${place}" title="Click, then click the slot this place should feed">${ordinal(place)} → ${h(target)}</button>`;
+    }).join('')}</div>`}
+    ${manual?`<div class="builder-times"><label>Start<input type="datetime-local" data-builder="start" data-heat="${h(heat.key)}" value="${h(heat.start||'')}"></label><label>Arena<input data-builder="arena" data-heat="${h(heat.key)}" value="${h(heat.arenaName||'')}" placeholder="Arena 1"></label></div>`:''}
+  </article>`;
+}
+function playoffBuilderHtml(){
+  const draft=loadPlayoffDraft();
+  const ordered=[...draft.heats].sort((left,right)=>(builderPreview.numbers?.[left.key]||999)-(builderPreview.numbers?.[right.key]||999));
+  return `<div class="builder-toolbar">
+      <button type="button" class="secondary" data-builder="add" data-side="upper">Add heat</button>
+      <button type="button" class="secondary" data-builder="add" data-side="lower">Add lower-bracket heat</button>
+      ${draft.heats.some(heat=>heat.side==='final')?'':'<button type="button" class="secondary" data-builder="add" data-side="final">Add final</button>'}
+      <span class="builder-spacer"></span>
+      <label class="builder-inline">Start from<select id="builder-template-format"><option value="single-elimination">Single elimination</option><option value="double-elimination">Double elimination</option></select></label>
+      <label class="builder-inline">with<input id="builder-template-size" type="number" min="2" max="64" value="${Math.min(8,Math.max(2,teams.filter(team=>team.active!==false).length))}"> teams</label>
+      <button type="button" class="ghost" data-builder="template">Load</button>
+      <button type="button" class="ghost" data-builder="clear" ${draft.heats.length?'':'disabled'}>Clear</button>
+    </div>
+    ${playoffLink?`<div class="callout" style="margin:.6rem 0">Connecting <strong>${h(ordinal(playoffLink.place))} of ${h(heatName(playoffLink.key))}</strong>: click the slot it should go to (Esc to cancel).</div>`:''}
+    <div class="builder-heats">${ordered.map(builderHeatHtml).join('')||'<div class="empty">No heats yet. Add heats, or start from a template and adjust it.</div>'}</div>
+    <div class="builder-schedule">
+      <label class="toggle-control"><input type="radio" name="builderSchedule" value="auto" ${draft.scheduleMode!=='manual'?'checked':''} data-builder="schedule"> Schedule automatically (uses the first heat time, gap and arenas above)</label>
+      <label class="toggle-control"><input type="radio" name="builderSchedule" value="manual" ${draft.scheduleMode==='manual'?'checked':''} data-builder="schedule"> Set each heat's time and arena myself</label>
+    </div>
+    <div id="builder-preview" class="preview-box" aria-live="polite">${builderPreview.valid?`<div class="callout good" style="margin-bottom:.5rem">Ready: ${h(builderPreview.fieldSize)} league seeds, ${draft.heats.length} heat(s).</div>`:`<div class="callout warn" style="margin-bottom:.5rem">${h(builderPreview.error||'Checking…')}</div>`}${builderPreview.diagram?`<div class="diagram-scroll">${builderPreview.diagram}</div>`:''}</div>`;
+}
+function renderPlayoffBuilder(){
+  const box=$('playoff-builder');
+  if(box)box.innerHTML=playoffBuilderHtml();
+}
+function refreshBuilderPreview(){
+  clearTimeout(builderPreviewTimer);
+  builderPreviewTimer=setTimeout(async()=>{
+    const draft=loadPlayoffDraft();
+    const request=++builderPreviewRequest;
+    try{
+      const result=await api(`/api/admin/competitions/${encodeURIComponent(slug())}/playoffs/custom-preview`,{method:'POST',body:JSON.stringify({heats:draft.heats.map(({key,side,sources})=>({key,side,sources}))})});
+      if(request!==builderPreviewRequest)return;
+      builderPreview=result.valid?result:{...builderPreview,valid:false,error:result.error,diagram:''};
+    }catch(error){builderPreview={valid:false,error:error.message,numbers:{},diagram:''};}
+    renderPlayoffBuilder();
+  },250);
+}
+function builderChanged(){savePlayoffDraft();renderPlayoffBuilder();refreshBuilderPreview();}
+function removeDraftSource(source){for(const heat of loadPlayoffDraft().heats)heat.sources=heat.sources.map(value=>value===source?'':value);}
+async function handleBuilderAction(element){
+  const draft=loadPlayoffDraft();
+  const action=element.dataset.builder;
+  const heat=element.dataset.heat?draftHeat(element.dataset.heat):null;
+  if(action==='add'){
+    const side=element.dataset.side;
+    draft.heats.push({key:`h${draft.next++}`,side,sources:Array(matchSize()).fill('')});
+  }else if(action==='remove'&&heat){
+    draft.heats=draft.heats.filter(other=>other!==heat);
+    for(const other of draft.heats)other.sources=other.sources.map(source=>source.endsWith(`:${heat.key}`)?'':source);
+    if(playoffLink?.key===heat.key)playoffLink=null;
+  }else if(action==='slots'&&heat){
+    const next=Math.max(2,Math.min(matchSize(),heat.sources.length+Number(element.dataset.delta)));
+    if(next<heat.sources.length){
+      for(let place=next+1;place<=heat.sources.length;place++)removeDraftSource(`place:${place}:${heat.key}`);
+      heat.sources=heat.sources.slice(0,next);
+    }else heat.sources=[...heat.sources,...Array(next-heat.sources.length).fill('')];
+  }else if(action==='link'&&heat){
+    const place=Number(element.dataset.place);
+    playoffLink=playoffLink&&playoffLink.key===heat.key&&playoffLink.place===place?null:{key:heat.key,place};
+    renderPlayoffBuilder();
+    return;
+  }else if(action==='slot'&&heat){
+    if(!playoffLink)return;
+    if(playoffLink.key===heat.key){notify('A heat cannot feed itself.',true);return;}
+    const source=`place:${playoffLink.place}:${playoffLink.key}`;
+    removeDraftSource(source);
+    heat.sources[Number(element.dataset.slot)]=source;
+    playoffLink=null;
+  }else if(action==='template'){
+    const format=$('builder-template-format').value;
+    const fieldSize=Number($('builder-template-size').value);
+    if(draft.heats.length&&!confirm('Replace the heats in the builder with this template?'))return;
+    const preview=await api(`/api/admin/playoff-formats/preview?${new URLSearchParams({fieldSize:String(fieldSize),format,heatSize:String(matchSize())})}`);
+    draft.heats=preview.heats.map(heat=>({key:`h${heat.number}`,side:heat.side,sources:heat.sources.map(source=>source.replace(/^place:(\d):(\d+)$/,'place:$1:h$2'))}));
+    draft.next=preview.heats.length+1;
+    playoffLink=null;
+  }else if(action==='clear'){
+    if(!confirm('Remove every heat from the builder?'))return;
+    draft.heats=[];draft.next=1;playoffLink=null;
+  }else return;
+  builderChanged();
+}
+function handleBuilderInput(element){
+  const draft=loadPlayoffDraft();
+  const heat=element.dataset.heat?draftHeat(element.dataset.heat):null;
+  const action=element.dataset.builder;
+  if(action==='source'&&heat){
+    const value=element.value;
+    if(value)removeDraftSource(value);
+    heat.sources[Number(element.dataset.slot)]=value;
+  }else if(action==='side'&&heat){
+    if(element.value==='final')for(const other of draft.heats)if(other!==heat&&other.side==='final')other.side='upper';
+    heat.side=element.value;
+    if(heat.side==='final')for(let place=1;place<=heat.sources.length;place++)removeDraftSource(`place:${place}:${heat.key}`);
+  }else if(action==='schedule'){
+    draft.scheduleMode=element.value;
+  }else if(action==='start'&&heat){
+    heat.start=element.value;savePlayoffDraft();return;
+  }else if(action==='arena'&&heat){
+    heat.arenaName=element.value;savePlayoffDraft();return;
+  }else return;
+  builderChanged();
+}
+document.addEventListener('click',event=>{
+  const element=event.target.closest('[data-builder]');
+  if(!element||!['add','remove','slots','link','slot','template','clear'].includes(element.dataset.builder))return;
+  event.preventDefault();
+  void handleBuilderAction(element).catch(showError);
+});
+document.addEventListener('change',event=>{if(event.target.dataset?.builder)handleBuilderInput(event.target);});
+document.addEventListener('keydown',event=>{if(event.key==='Escape'&&playoffLink){playoffLink=null;renderPlayoffBuilder();}});
 function toLocalDate(date) {
   return new Date(date.getTime()-date.getTimezoneOffset()*60000).toISOString().slice(0,16);
 }
@@ -1085,7 +1308,7 @@ function metricCard(value,label,icon,tone=''){
 async function overviewPage() {
   const comp=compOption();
   if(!comp)return `${heading('Welcome','Create your first competition to get started.')}
-    <section class="card" style="max-width:640px"><h2>Create a competition</h2><form id="competition-form" class="form-grid"><label>Competition name<input name="name" maxlength="120" required></label><label>URL slug<input name="slug" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" required></label><label>Match duration (seconds)<input name="matchDurationSeconds" type="number" value="120" min="1" max="7200" required></label><div class="wide"><button>Create competition</button></div></form></section>`;
+    <section class="card" style="max-width:640px"><h2>Create a competition</h2><form id="competition-form" class="form-grid"><label>Competition name<input name="name" maxlength="120" required></label><label>URL slug<input name="slug" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" required></label><label>Match duration (seconds)<input name="matchDurationSeconds" type="number" value="120" min="1" max="7200" required></label><label>Teams per match<select name="matchSize"><option value="4" selected>4 teams</option><option value="3">3 teams</option><option value="2">2 teams (head-to-head)</option></select></label><div class="wide"><button>Create competition</button></div></form></section>`;
   const standingsData=await leagueData();
   const standings=standingsData.standings||[];
   const now=Date.now();
@@ -1164,7 +1387,9 @@ function arenaPage() {
   const current=matches.find(m=>['running','paused','awaiting_score'].includes(m.state))||matches.find(m=>['scheduled','ready','delayed'].includes(m.state));
   const matchesOptions=matches.map(m=>`<option value="${h(m.id)}" ${current?.id===m.id?'selected':''}>${h(m.match_number)} · ${h(m.arena_name)} · ${h(m.state)}</option>`).join('');
   return `${heading('Arena','Position assignments and corner colours for each match.')}
-    <section class="card"><h2>Arena position colours</h2><p class="subtle">These four colours apply to every match in this competition, including matches already on the schedule, and identify each corner on the SR Shepherding board.</p>
+    <section class="card"><h2>Teams per match</h2><p class="subtle">How many robots play in each league match and playoff heat. It can only change before any matches or a playoff bracket exist.</p>
+      <form id="match-size-form" class="form-grid"><label>Teams per match<select name="matchSize">${[2,3,4].map(size=>`<option value="${size}" ${size===matchSize()?'selected':''}>${size===2?'2 teams (head-to-head)':`${size} teams`}</option>`).join('')}</select></label><div class="wide"><button>Save teams per match</button></div></form></section>
+    <section class="card"><h2>Arena position colours</h2><p class="subtle">The first ${matchSize()} of these colours apply to every match in this competition, including matches already on the schedule, and identify each corner on the SR Shepherding board.</p>
       <form id="arena-colours-form" class="form-grid cols-3">${positionColours.map((colour,index)=>`<label>Position ${index}<input type="color" name="cornerColour${index}" value="${h(colour)}"></label>`).join('')}
         <div class="wide"><button>Save competition colours</button></div>
       </form>
@@ -1544,6 +1769,127 @@ async function mediaPage(){
       ${table(['File','Type','Size','Actions'],mediaFiles.map(file=>`<tr><td>${file.kind==='image'?`<img class="media-thumb" src="/api/admin/media/${h(file.id)}" alt=""> `:''}<strong>${h(file.name)}</strong></td><td>${file.kind==='audio'?`Audio · ${formatDuration(file.duration_ms)}`:'Image'}</td><td>${formatBytes(file.byte_size)}</td><td><div class="match-actions"><a class="button-link" href="/api/admin/media/${h(file.id)}" target="_blank" rel="noopener">Open</a><button class="danger" data-action="media-delete" data-id="${h(file.id)}">Delete</button></div></td></tr>`),'Nothing uploaded yet.')}
     </section>`;
 }
+// ---------- Kit ----------
+let kitItems=[];
+const KIT_CONDITIONS=[['good','Good'],['worn','Worn but working'],['damaged','Damaged'],['faulty','Faulty'],['lost','Lost'],['retired','Retired']];
+const KIT_STATUS={checked_out:['info','Checked out'],available:['good','Available'],needs_repair:['warn','Needs repair'],lost:['bad','Lost'],retired:['','Retired']};
+function kitStatusBadge(item){
+  const [tone,label]=KIT_STATUS[item.status]||['',item.status];
+  return `<span class="badge ${tone}">${h(label)}</span>${item.overdue?' <span class="badge bad">Overdue</span>':''}${item.status!=='checked_out'&&['worn'].includes(item.condition)?' <span class="badge">Worn</span>':''}`;
+}
+function kitFilters(){
+  try{return JSON.parse(sessionStorage.getItem(`kitFilters:${slug()}`)||'{}');}catch{return {};}
+}
+async function kitPage(){
+  if(!slug())return `${heading('Kit','Select a competition first.')}<div class="card empty">Create or select a competition to continue.</div>`;
+  kitItems=await api(`/api/admin/competitions/${encodeURIComponent(slug())}/kit`);
+  const filters=kitFilters();
+  const query=(filters.q||'').toLowerCase();
+  const shown=kitItems.filter(item=>(!filters.status||item.status===filters.status||(filters.status==='overdue'&&item.overdue))
+    &&(!filters.team||item.team_code===filters.team)
+    &&(!query||[item.name,item.category,item.asset_tag,item.team_code,item.team_name].some(value=>String(value||'').toLowerCase().includes(query))));
+  const count=status=>kitItems.filter(item=>item.status===status).length;
+  const overdue=kitItems.filter(item=>item.overdue).length;
+  const categories=[...new Set(kitItems.map(item=>item.category).filter(Boolean))].sort();
+  const teamCodes=[...new Set(kitItems.map(item=>item.team_code).filter(Boolean))].sort();
+  const rows=shown.map(item=>`<tr>
+    <td><strong>${h(item.name)}</strong>${item.asset_tag?` <span class="subtle">· ${h(item.asset_tag)}</span>`:''}${item.category?`<br><span class="subtle">${h(item.category)}</span>`:''}${item.notes?`<br><span class="subtle">${h(item.notes)}</span>`:''}</td>
+    <td>${kitStatusBadge(item)}</td>
+    <td>${item.team_code?`<strong>${h(item.team_code)}</strong> ${h(item.team_name)}<br><span class="subtle">since ${h(formatCompetitionDateTime(item.checked_out_at))}${item.due_back_at?` · due ${h(formatCompetitionDateTime(item.due_back_at))}`:''}</span>${item.out_notes?`<br><span class="subtle">${h(item.out_notes)}</span>`:''}`:'<span class="subtle">—</span>'}</td>
+    <td><div class="match-actions">${item.status==='checked_out'
+      ?`<button data-action="kit-checkin" data-id="${h(item.id)}">Check in</button>`
+      :`<button class="secondary" data-action="kit-checkout" data-id="${h(item.id)}" ${['lost','retired'].includes(item.status)?'disabled':''}>Check out</button>`}
+      <button class="ghost" data-action="kit-edit" data-id="${h(item.id)}">Edit</button>
+      <button class="ghost" data-action="kit-history" data-id="${h(item.id)}">History${item.loan_count?` (${item.loan_count})`:''}</button></div></td>
+  </tr>`);
+  const byTeam=new Map();
+  for(const item of kitItems)if(item.team_code){const list=byTeam.get(item.team_code)||[];list.push(item);byTeam.set(item.team_code,list);}
+  return `${heading('Kit','Lend kit to teams, check it back in and keep track of its condition.')}
+    <div class="grid cols-4">
+      <section class="card"><div class="metric">${kitItems.length}</div><div class="metric-label">Items</div></section>
+      <section class="card"><div class="metric">${count('checked_out')}</div><div class="metric-label">With teams${overdue?` · <span style="color:var(--bad)">${overdue} overdue</span>`:''}</div></section>
+      <section class="card"><div class="metric">${count('available')}</div><div class="metric-label">Available</div></section>
+      <section class="card"><div class="metric">${count('needs_repair')+count('lost')}</div><div class="metric-label">Need attention (repair or lost)</div></section>
+    </div>
+    <section class="card"><h2>Add kit</h2><form id="kit-form" class="form-grid cols-3">
+      <label>Name<input name="name" maxlength="120" required placeholder="e.g. Brain board"></label>
+      <label>Category<input name="category" maxlength="80" list="kit-categories" placeholder="e.g. Electronics"></label>
+      <label>Asset tag (optional)<input name="assetTag" maxlength="80" placeholder="e.g. BB-01"></label>
+      <label>How many<input name="quantity" type="number" min="1" max="200" value="1"></label>
+      <label class="wide">Notes<input name="notes" maxlength="1000"></label>
+      <datalist id="kit-categories">${categories.map(category=>`<option value="${h(category)}"></option>`).join('')}</datalist>
+      <p class="subtle wide">Adding several numbers them #1, #2… (and asset tags -1, -2…) so each can be tracked separately.</p>
+      <div class="wide"><button>Add kit</button></div>
+    </form></section>
+    <section class="card">
+      <div class="section-title"><h2>All kit</h2><span class="subtle">${shown.length} of ${kitItems.length}</span></div>
+      <div class="form-grid cols-3" style="margin-bottom:.8rem">
+        <label>Search<input id="kit-search" value="${h(filters.q||'')}" placeholder="Name, tag, category or team"></label>
+        <label>Status<select id="kit-status">${[['','Any status'],['available','Available'],['checked_out','Checked out'],['overdue','Overdue'],['needs_repair','Needs repair'],['lost','Lost'],['retired','Retired']].map(([value,label])=>`<option value="${value}" ${value===(filters.status||'')?'selected':''}>${label}</option>`).join('')}</select></label>
+        <label>Team<select id="kit-team"><option value="">Any team</option>${teamCodes.map(code=>`<option value="${h(code)}" ${code===filters.team?'selected':''}>${h(code)}</option>`).join('')}</select></label>
+      </div>
+      ${table(['Item','Status','With team','Actions'],rows,kitItems.length?'Nothing matches these filters.':'No kit yet. Add some above.')}
+    </section>
+    <section class="card"><h2>Who has what</h2>${byTeam.size?`<div class="queue">${[...byTeam].sort(([left],[right])=>left.localeCompare(right)).map(([code,items])=>`<div class="queue-row"><span class="when">${h(code)}</span><span>${items.map(item=>`${h(item.name)}${item.overdue?' <span class="badge bad">Overdue</span>':''}`).join(' · ')}</span><span class="subtle">${items.length} item(s)</span></div>`).join('')}</div>`:'<div class="empty">No kit is out with teams.</div>'}</section>`;
+}
+function openKitDialog(mode,item,body){
+  const form=$('kit-dialog-form');
+  form.dataset.mode=mode;
+  form.dataset.itemId=item.id;
+  $('kit-dialog-title').textContent={checkout:'Check out',checkin:'Check in',edit:'Edit kit',history:'History'}[mode]+` · ${item.name}`;
+  $('kit-dialog-body').innerHTML=body;
+  $('kit-dialog-submit').classList.toggle('hidden',mode==='history');
+  $('kit-dialog-submit').textContent={checkout:'Check out',checkin:'Check in',edit:'Save'}[mode]||'Save';
+  $('kit-dialog').showModal();
+}
+async function kitAction(action,id){
+  const item=kitItems.find(candidate=>candidate.id===id);
+  if(!item)throw new Error('Kit item not found. Refresh and try again.');
+  if(action==='kit-checkout'){
+    const roster=teams.filter(team=>team.active!==false).sort((left,right)=>left.code.localeCompare(right.code));
+    openKitDialog('checkout',item,`<div class="form-grid">
+      <label>Team<select name="teamCode" required><option value="">Choose a team…</option>${roster.map(team=>`<option value="${h(team.code)}">${h(team.code)} · ${h(team.name)}</option>`).join('')}</select></label>
+      <label>Due back (optional)<input name="dueBackAt" type="datetime-local"></label>
+      <label class="wide">Notes<input name="notes" maxlength="1000" placeholder="e.g. includes charger"></label></div>`);
+  }else if(action==='kit-checkin'){
+    openKitDialog('checkin',item,`<p class="subtle" style="margin-top:0">With <strong>${h(item.team_code)}</strong> since ${h(formatCompetitionDateTime(item.checked_out_at))}.</p><div class="form-grid">
+      <label>Condition it came back in<select name="condition">${KIT_CONDITIONS.filter(([value])=>value!=='retired').map(([value,label])=>`<option value="${value}" ${value===item.condition&&value!=='lost'?'selected':''}>${label}${value==='lost'?' (not returned)':''}</option>`).join('')}</select></label>
+      <label class="wide">Notes<input name="notes" maxlength="1000" placeholder="e.g. cracked case"></label></div>`);
+  }else if(action==='kit-edit'){
+    openKitDialog('edit',item,`<div class="form-grid">
+      <label>Name<input name="name" maxlength="120" required value="${h(item.name)}"></label>
+      <label>Category<input name="category" maxlength="80" value="${h(item.category)}"></label>
+      <label>Asset tag<input name="assetTag" maxlength="80" value="${h(item.asset_tag)}"></label>
+      <label>Condition<select name="condition">${KIT_CONDITIONS.map(([value,label])=>`<option value="${value}" ${value===item.condition?'selected':''}>${label}</option>`).join('')}</select></label>
+      <label class="wide">Notes<input name="notes" maxlength="1000" value="${h(item.notes)}"></label>
+      <div class="wide"><button type="button" class="danger" data-action="kit-delete" data-id="${h(item.id)}" ${item.status==='checked_out'?'disabled title="Check it in first"':''}>Delete this item</button></div></div>`);
+  }else if(action==='kit-history'){
+    const history=await api(`/api/admin/kit/${id}/history`);
+    const conditionLabel=value=>KIT_CONDITIONS.find(([key])=>key===value)?.[1]||value||'';
+    openKitDialog('history',item,history.length?`<div class="queue">${history.map(loan=>`<div class="queue-row"><span class="when">${h(loan.team_code)}</span><span>Out ${h(formatCompetitionDateTime(loan.checked_out_at))} by ${h(loan.checked_out_by)}${loan.out_notes?` · ${h(loan.out_notes)}`:''}<br>${loan.returned_at?`Back ${h(formatCompetitionDateTime(loan.returned_at))} · ${h(conditionLabel(loan.return_condition))}${loan.return_notes?` · ${h(loan.return_notes)}`:''}`:'<strong>Still out</strong>'}</span><span></span></div>`).join('')}</div>`:'<div class="empty">Never checked out.</div>');
+  }else if(action==='kit-delete'){
+    if(!confirm(`Delete ${item.name}? Its history is deleted too.`))return;
+    await api(`/api/admin/kit/${id}`,{method:'DELETE'});
+    $('kit-dialog').close();await render();notify('Kit item deleted.');
+  }
+}
+async function submitKitDialog(form,values){
+  const id=form.dataset.itemId;
+  const mode=form.dataset.mode;
+  if(mode==='checkout'){
+    await api(`/api/admin/kit/${id}/checkout`,{method:'POST',body:JSON.stringify({teamCode:values.teamCode,notes:values.notes||'',
+      ...(values.dueBackAt?{dueBackAt:new Date(values.dueBackAt).toISOString()}:{})})});
+    notify(`Checked out to ${values.teamCode}.`);
+  }else if(mode==='checkin'){
+    await api(`/api/admin/kit/${id}/checkin`,{method:'POST',body:JSON.stringify({condition:values.condition,notes:values.notes||''})});
+    notify(values.condition==='lost'?'Recorded as lost.':'Checked in.');
+  }else if(mode==='edit'){
+    await api(`/api/admin/kit/${id}`,{method:'PATCH',body:JSON.stringify({name:values.name,category:values.category||'',assetTag:values.assetTag||'',condition:values.condition,notes:values.notes||''})});
+    notify('Kit saved.');
+  }
+  $('kit-dialog').close();
+  await render();
+}
 async function displaysPage() {
   const [displays,media]=slug()?await Promise.all([api(`/api/admin/competitions/${encodeURIComponent(slug())}/displays`),api(`/api/admin/competitions/${encodeURIComponent(slug())}/media`)]):[[],[]];
   displayRecords=displays;
@@ -1747,7 +2093,7 @@ async function matchesPage() {
         <div class="now-title"><strong>${h(matchLabel(focus))}${focus.isPlayoff&&focus.bracket_side!=='final'?` <span class="badge info">${h(playoffSideLabel(focus.bracket_side,focus.bracket_format))}</span>`:''}</strong><span class="subtle">${h(formatCompetitionDateTime(focus.effective_start))} ${delay}</span></div>
         ${bigClockHtml(focus)}
         ${teamChipsHtml(focus)}
-        ${focus.team_count<4&&!focus.isPlayoff?`<div class="badge warn">Underfilled · ${h(focus.team_count)}/4 teams</div>`:''}
+        ${focus.team_count<matchSize()&&!focus.isPlayoff?`<div class="badge warn">Underfilled · ${h(focus.team_count)}/${matchSize()} teams</div>`:''}
         <div class="now-controls">${liveControlsHtml(focus)}</div>
       </div>
       ${queue.length?`<div><h3 class="subtle" style="font-size:.72rem;letter-spacing:.08em;text-transform:uppercase">Next in ${h(arena)}</h3><div class="queue">${queue.map(match=>`<div class="queue-row"><span class="when">${h(formatCompetitionDateTime(match.effective_start).split(', ').pop())}</span><span><strong>${h(matchLabel(match))}</strong> <span class="subtle">${h(match.positions.filter(p=>p.teamCode).map(p=>p.teamCode).join(' · ')||'Teams to be decided')}</span>${Number(match.delay_seconds)>0?` <span class="badge warn">+${h(formatDelay(match.delay_seconds))}</span>`:''}</span><span class="match-actions">${match.isPlayoff&&match.state!=='ready'?'':`<button class="secondary" data-action="${match.isPlayoff?'heat-delay':'delay'}" data-id="${h(match.id)}">Delay</button>`}</span></div>`).join('')}</div></div>`:''}
@@ -1827,7 +2173,7 @@ function userIsTyping() {
 }
 const openDetails=new Set();
 async function render({fromRefresh=false}={}) {
-  const pages={competitions:competitionsPage,overview:overviewPage,teams:teamsPage,challenges:challengesPage,schedule:schedulePage,playoffs:playoffsPage,matches:matchesPage,scores:scoresPage,league:leaguePage,arena:arenaPage,displays:displaysPage,media:mediaPage,settings:settingsPage,access:accessPage,activity:activityPage};
+  const pages={competitions:competitionsPage,overview:overviewPage,teams:teamsPage,challenges:challengesPage,schedule:schedulePage,playoffs:playoffsPage,matches:matchesPage,scores:scoresPage,league:leaguePage,arena:arenaPage,displays:displaysPage,media:mediaPage,kit:kitPage,settings:settingsPage,access:accessPage,activity:activityPage};
   // A background refresh waits until you stop typing in a field (or close a dialog).
   if(fromRefresh&&(userIsTyping()||document.querySelector('dialog[open]'))){pendingRender=true;return;}
   const pageToRender=page;
@@ -2151,6 +2497,7 @@ document.addEventListener('click',async(event)=>{
       for(let position=1;position<=4;position++){
         const assigned=match.positions.find(item=>Number(item.position)===position);
         form.elements[`team${position}`].innerHTML=teamOptions(assigned?.teamCode||'');
+        form.querySelector(`[data-position="${position}"]`).classList.toggle('hidden',position>matchSize());
       }
       $('schedule-dialog').showModal();
     }else if(action==='edit-playoff-schedule'){
@@ -2349,6 +2696,8 @@ document.addEventListener('click',async(event)=>{
     }else if(action==='media-delete'){
       if(!confirm('Delete this file? It is removed from the playlist and from any custom screens.'))return;
       await api(`/api/admin/media/${id}`,{method:'DELETE'});await render();notify('File deleted.');
+    }else if(['kit-checkout','kit-checkin','kit-edit','kit-history','kit-delete'].includes(action)){
+      await kitAction(action,id);
     }else if(action==='copy'){
       await navigator.clipboard.writeText(button.dataset.copy);notify('Copied to clipboard.');
     }
@@ -2403,7 +2752,7 @@ async function handleFormSubmit(event){
   try{
     const values=formData(form);
     if(form.id==='competition-form'){
-      const result=await api('/api/admin/competitions',{method:'POST',body:JSON.stringify({...values,matchDurationSeconds:Number(values.matchDurationSeconds)})});
+      const result=await api('/api/admin/competitions',{method:'POST',body:JSON.stringify({...values,matchDurationSeconds:Number(values.matchDurationSeconds),matchSize:Number(values.matchSize||4)})});
       competitions=await api('/api/admin/competitions');
       renderCompetitionOptions();
       competitionSignature=JSON.stringify(competitions.map(c=>[c.id,c.name,c.slug,c.status,c.team_count,c.match_count,c.challenge_count,c.challenge_completion_count,c.event_count]));
@@ -2419,11 +2768,11 @@ async function handleFormSubmit(event){
       const result=await api(`/api/admin/competitions/${encodeURIComponent(slug())}/generate-schedule`,{method:'POST',body:JSON.stringify({
         matchCount:Number(values.matchCount),firstStart:start.toISOString(),intervalSeconds:Number(values.interval)*60,
         arenas:values.arenas.split(',').map(x=>x.trim()).filter(Boolean),
-        positions:[1,2,3,4].map((n)=>({label:`Position ${n-1}`}))
+        positions:spots().map((spot)=>({label:`Position ${spot}`}))
       })});
       await loadData();notify(`Schedule generated · ${result.appearancesPerTeam} appearances per team · ${values.interval}-minute start-to-start interval${result.shiftedMatchIds?.length?` · ${result.shiftedMatchIds.length} match(es) shifted around events`:''}.`);
     }else if(form.id==='manual-match-form'){
-      const positions=[1,2,3,4].map(number=>({number,label:`Position ${number-1}`,teamCode:values[`team${number}`]||undefined}));
+      const positions=spots().map(spot=>spot+1).map(number=>({number,label:`Position ${number-1}`,teamCode:values[`team${number}`]||undefined}));
       const result=await api(`/api/admin/competitions/${encodeURIComponent(slug())}/matches`,{method:'POST',body:JSON.stringify({
         matchNumber:Number(values.matchNumber),arenaName:values.arenaName,scheduledStart:new Date(values.scheduledStart).toISOString(),
         positions,underfilledReason:values.underfilledReason||undefined
@@ -2447,7 +2796,7 @@ async function handleFormSubmit(event){
       const moved=result.shiftedMatchIds?.length||0;
       notify(`${editing?'Event updated':'Scheduled event added'}${moved?`; ${moved} match(es) shifted to avoid event times`:'.'}`);
     }else if(form.id==='schedule-edit-form'){
-      const positions=[1,2,3,4].map(number=>({
+      const positions=spots().map(spot=>spot+1).map(number=>({
         number,label:`Position ${number-1}`,
         teamCode:values[`team${number}`]||undefined
       }));
@@ -2479,6 +2828,22 @@ async function handleFormSubmit(event){
       const arenaNames=values.arenaNames.split(',').map(name=>name.trim()).filter(Boolean);
       if(!arenaNames.length)throw new Error('Enter at least one arena for the playoff heats.');
       if(form.dataset.replace==='true'&&!confirm('Replace the current playoff bracket? Its heats, progression and playoff scores will be archived.'))return;
+      if(values.format==='custom'){
+        const draft=loadPlayoffDraft();
+        const manual=draft.scheduleMode==='manual';
+        const heats=draft.heats.map(heat=>({key:heat.key,side:heat.side,sources:heat.sources,
+          ...(manual&&heat.start?{start:new Date(heat.start).toISOString()}:{}),
+          ...(manual&&heat.arenaName?{arenaName:heat.arenaName.trim()}:{})}));
+        const result=await api(`/api/admin/competitions/${encodeURIComponent(slug())}/playoffs`,{method:'POST',body:JSON.stringify({
+          format:'custom',heats,scheduleMode:draft.scheduleMode,replaceExisting:form.dataset.replace==='true',
+          scheduledStart:requestedStart.toISOString(),intervalMinutes,finalDelayMinutes:Number(values.finalDelayMinutes),arenaNames
+        })});
+        try{localStorage.removeItem(playoffDraftKey());}catch{}
+        playoffDraft=null;dirtyForms.clear();
+        await loadData();
+        notify(`Custom bracket created · ${result.matchCount} heat(s) for the top ${result.teamCount} teams.`);
+        return;
+      }
       const result=await api(`/api/admin/competitions/${encodeURIComponent(slug())}/playoffs`,{method:'POST',body:JSON.stringify({
         fieldSize:Number(values.fieldSize),replaceExisting:form.dataset.replace==='true',
         format:values.format,finalSize:Number(values.finalSize),finalByes:Number(values.finalByes),
@@ -2504,6 +2869,16 @@ async function handleFormSubmit(event){
       const selected=compOption();
       if(selected)selected.timezone=values.timezone;
       await applyBranding();await render();notify('Settings saved.');
+    }else if(form.id==='kit-form'){
+      const result=await api(`/api/admin/competitions/${encodeURIComponent(slug())}/kit`,{method:'POST',body:JSON.stringify({
+        name:values.name,category:values.category||'',assetTag:values.assetTag||'',notes:values.notes||'',quantity:Number(values.quantity)||1})});
+      form.reset();dirtyForms.delete(form.id);await render();notify(`${result.ids.length} item(s) added.`);
+    }else if(form.id==='kit-dialog-form'){
+      await submitKitDialog(form,values);
+    }else if(form.id==='match-size-form'){
+      await api(`/api/admin/competitions/${encodeURIComponent(slug())}/match-size`,{method:'PUT',body:JSON.stringify({matchSize:Number(values.matchSize)})});
+      competitions=await api('/api/admin/competitions');dirtyForms.delete(form.id);
+      await render();notify(`Teams per match set to ${values.matchSize}.`);
     }else if(form.id==='staging-settings-form'){
       const body={closeAfterPreviousStartMinutes:Number(values.closeAfterPreviousStartMinutes),firstMatchLeadMinutes:Number(values.firstMatchLeadMinutes)};
       await api(`/api/admin/competitions/${encodeURIComponent(slug())}/staging-settings`,{method:'PUT',body:JSON.stringify(body)});
@@ -2610,6 +2985,12 @@ $('view').addEventListener('change',async(event)=>{
     const files=[...event.target.files];
     event.target.value='';
     try{await uploadMediaFiles(files);notify(`${files.length} file(s) uploaded.`);}catch(error){showError(error);}
+    await render();
+    return;
+  }
+  if(['kit-search','kit-status','kit-team'].includes(event.target.id)){
+    const filters={q:$('kit-search')?.value||'',status:$('kit-status')?.value||'',team:$('kit-team')?.value||''};
+    try{sessionStorage.setItem(`kitFilters:${slug()}`,JSON.stringify(filters));}catch{}
     await render();
     return;
   }

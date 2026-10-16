@@ -126,8 +126,8 @@ export function registerPublicRoutes(app: FastifyInstance): void {
     const matchItems = result.rows.map((match) => ({
       ...match,
       type: 'match' as const,
-      underfilled: Number(match.team_count) < 4,
-      warning: Number(match.team_count) < 4 ? `UNDERFILLED (${match.team_count}/4)` : null,
+      underfilled: Number(match.team_count) < competition.match_size,
+      warning: Number(match.team_count) < competition.match_size ? `UNDERFILLED (${match.team_count}/${competition.match_size})` : null,
       positions: match.positions.map((position: { teamCode: string | null }) => ({
         ...position,
         vacant: position.teamCode === null
@@ -140,8 +140,8 @@ export function registerPublicRoutes(app: FastifyInstance): void {
       state: match.schedule_state === 'complete' ? 'complete' : match.status,
       team_count: (match.positions as { teamCode: string | null }[]).filter((position) => position.teamCode).length,
       entrant_count: Number(match.entrant_count),
-      underfilled: Number(match.entrant_count) < 4,
-      warning: Number(match.entrant_count) < 4 ? `${match.entrant_count}/4 TEAM HEAT` : null
+      underfilled: Number(match.entrant_count) < competition.match_size,
+      warning: Number(match.entrant_count) < competition.match_size ? `${match.entrant_count}/${competition.match_size} TEAM HEAT` : null
     }));
     reply.header('cache-control', 'public, max-age=2');
     return {
@@ -182,7 +182,7 @@ export function registerPublicRoutes(app: FastifyInstance): void {
     if (!match) return reply.code(404).send({ error: 'Match not found' });
     const count = Number(match.team_count);
     reply.header('cache-control', 'public, max-age=2');
-    return { ...match, underfilled: count < 4, warning: count < 4 ? `UNDERFILLED (${count}/4)` : null };
+    return { ...match, underfilled: count < competition.match_size, warning: count < competition.match_size ? `UNDERFILLED (${count}/${competition.match_size})` : null };
   });
 
   app.get('/public/v1/:slug/timer', async (request, reply) => {
@@ -283,8 +283,8 @@ export function registerPublicRoutes(app: FastifyInstance): void {
       updatedAt: new Date().toISOString(),
       timer: timer ? {
         ...timer,
-        underfilled: Number(timer.team_count) < 4,
-        warning: Number(timer.team_count) < 4 ? `UNDERFILLED (${timer.team_count}/4)` : null
+        underfilled: Number(timer.team_count) < competition.match_size,
+        warning: Number(timer.team_count) < competition.match_size ? `UNDERFILLED (${timer.team_count}/${competition.match_size})` : null
       } : null
     };
   });

@@ -368,21 +368,31 @@ function shuffle<T>(items: T[], random: () => number): T[] {
   return items;
 }
 
-export function generateBalancedMatches(codes: string[], matchCount: number, seed: number): {
+/** Every ordering of 0..size-1 (positions within a match). */
+function permutationsOf(size: number): number[][] {
+  if (size <= 1) return [[0]];
+  return permutationsOf(size - 1).flatMap((rest) =>
+    Array.from({ length: size }, (_, insertAt) => [...rest.slice(0, insertAt), size - 1, ...rest.slice(insertAt)]));
+}
+
+export function generateBalancedMatches(codes: string[], matchCount: number, seed: number, matchSize = 4): {
   matches: GeneratedMatch[];
   pairRange: [number, number];
   appearancesPerTeam: number;
   positionRange: [number, number];
 } {
-  if (codes.length < 4 || new Set(codes).size !== codes.length) {
-    throw new ScheduleGenerationError('A balanced schedule needs at least four distinct teams');
+  if (!Number.isInteger(matchSize) || matchSize < 2 || matchSize > 4) {
+    throw new ScheduleGenerationError('Matches must have two to four teams');
+  }
+  if (codes.length < matchSize || new Set(codes).size !== codes.length) {
+    throw new ScheduleGenerationError(`A balanced schedule needs at least ${matchSize} distinct teams`);
   }
   if (!Number.isInteger(matchCount) || matchCount < 1 ||
-      (matchCount * 4) % codes.length !== 0) {
+      (matchCount * matchSize) % codes.length !== 0) {
     throw new ScheduleGenerationError('The match count cannot give every team equal appearances');
   }
 
-  const appearancesPerTeam = (matchCount * 4) / codes.length;
+  const appearancesPerTeam = (matchCount * matchSize) / codes.length;
   const cycleCount = appearancesPerTeam;
   let bestGroups: string[][] | undefined;
   let bestCost = Number.POSITIVE_INFINITY;
@@ -396,20 +406,20 @@ export function generateBalancedMatches(codes: string[], matchCount: number, see
       if (cycle === 0) {
         sequence.push(...shuffle(baseOrder, random));
       } else {
-        const prefixLength = 4 - trailingTeams.length;
+        const prefixLength = matchSize - trailingTeams.length;
         const prefix = shuffle(codes.filter((code) => !trailingTeams.includes(code)), random).slice(0, prefixLength);
         const remainder = shuffle(codes.filter((code) => !prefix.includes(code)), random);
         sequence.push(...prefix, ...remainder);
       }
-      const trailingLength = sequence.length % 4;
+      const trailingLength = sequence.length % matchSize;
       trailingTeams = trailingLength === 0 ? [] : sequence.slice(-trailingLength);
     }
 
     const groups: string[][] = [];
     let valid = true;
-    for (let index = 0; index < sequence.length; index += 4) {
-      const group = sequence.slice(index, index + 4);
-      if (group.length !== 4 || new Set(group).size !== 4) {
+    for (let index = 0; index < sequence.length; index += matchSize) {
+      const group = sequence.slice(index, index + matchSize);
+      if (group.length !== matchSize || new Set(group).size !== matchSize) {
         valid = false;
         break;
       }
@@ -442,15 +452,8 @@ export function generateBalancedMatches(codes: string[], matchCount: number, see
     throw new ScheduleGenerationError('Could not construct a full schedule for this team and match count');
   }
 
-  const positionCounts = Array.from({ length: 4 }, () => new Map<string, number>());
-  const permutations = [
-    [0, 1, 2, 3], [0, 1, 3, 2], [0, 2, 1, 3], [0, 2, 3, 1],
-    [0, 3, 1, 2], [0, 3, 2, 1], [1, 0, 2, 3], [1, 0, 3, 2],
-    [1, 2, 0, 3], [1, 2, 3, 0], [1, 3, 0, 2], [1, 3, 2, 0],
-    [2, 0, 1, 3], [2, 0, 3, 1], [2, 1, 0, 3], [2, 1, 3, 0],
-    [2, 3, 0, 1], [2, 3, 1, 0], [3, 0, 1, 2], [3, 0, 2, 1],
-    [3, 1, 0, 2], [3, 1, 2, 0], [3, 2, 0, 1], [3, 2, 1, 0]
-  ];
+  const positionCounts = Array.from({ length: matchSize }, () => new Map<string, number>());
+  const permutations = permutationsOf(matchSize);
   const matches: GeneratedMatch[] = [];
   for (const group of bestGroups) {
     let bestCostForPositions = Number.POSITIVE_INFINITY;

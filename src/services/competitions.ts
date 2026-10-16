@@ -4,7 +4,7 @@ import { Pool, type PoolClient } from 'pg';
 
 export async function findCompetition(client: Pool | PoolClient, slug: string) {
   const result = await client.query(
-    'SELECT id, name, slug, status, timezone, match_duration_seconds FROM competitions WHERE slug = $1',
+    'SELECT id, name, slug, status, timezone, match_duration_seconds, match_size FROM competitions WHERE slug = $1',
     [slug]
   );
   return result.rows[0] as {
@@ -14,6 +14,7 @@ export async function findCompetition(client: Pool | PoolClient, slug: string) {
     status: string;
     timezone: string;
     match_duration_seconds: number;
+    match_size: number;
   } | undefined;
 }
 

@@ -30,7 +30,7 @@ export type SrTeam = {
 };
 
 export async function loadSrCompetitionData(competitionId: string) {
-  const [cornerColours, standings, leagueResult, playoffResult] = await Promise.all([
+  const [allCornerColours, standings, leagueResult, playoffResult, sizeResult] = await Promise.all([
     getCornerColours(pool, competitionId),
     fetchStandings(pool, competitionId),
     pool.query<SrDbMatch>(
@@ -94,8 +94,12 @@ export async function loadSrCompetitionData(competitionId: string) {
        WHERE pb.competition_id = $1 AND pb.status IN ('active', 'complete')
        ORDER BY pm.round_number, pm.match_number`,
       [competitionId]
-    )
+    ),
+    pool.query<{ match_size: number }>('SELECT match_size FROM competitions WHERE id = $1', [competitionId])
   ]);
+  const matchSize = sizeResult.rows[0]?.match_size ?? 4;
+  // SR screens show one corner per team in a match.
+  const cornerColours = allCornerColours.slice(0, matchSize);
 
   // One set of staging windows for every screen, computed from the competition's staging settings.
   const stagingSettings = await getStagingSettings(pool, competitionId);
@@ -113,11 +117,13 @@ export async function loadSrCompetitionData(competitionId: string) {
   })), stagingSettings);
   const matches = leagueResult.rows.map(({ id, ...match }) => ({
     ...match,
+    match_size: matchSize,
     positions: match.positions ?? [],
     ...(staging.has(`league:${id}`) ? { staging: staging.get(`league:${id}`)! } : {})
   }));
   const playoffMatches = playoffResult.rows.map(({ id, format: _format, sources: _sources, ...match }) => ({
     ...match,
+    match_size: matchSize,
     positions: match.positions ?? [],
     ...(staging.has(`playoff:${id}`) ? { staging: staging.get(`playoff:${id}`)! } : {})
   }));
@@ -170,7 +176,7 @@ export async function loadSrCompetitionData(competitionId: string) {
   );
   const bracketNames = ['upper', 'lower', 'final'];
   const bracketLabels: Record<string, string> = {
-    upper: playoffFormat === 'double-elimination' ? 'Upper Bracket' : 'Knockout',
+    upper: playoffFormat === 'double-elimination' || playoffMatches.some((match) => match.bracket_side === 'lower') ? 'Upper Bracket' : 'Knockout',
     lower: 'Lower Bracket',
     final: 'Final'
   };

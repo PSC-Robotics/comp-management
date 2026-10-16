@@ -325,3 +325,53 @@ test('rejects impossible playoff format options', () => {
   assert.throws(() => buildPlayoffPlan(8, { format: 'double-elimination', finalSize: 2, finalByes: 1 }), RangeError);
   assert.equal(buildPlayoffPlan(3, { format: 'direct-final', finalSize: 4 }).length, 1);
 });
+
+test('head-to-head playoffs: every heat has two teams and odd fields get byes, not singles', () => {
+  for (const format of ['single-elimination', 'double-elimination'] as const) {
+    for (let teams = 2; teams <= 12; teams += 1) {
+      const plan = buildPlayoffPlan(teams, { format, heatSize: 2 });
+      for (const heat of plan) assert.equal(heat.sources.filter((source) => source !== 'bye').length, 2);
+      const final = plan.find((heat) => heat.side === 'final')!;
+      assert.equal(final.sources.filter((source) => source !== 'bye').length, 2);
+    }
+  }
+  assert.deepEqual(playoffHeatSizes(5, 2), [2, 2], 'the fifth team waits for the next round');
+  assert.deepEqual(playoffHeatSizes(7, 3), [3, 2, 2], 'never a single-team heat with heats of three');
+  assert.throws(() => buildPlayoffPlan(6, { heatSize: 2, finalSize: 3 }), /two to 2 teams/);
+});
+
+test('custom brackets: drawn connections become a playable plan in feeder order', async () => {
+  const { buildCustomPlayoffPlan } = await import('./playoffs.js');
+  const { plan, fieldSize, order } = buildCustomPlayoffPlan([
+    { key: 'final', side: 'final', sources: ['place:1:semi-a', 'place:1:semi-b'] },
+    { key: 'semi-a', side: 'upper', sources: ['seed:1', 'seed:4'] },
+    { key: 'semi-b', side: 'upper', sources: ['seed:2', 'seed:3'] },
+    { key: 'bronze', side: 'lower', sources: ['place:2:semi-a', 'place:2:semi-b'] }
+  ], 2);
+  assert.equal(fieldSize, 4);
+  assert.equal(order.at(-1), 'final', 'the final is always played last');
+  assert.ok(order.indexOf('semi-a') < order.indexOf('bronze'));
+  const final = plan.at(-1)!;
+  assert.equal(final.side, 'final');
+  assert.deepEqual(final.sources.slice(0, 2).map((source) => /^place:1:playoff-\d+$/.test(source)), [true, true]);
+  assert.equal(plan.find((heat) => heat.sources.includes('seed:1'))!.advancing, 1, 'only the winner goes on to the final');
+});
+
+test('custom brackets are refused when seeds, places or loops are wrong', async () => {
+  const { buildCustomPlayoffPlan } = await import('./playoffs.js');
+  const final = (sources: string[]) => ({ key: 'f', side: 'final' as const, sources });
+  assert.throws(() => buildCustomPlayoffPlan([final(['seed:1', 'seed:3'])], 4), /seed 2 is missing/);
+  assert.throws(() => buildCustomPlayoffPlan([final(['seed:1', 'seed:1'])], 4), /used more than once/);
+  assert.throws(() => buildCustomPlayoffPlan([final(['seed:1', 'seed:2', 'seed:3'])], 2), /two to 2 teams/);
+  assert.throws(() => buildCustomPlayoffPlan([
+    { key: 'a', side: 'upper', sources: ['seed:1', 'place:1:b'] },
+    { key: 'b', side: 'upper', sources: ['seed:2', 'place:1:a'] },
+    final(['place:2:a', 'place:2:b'])
+  ], 4), /loop/);
+  assert.throws(() => buildCustomPlayoffPlan([
+    { key: 'a', side: 'upper', sources: ['seed:1', 'seed:2'] },
+    final(['place:1:a', 'place:1:a'])
+  ], 4), /more than one slot/);
+  assert.throws(() => buildCustomPlayoffPlan([{ key: 'a', side: 'upper', sources: ['seed:1', 'seed:2'] }], 4), /exactly one heat as the final/);
+  assert.throws(() => buildCustomPlayoffPlan([final(['seed:1', ''])], 4), /no team source/);
+});

@@ -8,7 +8,7 @@ The admin portal is grouped by what you are doing:
 
 - **Event day** — *Overview* (what needs attention, each arena right now, coming up, leaders), *Live control* (one console per arena: the current or next match with a big clock and its controls, then the queue) and *Scores* (finished matches waiting for scores, entered inline, plus recent results and corrections).
 - **Schedule** — *Schedule* (timeline, build, timed events, clear) and *Playoffs* (bracket diagram, seeding check, route to the final).
-- **Setup** — Teams, Challenges, Arena colours, Displays. **Results** — League table. **Admin** — Competitions, Settings, Access & passkeys, Activity.
+- **Setup** — Teams, Challenges, Arena (teams per match, colours, staging), Kit, Displays. **Results** — League table. **Admin** — Competitions, Settings, Access & passkeys, Activity.
 
 Everything updates live: the server pushes a change notification (Server-Sent Events) whenever data changes, and the dashboard, public displays and SR screens refresh immediately. Forms you are filling in are preserved across refreshes, and a refresh waits while you are typing. The sidebar shows how many matches are due to start and how many are waiting for scores. The layout works on phones (tables become cards, dialogs open as bottom sheets).
 
@@ -63,6 +63,12 @@ The left navigation separates Competitions, Overview, Teams, Challenges, Schedul
 - The admin portal works on phones: tables turn into one card per match with labelled fields and full-width action buttons (Start, Delay, Score are always visible), the header shrinks to a scrollable menu plus the competition picker, and dialogs open as bottom sheets. Public schedule displays fit all four team columns on a phone by folding the arena under the match number and the status under the time.
 - Dashboard data updates automatically while the page is open. Unsubmitted form edits are preserved while updates arrive; the sidebar stays fixed while the main content scrolls.
 - Schedule position cells use only the colour-coded team code; the numbered positions remain in the column headings. Arena diagrams show the large position number in each cell's corner and make the synchronized "starts in" countdown prominent.
+
+## Teams per match, custom playoffs and kit
+
+- **Teams per match** (2, 3 or 4) is set when a competition is created, or on the Arena page before any matches or playoff bracket exist. League schedules are balanced for that size (equal appearances, spread pairings and positions), match editors and score entry show that many positions, playoff heats hold at most that many teams (two-team competitions get head-to-head brackets; an odd team out gets a bye to the next round rather than a heat of one), and every display (arena diagram, schedule, results, SR screens) shows that many positions; two-team arena diagrams are drawn as two halves.
+- **Custom playoff bracket**: on Playoffs choose *Custom bracket*. Add heats (upper/knockout, lower bracket, one final), set how many teams each holds, and fill each slot from a league seed or another heat's finishing place, either from the list or by clicking a heat's "1st →" and then the slot it feeds. Places that feed nothing are eliminated. *Start from* loads a standard format to adjust. The bracket diagram and checks update as you build (every seed 1…N used once, each place used once, no loops, exactly one final). Schedule it automatically (first heat time, gap and arenas) or give each heat its own time and arena; heats are still kept after the heats that feed them. The draft is kept in your browser until you create the bracket.
+- **Kit** (Setup → Kit): add items (several at once are numbered #1, #2… with asset tags -1, -2…), check them out to a team with an optional due-back time and notes, and check them in with the condition they came back in (good, worn, damaged, faulty, or lost). Status follows: available, checked out (and overdue), needs repair, lost or retired. Each item keeps its full loan history; "Who has what" lists the kit each team holds.
 
 ## Deployment
 
