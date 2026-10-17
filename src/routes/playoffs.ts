@@ -110,7 +110,9 @@ export function registerPlayoffRoutes(app: FastifyInstance): void {
       format: z.enum(playoffFormats).default('double-elimination'),
       finalSize: z.coerce.number().int().min(2).max(4).optional(),
       finalByes: z.coerce.number().int().min(0).max(3).default(0),
-      heatSize: z.coerce.number().int().min(2).max(4).default(4)
+      heatSize: z.coerce.number().int().min(2).max(4).default(4),
+      // Heats are numbered after the league matches; previews use the same numbers.
+      firstNumber: z.coerce.number().int().min(1).max(100_000).default(1)
     }).parse(request.query);
     try {
       const plan = buildPlayoffPlan(query.fieldSize, {
@@ -118,7 +120,7 @@ export function registerPlayoffRoutes(app: FastifyInstance): void {
         finalSize: query.finalSize ?? query.heatSize
       });
       const stages = playoffStages(plan);
-      const number = new Map(plan.map((match, index) => [match.key, index + 1]));
+      const number = new Map(plan.map((match, index) => [match.key, index + query.firstNumber]));
       return {
         heats: plan.map((match) => ({
           number: number.get(match.key),
@@ -131,7 +133,7 @@ export function registerPlayoffRoutes(app: FastifyInstance): void {
         })),
         stages: Math.max(...stages.values()),
         diagram: renderBracketDiagram(plan.map((match, index) => ({
-          id: match.key, number: index + 1, side: match.side, sources: [...match.sources],
+          id: match.key, number: index + query.firstNumber, side: match.side, sources: [...match.sources],
           advancing: match.side === 'final' ? null : match.advancing
         })), { format: query.format })
       };
@@ -144,23 +146,24 @@ export function registerPlayoffRoutes(app: FastifyInstance): void {
   // Live check and diagram for the custom playoff builder (nothing is saved).
   app.post('/api/admin/competitions/:slug/playoffs/custom-preview', { preHandler: requireAdmin }, async (request, reply) => {
     const { slug } = z.object({ slug: z.string() }).parse(request.params);
-    const { heats } = z.object({
+    const { heats, firstNumber } = z.object({
       heats: z.array(z.object({
         key: z.string().regex(/^[A-Za-z0-9-]{1,40}$/),
         side: z.enum(['upper', 'lower', 'final']),
         sources: z.array(z.string().max(60)).min(0).max(4)
-      })).max(64)
+      })).max(64),
+      firstNumber: z.number().int().min(1).max(100_000).default(1)
     }).parse(request.body);
     const competition = await findCompetition(pool, slug);
     if (!competition) return reply.code(404).send({ error: 'Competition not found' });
     try {
       const custom = buildCustomPlayoffPlan(heats, competition.match_size);
-      const number = new Map(custom.plan.map((match, index) => [match.key, index + 1]));
+      const number = new Map(custom.plan.map((match, index) => [match.key, index + firstNumber]));
       return {
         valid: true,
         fieldSize: custom.fieldSize,
         // Builder heat id -> heat number it will get, in playing order.
-        numbers: Object.fromEntries(custom.order.map((key, index) => [key, index + 1])),
+        numbers: Object.fromEntries(custom.order.map((key, index) => [key, index + firstNumber])),
         diagram: renderBracketDiagram(custom.plan.map((match) => ({
           id: match.key, number: number.get(match.key)!, side: match.side, sources: [...match.sources],
           advancing: match.side === 'final' ? null : match.advancing

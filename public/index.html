@@ -59,7 +59,7 @@
     input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
     textarea { min-height: 80px; resize: vertical; }
     input[type=color] { padding: 3px; min-height: 36px; height: 36px; }
-    input[type=checkbox] { width: 17px; min-height: 17px; height: 17px; accent-color: var(--accent); }
+    input[type=checkbox], input[type=radio] { width: 17px; min-height: 17px; height: 17px; flex: 0 0 17px; padding: 0; accent-color: var(--accent); }
     label { display: grid; gap: .3rem; min-width: 0; color: var(--muted); font-weight: 560; font-size: .86rem; }
     fieldset { border: 1px solid var(--line); border-radius: var(--radius-sm); }
     .toggle-control { display: flex; align-items: center; gap: .55rem; color: var(--ink); font-weight: 520; }
@@ -105,6 +105,13 @@
     .image-choice span { font-size: .75rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .custom-area-row { display: flex; flex-wrap: wrap; gap: .4rem 1rem; padding: .5rem .8rem; margin: 0 0 .5rem; }
     .custom-area-row legend { font-weight: 700; color: var(--ink); padding: 0 .3rem; }
+    .route-choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: .6rem; }
+    .route-choice { display: flex; gap: .6rem; align-items: flex-start; padding: .75rem .85rem; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); cursor: pointer; color: var(--ink); }
+    .route-choice:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 0 0 1px var(--accent) inset; }
+    .route-choice input { width: 18px; height: 18px; min-height: 18px; flex: 0 0 18px; margin: .15rem 0 0; padding: 0; accent-color: var(--accent); }
+    .route-choice > span { display: grid; gap: .15rem; }
+    .route-choice .subtle { font-weight: 500; font-size: .8rem; }
+    .step-number { display: inline-grid; place-items: center; width: 1.6rem; height: 1.6rem; margin-right: .5rem; border-radius: 50%; background: var(--accent); color: #fff; font-size: .85rem; vertical-align: middle; }
     .builder-toolbar { display: flex; flex-wrap: wrap; gap: .5rem; align-items: end; }
     .builder-spacer { flex: 1; }
     .builder-inline { display: flex; align-items: center; gap: .35rem; font-size: .8rem; }
@@ -944,7 +951,7 @@ function updatePlayoffPreview(form) {
     if(!box||!form.isConnected)return;
     const values=formData(form);
     const request=++playoffPreviewRequest;
-    const params=new URLSearchParams({fieldSize:values.fieldSize||'0',format:values.format,finalSize:values.finalSize,finalByes:values.finalByes,heatSize:String(matchSize())});
+    const params=new URLSearchParams({fieldSize:values.fieldSize||'0',format:values.format,finalSize:values.finalSize,finalByes:values.finalByes,heatSize:String(matchSize()),firstNumber:String(nextPlayoffNumber())});
     try{
       const preview=await api(`/api/admin/playoff-formats/preview?${params}`);
       if(request!==playoffPreviewRequest)return;
@@ -969,45 +976,6 @@ function updatePlayoffPreview(form) {
 }
 function bracketLegendHtml() {
   return '<p class="bracket-legend subtle"><span class="legend-line"></span>Winners progress<span class="legend-line drop"></span>Drops to lower bracket<span class="legend-line final"></span>Into the final</p>';
-}
-function bracketBoardHtml() {
-  const bracket=playoffData.bracket;
-  if(!bracket||!playoffData.matches?.length)return '';
-  const byId=new Map(playoffData.matches.map(match=>[match.id,match]));
-  const stageCount=Math.max(...playoffData.matches.map(match=>Number(match.stage)||1));
-  const codes=match=>[match.team_one_code,match.team_two_code,match.team_three_code,match.team_four_code];
-  const describe=source=>{
-    if(source.startsWith('seed:'))return `Seed ${source.slice(5)}`;
-    const [,place,id]=source.split(':');
-    return `${ordinal(place)} of #${byId.get(id)?.match_number??'?'}`;
-  };
-  const card=match=>{
-    const teams=codes(match);
-    const scores=Array.isArray(match.scores)?match.scores:[];
-    const entrants=(match.sources||[]).map((source,index)=>({source,code:teams[index]})).filter(entry=>entry.source!=='bye');
-    const list=match.status==='complete'&&scores.length
-      ?scores.map(score=>`<li><strong>${h(score.teamCode)}</strong> · ${h(score.points)} pts</li>`).join('')
-      :entrants.map(entry=>`<li>${entry.code?`<strong>${h(entry.code)}</strong>`:''} <span class="source">${entry.code&&entry.source.startsWith('seed:')?'':h(describe(entry.source))}</span></li>`).join('');
-    const state=match.status==='complete'?'<span class="badge good">Result in</span>'
-      :match.timer_state&&match.timer_state!=='scheduled'?`<span class="badge warn">${h(match.timer_state.replaceAll('_',' '))}</span>`
-      :match.status==='ready'?'<span class="badge">Ready</span>':'<span class="badge">Waiting</span>';
-    const advance=match.bracket_side!=='final'&&match.advancing_places?`<div class="subtle">Top ${h(match.advancing_places)} progress${bracket.format==='double-elimination'&&match.bracket_side==='upper'?'; others drop to the lower bracket':'; others are out'}</div>`:'';
-    const tieNote=match.tie_break?`<div class="badge warn" title="${h(match.tie_break.reason)}">Tie decided by judge: ${h(match.tie_break.reason)}</div>`:'';
-    return `<article class="heat-card" data-side="${h(match.bracket_side)}"><header><span>#${h(match.match_number)} · ${h(playoffSideLabel(match.bracket_side,bracket.format))}</span>${state}</header>
-      <div class="subtle">${h(formatCompetitionDateTime(match.effective_start))} · ${h(match.arena_name)}${Number(match.delay_seconds)>0?` · +${h(formatDelay(match.delay_seconds))}`:''}</div>
-      <ol>${list}</ol>${advance}${tieNote}</article>`;
-  };
-  const columns=Array.from({length:stageCount},(_,index)=>{
-    const heats=playoffData.matches.filter(match=>(Number(match.stage)||1)===index+1).sort((a,b)=>a.match_number-b.match_number);
-    const label=heats.every(match=>match.bracket_side==='final')?'Final':`Stage ${index+1}`;
-    return `<div class="bracket-stage"><h3>${label}</h3>${heats.map(card).join('')}</div>`;
-  }).join('');
-  const teamRows=(playoffData.teams||[]).map(team=>`<tr><td>${h(team.seed)}</td><td><strong>${h(team.code)}</strong></td><td>${h(team.name)}</td><td>${h(team.losses)}</td><td>${team.eliminated?'<span class="badge warn">Eliminated</span>':'<span class="badge good">Still in</span>'}</td></tr>`);
-  return `<section class="card"><div class="section-title"><h2>Playoff bracket</h2><span class="badge">${h(playoffFormatLabel(bracket.format))}</span></div>
-    <div class="diagram-scroll">${playoffData.diagram||''}</div>
-    ${bracketLegendHtml()}
-    <details class="bracket-details"><summary>Heat cards</summary><div class="bracket-board">${columns}</div></details>
-    <details class="bracket-details"><summary>Team progress</summary>${table(['Seed','Code','Team','Losses','Status'],teamRows,'No playoff entrants.')}</details></section>`;
 }
 async function schedulePage() {
   if(!slug())return `${heading('Schedule','Select a competition first.')}<div class="card empty">Create or select a competition to continue.</div>`;
@@ -1064,67 +1032,121 @@ async function schedulePage() {
   }
   return `<div class="page-head"><div><div class="eyebrow">Schedule</div><h1>Schedule</h1><p>Build the league schedule, add timed events, and see everything in time order.</p></div><button class="secondary" data-action="go-page" data-page="playoffs">Playoffs →</button></div>${tabs}${body}`;
 }
+// Playoff heats are numbered on from the league matches.
+function nextPlayoffNumber(){return matches.filter(match=>!match.isPlayoff).reduce((number,match)=>Math.max(number,Number(match.match_number)),0)+1;}
+function playoffSeedingHtml(){
+  const bracket=playoffData.bracket;
+  if(!bracket)return '';
+  const snapshot=Array.isArray(bracket.seed_standings_snapshot)&&bracket.seed_snapshot_at&&bracket.seed_match_number!==null&&bracket.seed_match_number!==undefined;
+  const cutoff=!snapshot?'the original snapshot is unavailable for this older bracket'
+    :Number(bracket.seed_match_number)===0?'no league matches scored yet'
+      :`includes league results up to match #${h(bracket.seed_match_number)}`;
+  const ties=(Array.isArray(bracket.seed_standings_snapshot)?bracket.seed_standings_snapshot:[])
+    .filter(team=>team.rank<=Number(bracket.field_size)+1&&team.tiedWith?.length);
+  const checkUrl=`/api/admin/competitions/${encodeURIComponent(slug())}/playoffs/seed-check`;
+  return `<div class="callout ${snapshot?'':'warn'}" style="margin-bottom:1rem"><strong>Seeding ${bracket.seed_frozen_at?'frozen':'follows the league table until the first playoff countdown'}</strong>
+      · ${cutoff}. <a href="${checkUrl}">Check the standings</a></div>
+    ${ties.length&&!bracket.seed_frozen_at?`<div role="alert" class="callout warn" style="margin-bottom:1rem"><strong>Level teams:</strong> ${h([...new Set(ties.map(team=>[team.code,...team.tiedWith].sort().join(' = ')))].join('; '))}. They are equal on every tie-break, so they are listed by team code. The judge should decide their order (for example with a tie-break run recorded as a challenge award) before the first playoff countdown.</div>`:''}`;
+}
+function playoffTimetableHtml(){
+  const bracket=playoffData.bracket;
+  const byId=new Map(playoffData.matches.map(match=>[match.id,match]));
+  const codes=match=>[match.team_one_code,match.team_two_code,match.team_three_code,match.team_four_code];
+  const describe=source=>{
+    if(source.startsWith('seed:'))return `Seed ${source.slice(5)}`;
+    const [,place,id]=source.split(':');
+    return `${ordinal(place)} of #${byId.get(id)?.match_number??'?'}`;
+  };
+  const ordered=[...playoffData.matches].sort((left,right)=>new Date(left.effective_start)-new Date(right.effective_start)||left.match_number-right.match_number);
+  const rows=ordered.map(match=>{
+    const teamsInHeat=codes(match);
+    const scores=Array.isArray(match.scores)?match.scores:[];
+    const entrants=(match.sources||[]).map((source,index)=>({source,code:teamsInHeat[index]})).filter(entry=>entry.source!=='bye');
+    const who=match.status==='complete'&&scores.length
+      ?scores.map(score=>`<strong>${h(score.teamCode)}</strong> ${h(score.points)}`).join(' · ')
+      :entrants.map(entry=>entry.code?`<strong>${h(entry.code)}</strong>`:`<span class="subtle">${h(describe(entry.source))}</span>`).join(' · ');
+    const state=match.status==='complete'?'<span class="badge good">Result in</span>'
+      :match.timer_state&&match.timer_state!=='scheduled'?`<span class="badge warn">${h(match.timer_state.replaceAll('_',' '))}</span>`
+      :match.status==='ready'?'<span class="badge info">Ready</span>':'<span class="badge">Waiting for results</span>';
+    const editable=match.status!=='complete'&&(!match.timer_state||match.timer_state==='scheduled');
+    return `<tr><td><strong>${match.bracket_side==='final'?'Final':`Heat ${h(match.match_number)}`}</strong><br><span class="subtle">${h(playoffSideLabel(match.bracket_side,bracket.format))}</span></td>
+      <td>${h(formatCompetitionDateTime(match.effective_start))}${Number(match.delay_seconds)>0?` <span class="badge warn">+${h(formatDelay(match.delay_seconds))}</span>`:''}</td>
+      <td>${h(match.arena_name)}</td><td>${who}${match.tie_break?` <span class="badge warn" title="${h(match.tie_break.reason)}">Judge's decision</span>`:''}</td><td>${state}</td>
+      <td>${editable?`<button class="secondary" data-action="edit-playoff-schedule" data-id="${h(match.id)}">Edit time</button>`:''}</td></tr>`;
+  });
+  return table(['Heat','Time','Arena','Teams','Status',''],rows,'No heats.');
+}
+function playoffBracketTab(){
+  const bracket=playoffData.bracket;
+  if(!bracket||!playoffData.matches?.length){
+    return `<section class="card empty"><h2 style="margin-top:0">No playoffs yet</h2><p class="subtle">Set up how teams get from the league to the final, and when the heats run.</p><button data-action="tab" data-group="playoffs" data-tab="setup">Set up playoffs</button></section>`;
+  }
+  const heats=playoffData.matches;
+  const times=heats.map(match=>new Date(match.effective_start).getTime());
+  const done=heats.filter(match=>match.status==='complete').length;
+  const arenas=[...new Set(heats.map(match=>match.arena_name))];
+  const teamRows=(playoffData.teams||[]).map(team=>`<tr><td>${h(team.seed)}</td><td><strong>${h(team.code)}</strong></td><td>${h(team.name)}</td><td>${h(team.losses)}</td><td>${team.eliminated?'<span class="badge warn">Out</span>':'<span class="badge good">Still in</span>'}</td></tr>`);
+  return `<div class="grid cols-4">
+      <section class="card"><div class="metric" style="font-size:1.15rem">${h(playoffFormatLabel(bracket.format))}</div><div class="metric-label">Top ${h(bracket.field_size)} teams · final of ${h(bracket.final_size)}</div></section>
+      <section class="card"><div class="metric">${done}/${heats.length}</div><div class="metric-label">Heats played</div></section>
+      <section class="card"><div class="metric" style="font-size:1.15rem">${h(formatCompetitionDateTime(Math.min(...times)).split(', ').pop())} → ${h(formatCompetitionDateTime(Math.max(...times)).split(', ').pop())}</div><div class="metric-label">First heat → final</div></section>
+      <section class="card"><div class="metric" style="font-size:1.15rem">${h(arenas.join(', '))}</div><div class="metric-label">Arena${arenas.length===1?'':'s'}</div></section>
+    </div>
+    ${playoffSeedingHtml()}
+    <section class="card"><div class="section-title"><h2>Bracket</h2></div><div class="diagram-scroll">${playoffData.diagram||''}</div>${bracketLegendHtml()}</section>
+    <section class="card"><div class="section-title"><h2>Timetable</h2><span class="subtle">Heats wait for the heats that feed them; if one runs late, later heats move automatically.</span></div>${playoffTimetableHtml()}</section>
+    <details class="card" data-key="playoff-teams"><summary><strong>Team progress</strong></summary><div style="margin-top:.75rem">${table(['Seed','Code','Team','Losses','Status'],teamRows,'No playoff entrants.')}</div></details>`;
+}
+function playoffSetupTab(){
+  const replacing=Boolean(playoffData.bracket);
+  const activeTeamCount=teams.filter(team=>team.active).length;
+  const fieldSizes=Array.from({length:Math.max(0,activeTeamCount-1)},(_,index)=>index+2);
+  const intervalMinutes=Math.max(1,Math.ceil(Number(compOption()?.match_duration_seconds||120)/60));
+  const leagueArenas=[...new Set(matches.filter(match=>!match.isPlayoff).map(match=>match.arena_name))];
+  const nextStart=new Date(Date.now()+60000);nextStart.setSeconds(0,0);
+  const leagueEnd=Math.max(nextStart.getTime(),...matches.filter(match=>!match.isPlayoff).map(match=>
+    new Date(match.effective_start).getTime()+Number(match.duration_seconds||120)*1000));
+  const playoffStart=new Date(Math.ceil(leagueEnd/60000)*60000);
+  const routes=[
+    ['double-elimination','Double elimination','Lose once and you drop to the lower bracket; a second loss and you are out.'],
+    ['single-elimination','Single elimination','Bottom places in each heat are out; the rest go on.'],
+    ['direct-final','Straight to the final','The top seeds go directly into one final.'],
+    ['custom','Custom bracket','Draw your own heats and connections.']
+  ];
+  return `${replacing?`<div class="callout warn" style="margin-bottom:1rem"><strong>Playoffs already exist.</strong> Creating new ones archives the current bracket, its progression and its playoff scores.</div>`:''}
+    ${playoffSeedingHtml()}
+    <form id="playoff-form" data-replace="${replacing?'true':'false'}">
+      <section class="card"><h2><span class="step-number">1</span>Route to the final</h2>
+        <div class="route-choices">${routes.map(([value,label,description],index)=>`<label class="route-choice"><input type="radio" name="format" value="${value}" ${index===0?'checked':''}><span><strong>${label}</strong><span class="subtle">${description}</span></span></label>`).join('')}</div>
+        <div class="form-grid cols-3" style="margin-top:1rem">
+          <label data-standard>Teams in the playoffs<select name="fieldSize" ${fieldSizes.length?'':'disabled'}>${fieldSizes.map(size=>`<option value="${size}" ${size===activeTeamCount?'selected':''}>Top ${size} from the league</option>`).join('')}</select></label>
+          <label data-standard>Teams in the final<select name="finalSize">${[4,3,2].filter(size=>size<=matchSize()).map(size=>`<option value="${size}" ${size===matchSize()?'selected':''}>${size===2?'2 (head-to-head)':size}</option>`).join('')}</select></label>
+          <label data-standard>Top seeds straight to the final<select name="finalByes"><option value="0" selected>None</option><option value="1">League winner</option><option value="2">Top 2</option><option value="3">Top 3</option></select></label>
+        </div>
+        <p class="subtle" data-standard>Heats hold up to ${matchSize()} teams (teams per match). Seeds are spread across the first heats and nobody plays alone; ties that decide who goes through are settled by the judge.</p>
+        <div class="preview-box subtle" id="playoff-preview" data-standard aria-live="polite">Choose options to preview the bracket.</div>
+        <div class="hidden" id="playoff-builder" data-custom></div>
+      </section>
+      <section class="card"><h2><span class="step-number">2</span>When and where</h2>
+        <div class="form-grid cols-4">
+          <label>First heat<input name="scheduledStart" type="datetime-local" value="${toLocalDate(playoffStart)}" required></label>
+          <label>Arenas (comma-separated)<input name="arenaNames" value="${h((leagueArenas.length?leagueArenas:['Arena 1']).join(', '))}" required></label>
+          <label>Minutes between heats<input name="intervalMinutes" type="number" min="${intervalMinutes}" max="1440" value="${intervalMinutes}" required></label>
+          <label>Extra break before the final (minutes)<input name="finalDelayMinutes" type="number" min="0" max="1440" value="0" required></label>
+        </div>
+        <p class="subtle" style="margin-bottom:0">The first heat defaults to just after the league finishes. Independent heats run side by side on different arenas; a heat never starts before the heats feeding it have finished and been scored. Custom brackets can instead give each heat its own time and arena in the builder.</p>
+      </section>
+      <div style="margin-top:1rem"><button id="playoff-submit" ${fieldSizes.length?'':'disabled'}>${replacing?'Replace playoffs':'Create and schedule playoffs'}</button></div>
+    </form>`;
+}
 async function playoffsPage() {
   if(!slug())return `${heading('Playoffs','Select a competition first.')}<div class="card empty">Create or select a competition to continue.</div>`;
   playoffData=await api(`/api/admin/competitions/${encodeURIComponent(slug())}/playoffs`);
-  const nextStart = new Date(Date.now()+60000);
-  nextStart.setSeconds(0,0);
-  const activeTeamCount=teams.filter(team=>team.active).length;
-  const fieldSizes=Array.from({length:Math.max(0,activeTeamCount-1)},(_,index)=>index+2);
-  const fieldSize=activeTeamCount;
-  const intervalMinutes=Math.max(1,Math.ceil(Number(compOption()?.match_duration_seconds||120)/60));
-  const leagueArenas=[...new Set(matches.filter(match=>!match.isPlayoff).map(match=>match.arena_name))];
-  const defaultArenas=(leagueArenas.length?leagueArenas:['Arena 1']).join(', ');
-  const playoffStart=new Date(Math.ceil(Math.max(nextStart.getTime(),...matches.map(match=>
-    new Date(match.effective_start).getTime()+Number(match.duration_seconds||120)*1000))/60000)*60000);
-  const seedBracket=playoffData.bracket;
-  const seedSnapshotAvailable=Array.isArray(seedBracket?.seed_standings_snapshot)&&
-    seedBracket.seed_snapshot_at&&seedBracket.seed_match_number!==null&&seedBracket.seed_match_number!==undefined;
-  const seedMatchDescription=!seedSnapshotAvailable
-    ?'Original source snapshot unavailable; match cutoff cannot be verified for this legacy bracket.'
-    :Number(seedBracket.seed_match_number)===0
-      ?'No scored league matches had been recorded when this standings snapshot was captured.'
-      :`Highest-numbered scored league match included: #${h(seedBracket.seed_match_number)}.`;
-  const seedSnapshotDescription=seedSnapshotAvailable
-    ?`Captured ${h(formatCompetitionDateTime(seedBracket.seed_snapshot_at))}. ${seedMatchDescription}`
-    :seedMatchDescription;
-  const seedCheckUrl=`/api/admin/competitions/${encodeURIComponent(slug())}/playoffs/seed-check`;
-  const seedTies=(Array.isArray(seedBracket?.seed_standings_snapshot)?seedBracket.seed_standings_snapshot:[])
-    .filter(team=>team.rank<=Number(seedBracket.field_size)+1&&team.tiedWith?.length);
-  const seedTieWarning=seedTies.length&&!seedBracket.seed_frozen_at
-    ?`<div role="alert" class="callout warn" style="margin-bottom:1rem"><strong>Level teams in the playoff seeding:</strong> ${h([...new Set(seedTies.map(team=>[team.code,...team.tiedWith].sort().join(' = ')))].join('; '))}. They are equal on league points, match points, head-to-head and best match, so they are currently listed by team code. The judge should decide the order (for example with a tie-break run recorded as a challenge award) before the first playoff countdown freezes the seeds.</div>`:'';
-  return `<div class="page-head"><div><div class="eyebrow">Schedule</div><h1>Playoffs</h1><p>How teams get from the league to the final, and the bracket as it plays out.</p></div>${seedBracket?`<a class="button-link" href="${seedCheckUrl}">Seeding sanity check</a>`:''}</div>
-    ${bracketBoardHtml()}
-    <section class="card"><h2>${playoffData.bracket?'Replace scheduled playoffs':'Schedule playoffs after the league'}</h2>
-      ${seedBracket?`<div role="status" class="callout ${seedSnapshotAvailable?'good':'warn'}" style="margin-bottom:1rem">
-        <strong>${seedBracket.seed_frozen_at?'Frozen playoff seeding snapshot':'Current playoff seeding snapshot'}</strong>
-        <span> · ${seedSnapshotDescription}</span>
-        <a href="${seedCheckUrl}" style="display:inline-block;margin-left:.5rem">Open standings sanity check</a>
-      </div>`:''}
-      ${seedTieWarning}
-      <p class="subtle">Choose how teams get from the league to the final. Every heat has up to ${matchSize()} robots (this competition's teams per match); seeds are spread across first-round heats and nobody gets a single-team bye. Seeds follow the live league table until the first playoff countdown, then freeze. Ties that decide who advances are settled by the judge, and playoff points never change league standings.</p>
-      <form id="playoff-form" data-replace="${playoffData.bracket?'true':'false'}" class="form-grid cols-3">
-        <label>Route to the final<select name="format">
-          <option value="double-elimination">Double elimination</option>
-          <option value="single-elimination">Single elimination knockout</option>
-          <option value="direct-final">Straight to the final</option>
-          <option value="custom">Custom bracket (build it yourself)</option>
-        </select></label>
-        <label data-standard>Playoff entrants<select name="fieldSize" ${fieldSizes.length?'':'disabled'}>${fieldSizes.map(size=>`<option value="${size}" ${size===fieldSize?'selected':''}>Top ${size} teams</option>`).join('')}</select></label>
-        <label data-standard>Teams in the final<select name="finalSize">${[4,3,2].filter(size=>size<=matchSize()).map(size=>`<option value="${size}" ${size===matchSize()?'selected':''}>${size===2?'2 teams (head-to-head)':`${size} teams`}</option>`).join('')}</select></label>
-        <label data-standard>Top seeds straight to the final<select name="finalByes"><option value="0" selected>None</option><option value="1">League winner</option><option value="2">Top 2 seeds</option><option value="3">Top 3 seeds</option></select></label>
-        <label>First playoff heat<input name="scheduledStart" type="datetime-local" value="${toLocalDate(playoffStart)}" required></label>
-        <label>Arenas (comma-separated)<input name="arenaNames" value="${h(defaultArenas)}" required></label>
-        <label>Minutes between heats<input name="intervalMinutes" type="number" min="${intervalMinutes}" max="1440" value="${intervalMinutes}" required></label>
-        <label>Extra delay before final (minutes)<input name="finalDelayMinutes" type="number" min="0" max="1440" value="0" required></label>
-        <div class="wide preview-box subtle" id="playoff-preview" data-standard aria-live="polite">Choose options to preview the bracket.</div>
-        <div class="wide hidden" id="playoff-builder" data-custom></div>
-        <p class="subtle wide">With several arenas, independent heats run side by side; a heat never starts until the heats feeding it have finished and been scored, plus the gap. If anything runs late, later heats move automatically, keeping their gaps and the final buffer.</p>
-        <div class="wide"><button id="playoff-submit" ${fieldSizes.length?'':'disabled'}>${playoffData.bracket?'Replace and reschedule':'Generate and schedule playoffs'}</button></div>
-      </form>
-      ${playoffData.bracket?`<p class="subtle" style="margin-top:1rem">Current bracket: ${h(playoffFormatLabel(playoffData.bracket.format))} · top ${h(playoffData.bracket.field_size)} from standings · final of ${h(playoffData.bracket.final_size)}${Number(playoffData.bracket.final_byes)?` with ${h(playoffData.bracket.final_byes)} seeded bye(s)`:''} · ${playoffData.bracket.seed_frozen_at?'seeds frozen when play began':'seeds update from the latest league standings until the first playoff countdown starts'} · ${h(playoffData.bracket.status)}. Replacing archives its progression and scores.</p>`:''}
-    </section>
-`;
+  const hasBracket=Boolean(playoffData.bracket&&playoffData.matches?.length);
+  const tab=hasBracket?currentTab('playoffs','bracket'):'setup';
+  return `${heading('Playoffs','How teams get from the league to the final, and when each heat runs.')}
+    ${hasBracket?tabsHtml('playoffs',[['bracket','Bracket & timetable',playoffData.matches.length],['setup','Replace playoffs']],tab):''}
+    ${tab==='setup'?playoffSetupTab():playoffBracketTab()}`;
 }
 // ---------- Custom playoff builder ----------
 // The draft lives in this browser (per competition) until the bracket is created.
@@ -1217,8 +1239,9 @@ function refreshBuilderPreview(){
   builderPreviewTimer=setTimeout(async()=>{
     const draft=loadPlayoffDraft();
     const request=++builderPreviewRequest;
+    if(!draft.heats.length){builderPreview={valid:false,error:'Add heats, or start from a template and adjust it.',numbers:{},diagram:''};renderPlayoffBuilder();return;}
     try{
-      const result=await api(`/api/admin/competitions/${encodeURIComponent(slug())}/playoffs/custom-preview`,{method:'POST',body:JSON.stringify({heats:draft.heats.map(({key,side,sources})=>({key,side,sources}))})});
+      const result=await api(`/api/admin/competitions/${encodeURIComponent(slug())}/playoffs/custom-preview`,{method:'POST',body:JSON.stringify({firstNumber:nextPlayoffNumber(),heats:draft.heats.map(({key,side,sources})=>({key,side,sources}))})});
       if(request!==builderPreviewRequest)return;
       builderPreview=result.valid?result:{...builderPreview,valid:false,error:result.error,diagram:''};
     }catch(error){builderPreview={valid:false,error:error.message,numbers:{},diagram:''};}
@@ -1260,7 +1283,7 @@ async function handleBuilderAction(element){
     const format=$('builder-template-format').value;
     const fieldSize=Number($('builder-template-size').value);
     if(draft.heats.length&&!confirm('Replace the heats in the builder with this template?'))return;
-    const preview=await api(`/api/admin/playoff-formats/preview?${new URLSearchParams({fieldSize:String(fieldSize),format,heatSize:String(matchSize())})}`);
+    const preview=await api(`/api/admin/playoff-formats/preview?${new URLSearchParams({fieldSize:String(fieldSize),format,heatSize:String(matchSize()),firstNumber:String(nextPlayoffNumber())})}`);
     draft.heats=preview.heats.map(heat=>({key:`h${heat.number}`,side:heat.side,sources:heat.sources.map(source=>source.replace(/^place:(\d):(\d+)$/,'place:$1:h$2'))}));
     draft.next=preview.heats.length+1;
     playoffLink=null;
