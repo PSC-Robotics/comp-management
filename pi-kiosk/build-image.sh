@@ -54,11 +54,9 @@ apt-get update -qq
 apt-get install -y -q --no-install-recommends cog libegl-mesa0 libgles2 libgl1-mesa-dri fonts-dejavu-core
 
 # Nothing on a display screen needs these; dropping them saves space, RAM and boot time.
-unwanted=""
-for p in man-db manpages triggerhappy bluez pi-bluetooth bluez-firmware modemmanager \
-         rpi-connect-lite avahi-daemon cups-browsed nfs-common rpcbind; do
-  dpkg -s "\$p" >/dev/null 2>&1 && unwanted="\$unwanted \$p"
-done
+# Kernels for other Pi models go too, so the card boots a Pi 1 or Zero only. Realtek firmware
+# stays for USB Wi-Fi and Ethernet adapters.
+unwanted=\$(dpkg-query -Wf '\${Package}\n' | grep -E '^(man-db|manpages.*|triggerhappy|bluez.*|pi-bluetooth|modemmanager|rpi-connect-lite|avahi-daemon|cups-browsed|nfs-common|rpcbind|build-essential|gcc|gcc-14|cpp|cpp-14|g\+\+.*|libc6-dev|linux-headers-.*|linux-image-.*(v7|v7l|v8|2712)|firmware-(atheros|brcm80211|libertas|mediatek)|rpi-eeprom)\$' || true)
 [ -n "\$unwanted" ] && apt-get purge -y -q --auto-remove \$unwanted
 apt-get clean
 rm -rf /var/lib/apt/lists/* /usr/share/doc/* /usr/share/man/* /var/cache/man/*

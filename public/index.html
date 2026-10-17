@@ -661,6 +661,8 @@ function tabsHtml(group,tabs,active){
 let pendingRender = false;
 let polling = false;
 let renderRevision = 0;
+let lastRenderedPage = null;
+let viewHeightTimer = null;
 let serverClockOffset = 0;
 let serverClockBestRoundTrip = Infinity;
 const MATCH_COUNTDOWN_TOTAL_MS = 5000;
@@ -1188,6 +1190,7 @@ async function playoffsPage() {
   [playoffData,builderStandings]=await Promise.all([api(`/api/admin/competitions/${encodeURIComponent(slug())}/playoffs`),leagueData().then(data=>(data.standings||[]).filter(team=>team.active!==false)).catch(()=>[])]);
   const hasBracket=Boolean(playoffData.bracket&&playoffData.matches?.length);
   const tab=hasBracket?currentTab('playoffs','bracket'):'setup';
+  playoffSetupOpen=tab==='setup';
   return `${heading('Playoffs','How teams get from the league to the final, and when each heat runs.')}
     ${hasBracket?tabsHtml('playoffs',[['bracket','Bracket & timetable',playoffData.matches.length],['setup','Replace playoffs']],tab):''}
     ${tab==='setup'?playoffSetupTab():playoffBracketTab()}`;
@@ -1198,6 +1201,10 @@ async function playoffsPage() {
 // out do not progress. The draft lives in this browser (per competition) until it is created.
 let playoffDraft=null;
 let builderStandings=[];
+// The setup tab is not rebuilt by background refreshes (you may be in the middle of building).
+let playoffSetupOpen=false;
+// Where the canvas is scrolled to, kept across rebuilds.
+let builderCanvasScroll={left:0,top:0};
 let builderPreview={valid:false,error:'Add matches to start.',numbers:{}};
 let builderPreviewTimer=null;
 let builderPreviewRequest=0;
@@ -1353,10 +1360,12 @@ function drawCanvasLines(extra=''){
 function renderPlayoffBuilder(){
   const box=$('playoff-builder');
   if(!box)return;
-  const canvas=$('cb-canvas');
-  const scroll=canvas?{left:canvas.scrollLeft,top:canvas.scrollTop}:null;
   box.innerHTML=playoffBuilderHtml();
-  if(scroll){$('cb-canvas').scrollLeft=scroll.left;$('cb-canvas').scrollTop=scroll.top;}
+  const canvas=$('cb-canvas');
+  if(canvas){
+    canvas.scrollLeft=builderCanvasScroll.left;canvas.scrollTop=builderCanvasScroll.top;
+    canvas.addEventListener('scroll',()=>{builderCanvasScroll={left:canvas.scrollLeft,top:canvas.scrollTop};},{passive:true});
+  }
   drawCanvasLines();
 }
 function refreshBuilderPreview(){
@@ -2374,14 +2383,24 @@ async function render({fromRefresh=false}={}) {
   const pages={competitions:competitionsPage,overview:overviewPage,teams:teamsPage,challenges:challengesPage,schedule:schedulePage,playoffs:playoffsPage,matches:matchesPage,scores:scoresPage,league:leaguePage,arena:arenaPage,displays:displaysPage,media:mediaPage,kit:kitPage,settings:settingsPage,access:accessPage,activity:activityPage};
   // A background refresh waits until you stop typing in a field (or close a dialog).
   if(fromRefresh&&(userIsTyping()||document.querySelector('dialog[open]'))){pendingRender=true;return;}
+  if(fromRefresh&&page==='playoffs'&&playoffSetupOpen)return;
   const pageToRender=page;
   const revision=++renderRevision;
   const content=await pages[pageToRender]();
   if(revision!==renderRevision||pageToRender!==page)return;
   if(fromRefresh&&userIsTyping()){pendingRender=true;return;}
   const saved=snapshotForms();
+  // Re-rendering the same page keeps your place (content filled in afterwards can't pull you back up).
+  const scroller=document.querySelector('.main-content');
+  const samePage=lastRenderedPage===pageToRender;
+  const keepTop=samePage&&scroller?scroller.scrollTop:0;
+  if(samePage)$('view').style.minHeight=`${$('view').offsetHeight}px`;
   document.querySelectorAll('#view details[data-key]').forEach(node=>node.open?openDetails.add(node.dataset.key):openDetails.delete(node.dataset.key));
   $('view').innerHTML=content;
+  lastRenderedPage=pageToRender;
+  if(scroller)scroller.scrollTop=keepTop;
+  clearTimeout(viewHeightTimer);
+  viewHeightTimer=setTimeout(()=>{$('view').style.minHeight='';},1500);
   document.querySelectorAll('#view details[data-key]').forEach(node=>{if(openDetails.has(node.dataset.key))node.open=true;});
   restoreForms(saved);
   updateNavCounts();

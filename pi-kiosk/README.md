@@ -1,6 +1,6 @@
 # Raspberry Pi display kiosk
 
-An SD card image that turns a Raspberry Pi 1 B+ into a screen that shows one Competition Control display full
+An SD card image that turns a Raspberry Pi 1 B+ (or other Pi 1 / Zero; kernels for later models are removed to keep it small) into a screen that shows one Competition Control display full
 screen. Nothing else runs on it: no desktop, X server or compositor. The browser is
 [Cog](https://github.com/Igalia/cog) (WPE WebKit) drawing straight to the screen through
 DRM/KMS. Chromium no longer runs on the Pi 1's ARMv6 processor.
