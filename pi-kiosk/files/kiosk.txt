@@ -1,0 +1,19 @@
+# Competition Control display kiosk.
+# Edit this file on any computer (it is on the card's "bootfs" drive), then put the card back in the Pi.
+
+# Address of the Competition Control server.
+SERVER=https://comp.psc-robotics.uk
+
+# Display to show: the slug at the end of its URL (/display/<slug>).
+# Leave blank to choose one on screen with a keyboard; the choice is remembered, and each boot
+# offers 10 seconds to pick a different one.
+DISPLAY=
+
+# Resolution the screen is driven at. 1280x720 keeps a Pi 1 responsive; leave blank for the TV's own mode.
+RESOLUTION=1280x720
+
+# Rotate the picture clockwise: 0, 90, 180 or 270.
+ROTATION=0
+
+# Page zoom, e.g. 1.5 for 150%.
+ZOOM=1.0

@@ -1,0 +1,26 @@
+[Unit]
+Description=Competition Control display kiosk
+After=network-online.target systemd-user-sessions.service
+Wants=network-online.target
+Conflicts=getty@tty1.service
+
+[Service]
+User=kiosk
+SupplementaryGroups=video render input tty
+Environment=HOME=/var/lib/kiosk XDG_RUNTIME_DIR=/run/kiosk
+RuntimeDirectory=kiosk
+WorkingDirectory=/var/lib/kiosk
+PAMName=login
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+UtmpIdentifier=tty1
+StandardInput=tty-fail
+StandardOutput=journal
+StandardError=journal
+ExecStart=/usr/local/bin/kiosk-launch
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

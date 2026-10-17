@@ -1,0 +1,47 @@
+#!/bin/sh
+# Shows one Competition Control display full screen with Cog (WPE WebKit) straight on DRM/KMS:
+# no X server or compositor, which is what lets this run on a Raspberry Pi 1.
+CONFIG=/boot/firmware/kiosk.txt
+TTY=/dev/tty1
+
+setting() {
+  tr -d '\r' < "$CONFIG" 2>/dev/null | sed -n "s/^[[:space:]]*$1[[:space:]]*=[[:space:]]*//p" | tail -n 1 | sed 's/[[:space:]]*$//'
+}
+say() { printf '\033[2J\033[H\n  %s\n' "$*" > "$TTY" 2>/dev/null; echo "$*"; }
+
+server=$(setting SERVER); server=${server%/}
+display=$(setting DISPLAY)
+resolution=$(setting RESOLUTION)
+zoom=$(setting ZOOM); zoom=${zoom:-1.0}
+case $(setting ROTATION) in 90) rotation=3 ;; 180) rotation=2 ;; 270) rotation=1 ;; *) rotation=0 ;; esac
+
+if [ -z "$server" ]; then say "Set SERVER in kiosk.txt on the card's bootfs drive."; sleep 60; exit 1; fi
+if [ -n "$display" ]; then url="$server/display/$display"; else url="$server/kiosk"; fi
+
+reachable() { curl -fsS -o /dev/null --max-time 5 "$server/api/time"; }
+until reachable; do
+  say "Waiting for $server ... ($(hostname -I 2>/dev/null || echo 'no network'))"
+  sleep 3
+done
+say "Opening $url"
+
+[ -n "$resolution" ] && export COG_PLATFORM_DRM_VIDEO_MODE="$resolution"
+cog --platform=drm --platform-params="rotation=$rotation" --scale="$zoom" --bg-color=black \
+  --webprocess-failure=restart --cookie-store=always --cookie-jar="sqlite:$HOME/cookies.sqlite" \
+  "$url" &
+cog=$!
+
+# The display pages recover from short outages themselves. A long one can leave Cog on its own
+# error page (a navigation that failed), so restart it once the server has been back after
+# being away for a minute or more.
+down=0
+while kill -0 "$cog" 2>/dev/null; do
+  sleep 20
+  if reachable; then
+    if [ "$down" -ge 3 ]; then kill "$cog"; wait "$cog"; exit 0; fi
+    down=0
+  else
+    down=$((down + 1))
+  fi
+done
+wait "$cog"

@@ -100,3 +100,20 @@ test('kit is checked out to a team, checked back in with its condition, and keep
     'lost kit cannot be lent');
   assert.equal((await h.request({ method: 'DELETE', url: `/api/admin/kit/${item}` })).statusCode, 204);
 });
+
+test('the kiosk picker lists enabled displays of published competitions only', { skip }, async () => {
+  const { slug } = await competition(2, 2);
+  const shown = await h.api<any>('POST', `/api/admin/competitions/${slug}/displays`, { slug: `${slug}-board`, title: 'Main <board>', type: 'schedule', options: {} });
+  const hidden = await h.api<any>('POST', `/api/admin/competitions/${slug}/displays`, { slug: `${slug}-off`, title: 'Switched off', type: 'league', options: {} });
+  await h.api('PATCH', `/api/admin/displays/${hidden.id}`, { enabled: false });
+  const draft = `d-${randomBytes(5).toString('hex')}`;
+  await h.api('POST', '/api/admin/competitions', { name: `Draft ${draft}`, slug: draft, matchDurationSeconds: 60, matchSize: 2 }, 201);
+  await h.api('POST', `/api/admin/competitions/${draft}/displays`, { slug: `${draft}-board`, title: 'Draft board', type: 'league', options: {} });
+
+  const page = await h.request({ method: 'GET', url: '/kiosk', as: null });
+  assert.equal(page.statusCode, 200);
+  assert.ok(page.body.includes(`href="/display/${shown.slug}"`), 'enabled display is listed');
+  assert.ok(page.body.includes('Main &lt;board&gt;'), 'titles are escaped');
+  assert.ok(!page.body.includes(`${slug}-off`), 'disabled displays are not listed');
+  assert.ok(!page.body.includes(`${draft}-board`), 'draft competitions are not listed');
+});

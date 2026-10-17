@@ -112,18 +112,21 @@ for the audit trail but no longer shown).
 
 ### Building a custom bracket
 
-Choose **Custom bracket** under *Route to the final*.
+Choose **Custom bracket** under *Route to the final*. You get a canvas:
 
-1. **Add heats**: upper/knockout heats, lower-bracket heats and one final. Use − and + to set
-   how many teams a heat holds (up to the teams per match).
-2. **Fill each slot**: pick a league seed or another heat's finishing place from the list, or
-   click a heat's **1st →** (or 2nd, 3rd…) button and then click the slot it should go to.
-   Each button shows where that place goes; a place that goes nowhere is eliminated.
-3. Or **start from** single or double elimination for a number of teams and adjust it.
-4. The diagram underneath updates as you go and says what is still missing.
-5. **Schedule automatically** (uses the first heat time, gap and arenas above) or **set each
-   heat's time and arena**. Heats still move later if a feeder heat runs late.
-6. Press **Generate and schedule playoffs**. The draft stays in this browser until then.
+1. **Add match** (and **Add final**). Drag a match by its title bar to place it. Use − and + to set
+   how many teams it holds, and the small menu to mark it knockout, lower bracket or final.
+2. **Seed teams from the league**: drag a team from the *League standings* panel onto a slot, or
+   pick it from the slot's list.
+3. **Draw the progression**: drag from a place's dot on the right of a match (1st, 2nd…) to a slot
+   in another match. Click a line to remove it. A place with no line coming out does not progress
+   and is marked "out".
+4. **Start from** single or double elimination for a number of teams if you want a starting point,
+   and **Tidy layout** to arrange matches by round.
+5. The bar above the canvas says what is still missing, or "Ready".
+6. **Schedule automatically** (step 2's first heat, gap and arenas) or **give each match its own
+   time and arena** in its box. Matches still move later if one feeding them runs late.
+7. Press **Create and schedule playoffs**. The draft stays in this browser until then.
 
 ## Handling delays
 

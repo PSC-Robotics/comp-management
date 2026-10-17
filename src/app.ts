@@ -10,6 +10,7 @@ import { registerCompetitionRoutes } from './routes/competitions.js';
 import { registerDelayRoutes } from './routes/delays.js';
 import { registerDisplayAdminRoutes } from './routes/displays-admin.js';
 import { registerDisplayPageRoutes } from './routes/display-page.js';
+import { registerKioskRoutes } from './routes/kiosk.js';
 import { registerEventRoutes } from './routes/events.js';
 import { registerLiveRoutes } from './routes/live.js';
 import { registerKitRoutes } from './routes/kit.js';
@@ -70,6 +71,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   registerAuditRoutes(app);
   registerPublicRoutes(app);
   registerDisplayPageRoutes(app);
+  registerKioskRoutes(app);
   registerSrcompRoutes(app);
 
   app.setErrorHandler((error, request, reply) => {

@@ -112,6 +112,50 @@
     .route-choice > span { display: grid; gap: .15rem; }
     .route-choice .subtle { font-weight: 500; font-size: .8rem; }
     .step-number { display: inline-grid; place-items: center; width: 1.6rem; height: 1.6rem; margin-right: .5rem; border-radius: 50%; background: var(--accent); color: #fff; font-size: .85rem; vertical-align: middle; }
+    .cb-status { margin: .7rem 0; display: grid; gap: .2rem; }
+    .cb-wrap { display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: .75rem; }
+    .cb-palette { border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--raised); padding: .5rem; max-height: 640px; overflow-y: auto; display: grid; gap: .3rem; align-content: start; }
+    .cb-palette-title { font-size: .7rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); padding: .1rem .2rem .3rem; }
+    .cb-seed { display: flex; gap: .45rem; align-items: center; padding: .35rem .5rem; border: 1px solid var(--line); border-radius: 7px; background: var(--surface); cursor: grab; user-select: none; touch-action: none; font-size: .82rem; }
+    .cb-seed b { min-width: 1.4rem; text-align: right; color: var(--muted); }
+    .cb-seed span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .cb-seed.used { opacity: .45; }
+    .cb-canvas { position: relative; overflow: auto; max-height: 640px; border: 1px solid var(--line); border-radius: var(--radius-sm); background-color: var(--surface); background-image: radial-gradient(circle, color-mix(in srgb, var(--line) 85%, transparent) 1px, transparent 1px); background-size: 22px 22px; }
+    .cb-surface { position: relative; }
+    .cb-lines { position: absolute; inset: 0; pointer-events: none; overflow: visible; }
+    .cb-line { fill: none; stroke: #3267d5; stroke-width: 2.5; }
+    .cb-line.drop { stroke: #c76a10; stroke-dasharray: 7 5; }
+    .cb-line.final { stroke: #19875b; }
+    .cb-line.pending { stroke: var(--accent); stroke-dasharray: 4 4; }
+    .cb-hit { fill: none; stroke: transparent; stroke-width: 14; pointer-events: stroke; cursor: pointer; }
+    .cb-hit:hover { stroke: color-mix(in srgb, var(--bad) 30%, transparent); }
+    .cb-empty { position: absolute; left: 40px; top: 40px; color: var(--muted); }
+    .cb-heat { position: absolute; width: 220px; background: var(--surface); border: 1px solid var(--line); border-top: 4px solid #3267d5; border-radius: 9px; box-shadow: var(--shadow); }
+    .cb-heat.side-lower { border-top-color: #c76a10; }
+    .cb-heat.side-final { border-top-color: #19875b; }
+    .cb-head { display: flex; align-items: center; gap: .35rem; padding: .4rem .5rem; cursor: grab; touch-action: none; user-select: none; border-bottom: 1px solid var(--line); }
+    .cb-head strong { flex: 1; font-size: .9rem; }
+    .cb-head select { width: auto; min-height: 26px; padding: .1rem .3rem; font-size: .75rem; }
+    .cb-icon { background: transparent; color: var(--muted); border: 1px solid var(--line); min-height: 0; padding: .05rem .4rem; font-size: .8rem; }
+    .cb-body { display: grid; grid-template-columns: 1fr auto; gap: .3rem; padding: .4rem 0; }
+    .cb-ins, .cb-outs { display: grid; gap: .3rem; align-content: start; }
+    .cb-slot { position: relative; display: flex; align-items: center; padding-left: .55rem; border-radius: 6px; }
+    .cb-slot.hover .cb-select { border-color: var(--accent); background: var(--accent-soft); }
+    .cb-select { min-height: 28px; height: 28px; padding: .1rem .35rem; font-size: .78rem; font-weight: 650; }
+    .cb-slot.empty .cb-select { color: var(--muted); border-style: dashed; }
+    .cb-port { width: 13px; height: 13px; border-radius: 50%; border: 2px solid var(--muted); background: var(--surface); flex: 0 0 13px; }
+    .cb-port.linked { border-color: #3267d5; background: #3267d5; }
+    .cb-in { position: absolute; left: -7px; }
+    .cb-out { display: flex; align-items: center; justify-content: flex-end; gap: .3rem; height: 28px; font-size: .75rem; font-weight: 700; margin-right: -7px; }
+    .cb-out.out { color: var(--muted); font-weight: 500; }
+    .cb-out.out span:first-child::after { content: ' · out'; font-style: italic; }
+    .cb-outport { cursor: crosshair; touch-action: none; }
+    .cb-outport:hover, .cb-outport.active { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+    .cb-foot { display: flex; align-items: center; justify-content: center; gap: .4rem; padding: 0 .5rem .45rem; font-size: .75rem; color: var(--muted); }
+    .cb-times { display: grid; gap: .25rem; padding: 0 .5rem .5rem; }
+    .cb-times input { min-height: 28px; height: 28px; font-size: .75rem; padding: .1rem .35rem; }
+    .cb-ghost { position: fixed; z-index: 100; pointer-events: none; padding: .3rem .6rem; border-radius: 7px; background: var(--accent); color: #fff; font-size: .8rem; font-weight: 700; box-shadow: var(--shadow-lg); }
+    @media (max-width: 760px) { .cb-wrap { grid-template-columns: 1fr; } .cb-palette { max-height: 180px; } }
     .builder-toolbar { display: flex; flex-wrap: wrap; gap: .5rem; align-items: end; }
     .builder-spacer { flex: 1; }
     .builder-inline { display: flex; align-items: center; gap: .35rem; font-size: .8rem; }
@@ -1141,20 +1185,24 @@ function playoffSetupTab(){
 }
 async function playoffsPage() {
   if(!slug())return `${heading('Playoffs','Select a competition first.')}<div class="card empty">Create or select a competition to continue.</div>`;
-  playoffData=await api(`/api/admin/competitions/${encodeURIComponent(slug())}/playoffs`);
+  [playoffData,builderStandings]=await Promise.all([api(`/api/admin/competitions/${encodeURIComponent(slug())}/playoffs`),leagueData().then(data=>(data.standings||[]).filter(team=>team.active!==false)).catch(()=>[])]);
   const hasBracket=Boolean(playoffData.bracket&&playoffData.matches?.length);
   const tab=hasBracket?currentTab('playoffs','bracket'):'setup';
   return `${heading('Playoffs','How teams get from the league to the final, and when each heat runs.')}
     ${hasBracket?tabsHtml('playoffs',[['bracket','Bracket & timetable',playoffData.matches.length],['setup','Replace playoffs']],tab):''}
     ${tab==='setup'?playoffSetupTab():playoffBracketTab()}`;
 }
-// ---------- Custom playoff builder ----------
-// The draft lives in this browser (per competition) until the bracket is created.
+// ---------- Custom playoff builder (canvas) ----------
+// Matches are boxes on a canvas. Each slot (left) takes a league seed or a finishing place of another
+// match; drag a line from a place (right) to a slot to send that place there. Places with no line
+// out do not progress. The draft lives in this browser (per competition) until it is created.
 let playoffDraft=null;
-let playoffLink=null;
-let builderPreview={valid:false,error:'Add heats to start.',numbers:{},diagram:''};
+let builderStandings=[];
+let builderPreview={valid:false,error:'Add matches to start.',numbers:{}};
 let builderPreviewTimer=null;
 let builderPreviewRequest=0;
+let canvasGesture=null;
+const CANVAS_BOX_WIDTH=220;
 function playoffDraftKey(){return `playoffDraft:${slug()}`;}
 function loadPlayoffDraft(){
   if(playoffDraft&&playoffDraft.slug===slug())return playoffDraft;
@@ -1165,131 +1213,207 @@ function loadPlayoffDraft(){
 }
 function savePlayoffDraft(){try{localStorage.setItem(playoffDraftKey(),JSON.stringify(playoffDraft));}catch{}}
 function draftHeat(key){return loadPlayoffDraft().heats.find(heat=>heat.key===key);}
-function heatName(key){const number=builderPreview.numbers?.[key];const index=loadPlayoffDraft().heats.findIndex(heat=>heat.key===key);return `Heat ${number||(index>=0?`#${index+1}`:'?')}`;}
+function heatName(key){
+  const heat=draftHeat(key);
+  if(heat?.side==='final')return 'Final';
+  const number=builderPreview.numbers?.[key];
+  return number?`Heat ${number}`:`Match ${loadPlayoffDraft().heats.findIndex(other=>other.key===key)+1}`;
+}
+function seedLabel(rank){const team=builderStandings[rank-1];return team?`${rank}. ${team.code}`:`Seed ${rank}`;}
 function sourceLabel(source){
-  if(!source)return 'Empty slot';
+  if(!source)return 'Empty';
   const seed=/^seed:(\d+)$/.exec(source);
-  if(seed)return `Seed ${seed[1]}`;
+  if(seed)return seedLabel(Number(seed[1]));
   const place=/^place:(\d):(.+)$/.exec(source);
-  if(place)return `${ordinal(Number(place[1]))} of ${heatName(place[2])}`;
+  if(place)return `${ordinal(place[1])} of ${heatName(place[2])}`;
   return source;
 }
-// Where a heat's finishing place goes (or "out").
-function placeTarget(key,place){
-  const source=`place:${place}:${key}`;
-  const target=loadPlayoffDraft().heats.find(heat=>heat.sources.includes(source));
-  return target?heatName(target.key):'out';
+function placeUsed(key,place){return loadPlayoffDraft().heats.some(heat=>heat.sources.includes(`place:${place}:${key}`));}
+// Stage = one more than the latest match feeding it; used to lay matches out left to right.
+function draftStages(){
+  const draft=loadPlayoffDraft();
+  const stages=new Map();
+  const stageOf=(key,seen=new Set())=>{
+    if(stages.has(key))return stages.get(key);
+    if(seen.has(key))return 1;
+    seen.add(key);
+    const heat=draftHeat(key);
+    const feeders=(heat?.sources||[]).map(source=>/^place:\d:(.+)$/.exec(source)?.[1]).filter(Boolean);
+    const stage=feeders.length?1+Math.max(...feeders.map(feeder=>stageOf(feeder,seen))):1;
+    stages.set(key,stage);
+    return stage;
+  };
+  draft.heats.forEach(heat=>stageOf(heat.key));
+  return stages;
 }
-function builderSourceOptions(heat,current){
-  const teamsAvailable=Math.max(2,teams.filter(team=>team.active!==false).length);
-  const seeds=Array.from({length:teamsAvailable},(_,index)=>`seed:${index+1}`);
-  const places=loadPlayoffDraft().heats.filter(other=>other.key!==heat.key&&other.side!=='final')
-    .flatMap(other=>other.sources.map((_,index)=>`place:${index+1}:${other.key}`));
-  return `<option value="">Choose a team source…</option><optgroup label="League seeds">${seeds.map(source=>`<option value="${source}" ${source===current?'selected':''}>${h(sourceLabel(source))}</option>`).join('')}</optgroup>${places.length?`<optgroup label="Finishing places">${places.map(source=>`<option value="${h(source)}" ${source===current?'selected':''}>${h(sourceLabel(source))}</option>`).join('')}</optgroup>`:''}`;
+function arrangeDraft(){
+  const draft=loadPlayoffDraft();
+  const stages=draftStages();
+  const height=heat=>78+heat.sources.length*34+(draft.scheduleMode==='manual'?58:0);
+  const columns=new Map();
+  // The final goes in its own column after everything else.
+  const lastStage=Math.max(0,...draft.heats.filter(heat=>heat.side!=='final').map(heat=>stages.get(heat.key)));
+  for(const heat of draft.heats)heat.stage=heat.side==='final'?Math.max(lastStage+1,stages.get(heat.key)):stages.get(heat.key);
+  let upperBottom=0;
+  for(const side of ['upper','final','lower']){
+    for(const heat of draft.heats.filter(candidate=>candidate.side===side)){
+      const column=columns.get(heat.stage)||{upper:24,lower:null};
+      if(side==='lower'){
+        column.lower=column.lower??Math.max(upperBottom+48,24);
+        heat.x=24+(heat.stage-1)*(CANVAS_BOX_WIDTH+110);heat.y=column.lower;column.lower+=height(heat)+24;
+      }else{
+        heat.x=24+(heat.stage-1)*(CANVAS_BOX_WIDTH+110);heat.y=column.upper;column.upper+=height(heat)+24;
+        upperBottom=Math.max(upperBottom,column.upper);
+      }
+      columns.set(heat.stage,column);
+    }
+  }
+  for(const heat of draft.heats)delete heat.stage;
 }
-function builderHeatHtml(heat){
+function canvasSlotHtml(heat,source,index){
+  const options=['<option value="">Empty</option>',
+    `<optgroup label="League standings">${builderStandings.map((team,rank)=>`<option value="seed:${rank+1}" ${source===`seed:${rank+1}`?'selected':''}>${h(seedLabel(rank+1))} · ${h(team.name)}</option>`).join('')}</optgroup>`,
+    `<optgroup label="Finishing places">${loadPlayoffDraft().heats.filter(other=>other.key!==heat.key&&other.side!=='final').flatMap(other=>other.sources.map((_,place)=>`place:${place+1}:${other.key}`)).map(value=>`<option value="${h(value)}" ${value===source?'selected':''}>${h(sourceLabel(value))}</option>`).join('')}</optgroup>`].join('');
+  return `<div class="cb-slot ${source?'':'empty'}" data-slot-drop data-heat="${h(heat.key)}" data-slot="${index}">
+    <span class="cb-port cb-in ${source.startsWith('place:')?'linked':''}" data-in data-heat="${h(heat.key)}" data-slot="${index}"></span>
+    <select class="cb-select" data-builder="source" data-heat="${h(heat.key)}" data-slot="${index}" aria-label="Team ${index+1}">${options}</select>
+  </div>`;
+}
+function canvasHeatHtml(heat){
   const manual=loadPlayoffDraft().scheduleMode==='manual';
-  const linking=Boolean(playoffLink)&&playoffLink.key!==heat.key;
-  return `<article class="builder-heat side-${h(heat.side)}" data-heat-card="${h(heat.key)}">
-    <header><strong>${h(heatName(heat.key))}</strong>
-      <select data-builder="side" data-heat="${h(heat.key)}" aria-label="Bracket">${[['upper','Upper / knockout'],['lower','Lower bracket'],['final','Final']].map(([value,label])=>`<option value="${value}" ${value===heat.side?'selected':''}>${label}</option>`).join('')}</select>
-      <span class="builder-count"><button type="button" class="ghost" data-builder="slots" data-delta="-1" data-heat="${h(heat.key)}" ${heat.sources.length<=2?'disabled':''} aria-label="One team fewer">−</button>${heat.sources.length} teams<button type="button" class="ghost" data-builder="slots" data-delta="1" data-heat="${h(heat.key)}" ${heat.sources.length>=matchSize()?'disabled':''} aria-label="One team more">+</button></span>
-      <button type="button" class="ghost" data-builder="remove" data-heat="${h(heat.key)}" aria-label="Remove heat">✕</button>
-    </header>
-    <ol class="builder-slots">${heat.sources.map((source,index)=>`<li>
-      <button type="button" class="builder-slot ${source?'':'empty'} ${linking?'target':''}" data-builder="slot" data-heat="${h(heat.key)}" data-slot="${index}">${linking?'Connect here':h(sourceLabel(source))}</button>
-      <select data-builder="source" data-heat="${h(heat.key)}" data-slot="${index}" aria-label="Team source for slot ${index+1}">${builderSourceOptions(heat,source)}</select>
-    </li>`).join('')}</ol>
-    ${heat.side==='final'?'':`<div class="builder-outputs">${heat.sources.map((_,index)=>{
-      const place=index+1;
-      const active=playoffLink&&playoffLink.key===heat.key&&playoffLink.place===place;
-      const target=placeTarget(heat.key,place);
-      return `<button type="button" class="builder-out ${active?'active':''} ${target==='out'?'out':''}" data-builder="link" data-heat="${h(heat.key)}" data-place="${place}" title="Click, then click the slot this place should feed">${ordinal(place)} → ${h(target)}</button>`;
-    }).join('')}</div>`}
-    ${manual?`<div class="builder-times"><label>Start<input type="datetime-local" data-builder="start" data-heat="${h(heat.key)}" value="${h(heat.start||'')}"></label><label>Arena<input data-builder="arena" data-heat="${h(heat.key)}" value="${h(heat.arenaName||'')}" placeholder="Arena 1"></label></div>`:''}
-  </article>`;
+  return `<div class="cb-heat side-${h(heat.side)}" data-heat-box="${h(heat.key)}" style="left:${heat.x||0}px;top:${heat.y||0}px">
+    <div class="cb-head" data-drag="${h(heat.key)}" title="Drag to move">
+      <strong>${h(heatName(heat.key))}</strong>
+      <select data-builder="side" data-heat="${h(heat.key)}" aria-label="Bracket">${[['upper','Knockout'],['lower','Lower'],['final','Final']].map(([value,label])=>`<option value="${value}" ${value===heat.side?'selected':''}>${label}</option>`).join('')}</select>
+      <button type="button" class="cb-icon" data-builder="remove" data-heat="${h(heat.key)}" title="Remove this match">✕</button>
+    </div>
+    <div class="cb-body">
+      <div class="cb-ins">${heat.sources.map((source,index)=>canvasSlotHtml(heat,source,index)).join('')}</div>
+      ${heat.side==='final'?'':`<div class="cb-outs">${heat.sources.map((_,index)=>{const used=placeUsed(heat.key,index+1);return `<div class="cb-out ${used?'':'out'}" title="${used?'Goes on':'No line: does not progress'}"><span>${ordinal(index+1)}</span><span class="cb-port cb-outport ${used?'linked':''}" data-out data-heat="${h(heat.key)}" data-place="${index+1}" title="Drag to a slot"></span></div>`;}).join('')}</div>`}
+    </div>
+    <div class="cb-foot"><button type="button" class="cb-icon" data-builder="slots" data-delta="-1" data-heat="${h(heat.key)}" ${heat.sources.length<=2?'disabled':''}>−</button><span>${heat.sources.length} teams</span><button type="button" class="cb-icon" data-builder="slots" data-delta="1" data-heat="${h(heat.key)}" ${heat.sources.length>=matchSize()?'disabled':''}>+</button></div>
+    ${manual?`<div class="cb-times"><input type="datetime-local" data-builder="start" data-heat="${h(heat.key)}" value="${h(heat.start||'')}" aria-label="Start time"><input data-builder="arena" data-heat="${h(heat.key)}" value="${h(heat.arenaName||'')}" placeholder="Arena" aria-label="Arena"></div>`:''}
+  </div>`;
 }
 function playoffBuilderHtml(){
   const draft=loadPlayoffDraft();
-  const ordered=[...draft.heats].sort((left,right)=>(builderPreview.numbers?.[left.key]||999)-(builderPreview.numbers?.[right.key]||999));
+  const used=new Set(draft.heats.flatMap(heat=>heat.sources).filter(source=>source.startsWith('seed:')));
+  const width=Math.max(900,...draft.heats.map(heat=>(heat.x||0)+CANVAS_BOX_WIDTH+80));
+  const height=Math.max(460,...draft.heats.map(heat=>(heat.y||0)+heat.sources.length*34+200));
   return `<div class="builder-toolbar">
-      <button type="button" class="secondary" data-builder="add" data-side="upper">Add heat</button>
-      <button type="button" class="secondary" data-builder="add" data-side="lower">Add lower-bracket heat</button>
+      <button type="button" class="secondary" data-builder="add" data-side="upper">Add match</button>
       ${draft.heats.some(heat=>heat.side==='final')?'':'<button type="button" class="secondary" data-builder="add" data-side="final">Add final</button>'}
+      <button type="button" class="ghost" data-builder="arrange" ${draft.heats.length?'':'disabled'}>Tidy layout</button>
       <span class="builder-spacer"></span>
       <label class="builder-inline">Start from<select id="builder-template-format"><option value="single-elimination">Single elimination</option><option value="double-elimination">Double elimination</option></select></label>
-      <label class="builder-inline">with<input id="builder-template-size" type="number" min="2" max="64" value="${Math.min(8,Math.max(2,teams.filter(team=>team.active!==false).length))}"> teams</label>
+      <label class="builder-inline">for<input id="builder-template-size" type="number" min="2" max="64" value="${Math.min(8,Math.max(2,builderStandings.length||teams.length))}"> teams</label>
       <button type="button" class="ghost" data-builder="template">Load</button>
       <button type="button" class="ghost" data-builder="clear" ${draft.heats.length?'':'disabled'}>Clear</button>
     </div>
-    ${playoffLink?`<div class="callout" style="margin:.6rem 0">Connecting <strong>${h(ordinal(playoffLink.place))} of ${h(heatName(playoffLink.key))}</strong>: click the slot it should go to (Esc to cancel).</div>`:''}
-    <div class="builder-heats">${ordered.map(builderHeatHtml).join('')||'<div class="empty">No heats yet. Add heats, or start from a template and adjust it.</div>'}</div>
-    <div class="builder-schedule">
-      <label class="toggle-control"><input type="radio" name="builderSchedule" value="auto" ${draft.scheduleMode!=='manual'?'checked':''} data-builder="schedule"> Schedule automatically (uses the first heat time, gap and arenas above)</label>
-      <label class="toggle-control"><input type="radio" name="builderSchedule" value="manual" ${draft.scheduleMode==='manual'?'checked':''} data-builder="schedule"> Set each heat's time and arena myself</label>
+    <div class="callout ${builderPreview.valid?'good':'warn'} cb-status">${builderPreview.valid?`Ready: top ${h(builderPreview.fieldSize)} from the league, ${draft.heats.length} matches.`:h(builderPreview.error||'Checking…')}
+      <span class="subtle">Drag teams from the standings onto slots, and drag from a place's dot (right of a match) to a slot. Click a line to remove it. Places without a line are out.</span></div>
+    <div class="cb-wrap">
+      <aside class="cb-palette"><div class="cb-palette-title">League standings</div>${builderStandings.length?builderStandings.map((team,rank)=>`<div class="cb-seed ${used.has(`seed:${rank+1}`)?'used':''}" data-seed="${rank+1}" title="Drag onto a slot"><b>${rank+1}</b><span><strong>${h(team.code)}</strong> ${h(team.name)}</span></div>`).join(''):'<p class="subtle">No teams yet.</p>'}</aside>
+      <div class="cb-canvas" id="cb-canvas"><div class="cb-surface" style="width:${width}px;height:${height}px">
+        <svg class="cb-lines" id="cb-lines" width="${width}" height="${height}"></svg>
+        ${draft.heats.map(canvasHeatHtml).join('')||'<div class="cb-empty">Add a match, or start from a template and change it.</div>'}
+      </div></div>
     </div>
-    <div id="builder-preview" class="preview-box" aria-live="polite">${builderPreview.valid?`<div class="callout good" style="margin-bottom:.5rem">Ready: ${h(builderPreview.fieldSize)} league seeds, ${draft.heats.length} heat(s).</div>`:`<div class="callout warn" style="margin-bottom:.5rem">${h(builderPreview.error||'Checking…')}</div>`}${builderPreview.diagram?`<div class="diagram-scroll">${builderPreview.diagram}</div>`:''}</div>`;
+    <div class="builder-schedule">
+      <label class="toggle-control"><input type="radio" name="builderSchedule" value="auto" ${draft.scheduleMode!=='manual'?'checked':''} data-builder="schedule"> Schedule automatically (first heat, gap and arenas below)</label>
+      <label class="toggle-control"><input type="radio" name="builderSchedule" value="manual" ${draft.scheduleMode==='manual'?'checked':''} data-builder="schedule"> Give each match its own time and arena (in its box)</label>
+    </div>`;
+}
+// Port centre in canvas-surface coordinates.
+function portPoint(element){
+  const surface=document.querySelector('.cb-surface');
+  const box=element.getBoundingClientRect(),base=surface.getBoundingClientRect();
+  return {x:box.left+box.width/2-base.left,y:box.top+box.height/2-base.top};
+}
+function curve(from,to){const bend=Math.max(40,Math.abs(to.x-from.x)/2);return `M${from.x},${from.y} C${from.x+bend},${from.y} ${to.x-bend},${to.y} ${to.x},${to.y}`;}
+function drawCanvasLines(extra=''){
+  const svg=$('cb-lines');
+  if(!svg)return;
+  const parts=[];
+  for(const heat of loadPlayoffDraft().heats){
+    heat.sources.forEach((source,index)=>{
+      const match=/^place:(\d):(.+)$/.exec(source);
+      if(!match)return;
+      const out=document.querySelector(`[data-out][data-heat="${CSS.escape(match[2])}"][data-place="${match[1]}"]`);
+      const input=document.querySelector(`[data-in][data-heat="${CSS.escape(heat.key)}"][data-slot="${index}"]`);
+      if(!out||!input)return;
+      const feeder=draftHeat(match[2]);
+      const kind=heat.side==='final'?'final':heat.side==='lower'&&feeder?.side!=='lower'?'drop':'win';
+      const path=curve(portPoint(out),portPoint(input));
+      parts.push(`<path class="cb-line ${kind}" d="${path}"/><path class="cb-hit" d="${path}" data-unlink="${h(heat.key)}" data-slot="${index}"><title>${h(sourceLabel(source))} → ${h(heatName(heat.key))} (click to remove)</title></path>`);
+    });
+  }
+  svg.innerHTML=parts.join('')+extra;
 }
 function renderPlayoffBuilder(){
   const box=$('playoff-builder');
-  if(box)box.innerHTML=playoffBuilderHtml();
+  if(!box)return;
+  const canvas=$('cb-canvas');
+  const scroll=canvas?{left:canvas.scrollLeft,top:canvas.scrollTop}:null;
+  box.innerHTML=playoffBuilderHtml();
+  if(scroll){$('cb-canvas').scrollLeft=scroll.left;$('cb-canvas').scrollTop=scroll.top;}
+  drawCanvasLines();
 }
 function refreshBuilderPreview(){
   clearTimeout(builderPreviewTimer);
   builderPreviewTimer=setTimeout(async()=>{
     const draft=loadPlayoffDraft();
     const request=++builderPreviewRequest;
-    if(!draft.heats.length){builderPreview={valid:false,error:'Add heats, or start from a template and adjust it.',numbers:{},diagram:''};renderPlayoffBuilder();return;}
+    if(!draft.heats.length){builderPreview={valid:false,error:'Add matches, or start from a template and change it.',numbers:{}};renderPlayoffBuilder();return;}
     try{
       const result=await api(`/api/admin/competitions/${encodeURIComponent(slug())}/playoffs/custom-preview`,{method:'POST',body:JSON.stringify({firstNumber:nextPlayoffNumber(),heats:draft.heats.map(({key,side,sources})=>({key,side,sources}))})});
       if(request!==builderPreviewRequest)return;
-      builderPreview=result.valid?result:{...builderPreview,valid:false,error:result.error,diagram:''};
-    }catch(error){builderPreview={valid:false,error:error.message,numbers:{},diagram:''};}
+      builderPreview=result.valid?result:{valid:false,error:result.error,numbers:{}};
+    }catch(error){builderPreview={valid:false,error:error.message,numbers:{}};}
     renderPlayoffBuilder();
   },250);
 }
 function builderChanged(){savePlayoffDraft();renderPlayoffBuilder();refreshBuilderPreview();}
 function removeDraftSource(source){for(const heat of loadPlayoffDraft().heats)heat.sources=heat.sources.map(value=>value===source?'':value);}
+function assignSlot(heatKey,slot,source){
+  const heat=draftHeat(heatKey);
+  if(!heat)return;
+  if(source.startsWith('place:')&&source.endsWith(`:${heatKey}`)){notify('A match cannot feed itself.',true);return;}
+  if(source)removeDraftSource(source);
+  heat.sources[slot]=source;
+  builderChanged();
+}
 async function handleBuilderAction(element){
   const draft=loadPlayoffDraft();
   const action=element.dataset.builder;
   const heat=element.dataset.heat?draftHeat(element.dataset.heat):null;
   if(action==='add'){
+    const canvas=$('cb-canvas');
     const side=element.dataset.side;
-    draft.heats.push({key:`h${draft.next++}`,side,sources:Array(matchSize()).fill('')});
+    draft.heats.push({key:`h${draft.next++}`,side,sources:Array(matchSize()).fill(''),
+      x:(canvas?canvas.scrollLeft:0)+40+(draft.heats.length%4)*24,y:(canvas?canvas.scrollTop:0)+40+(draft.heats.length%4)*24});
   }else if(action==='remove'&&heat){
     draft.heats=draft.heats.filter(other=>other!==heat);
     for(const other of draft.heats)other.sources=other.sources.map(source=>source.endsWith(`:${heat.key}`)?'':source);
-    if(playoffLink?.key===heat.key)playoffLink=null;
   }else if(action==='slots'&&heat){
     const next=Math.max(2,Math.min(matchSize(),heat.sources.length+Number(element.dataset.delta)));
     if(next<heat.sources.length){
       for(let place=next+1;place<=heat.sources.length;place++)removeDraftSource(`place:${place}:${heat.key}`);
       heat.sources=heat.sources.slice(0,next);
     }else heat.sources=[...heat.sources,...Array(next-heat.sources.length).fill('')];
-  }else if(action==='link'&&heat){
-    const place=Number(element.dataset.place);
-    playoffLink=playoffLink&&playoffLink.key===heat.key&&playoffLink.place===place?null:{key:heat.key,place};
-    renderPlayoffBuilder();
-    return;
-  }else if(action==='slot'&&heat){
-    if(!playoffLink)return;
-    if(playoffLink.key===heat.key){notify('A heat cannot feed itself.',true);return;}
-    const source=`place:${playoffLink.place}:${playoffLink.key}`;
-    removeDraftSource(source);
-    heat.sources[Number(element.dataset.slot)]=source;
-    playoffLink=null;
+  }else if(action==='arrange'){
+    arrangeDraft();
   }else if(action==='template'){
     const format=$('builder-template-format').value;
     const fieldSize=Number($('builder-template-size').value);
-    if(draft.heats.length&&!confirm('Replace the heats in the builder with this template?'))return;
+    if(draft.heats.length&&!confirm('Replace the matches on the canvas with this template?'))return;
     const preview=await api(`/api/admin/playoff-formats/preview?${new URLSearchParams({fieldSize:String(fieldSize),format,heatSize:String(matchSize()),firstNumber:String(nextPlayoffNumber())})}`);
     draft.heats=preview.heats.map(heat=>({key:`h${heat.number}`,side:heat.side,sources:heat.sources.map(source=>source.replace(/^place:(\d):(\d+)$/,'place:$1:h$2'))}));
-    draft.next=preview.heats.length+1;
-    playoffLink=null;
+    draft.next=Math.max(...preview.heats.map(heat=>heat.number))+1;
+    arrangeDraft();
   }else if(action==='clear'){
-    if(!confirm('Remove every heat from the builder?'))return;
-    draft.heats=[];draft.next=1;playoffLink=null;
+    if(!confirm('Remove every match from the canvas?'))return;
+    draft.heats=[];draft.next=1;
   }else return;
   builderChanged();
 }
@@ -1297,31 +1421,82 @@ function handleBuilderInput(element){
   const draft=loadPlayoffDraft();
   const heat=element.dataset.heat?draftHeat(element.dataset.heat):null;
   const action=element.dataset.builder;
-  if(action==='source'&&heat){
-    const value=element.value;
-    if(value)removeDraftSource(value);
-    heat.sources[Number(element.dataset.slot)]=value;
-  }else if(action==='side'&&heat){
+  if(action==='source'&&heat){assignSlot(heat.key,Number(element.dataset.slot),element.value);return;}
+  if(action==='side'&&heat){
     if(element.value==='final')for(const other of draft.heats)if(other!==heat&&other.side==='final')other.side='upper';
     heat.side=element.value;
     if(heat.side==='final')for(let place=1;place<=heat.sources.length;place++)removeDraftSource(`place:${place}:${heat.key}`);
   }else if(action==='schedule'){
     draft.scheduleMode=element.value;
-  }else if(action==='start'&&heat){
-    heat.start=element.value;savePlayoffDraft();return;
-  }else if(action==='arena'&&heat){
-    heat.arenaName=element.value;savePlayoffDraft();return;
+  }else if(action==='start'&&heat){heat.start=element.value;savePlayoffDraft();return;
+  }else if(action==='arena'&&heat){heat.arenaName=element.value;savePlayoffDraft();return;
   }else return;
   builderChanged();
 }
+// Dragging: move a match by its header, draw a line from a place, or drop a league team on a slot.
+document.addEventListener('pointerdown',event=>{
+  const surface=event.target.closest('.cb-surface');
+  const seed=event.target.closest('[data-seed]');
+  if(!surface&&!seed)return;
+  if(event.button!==0)return;
+  const head=event.target.closest('[data-drag]');
+  const out=event.target.closest('[data-out]');
+  if(head&&!event.target.closest('select,button,input')){
+    const heat=draftHeat(head.dataset.drag);
+    const box=head.closest('[data-heat-box]');
+    canvasGesture={type:'move',heat,box,startX:event.clientX,startY:event.clientY,x:heat.x||0,y:heat.y||0};
+  }else if(out){
+    canvasGesture={type:'link',key:out.dataset.heat,place:Number(out.dataset.place),from:portPoint(out)};
+    out.classList.add('active');
+  }else if(seed){
+    const ghost=document.createElement('div');
+    ghost.className='cb-ghost';ghost.textContent=seed.textContent;
+    document.body.appendChild(ghost);
+    canvasGesture={type:'seed',rank:Number(seed.dataset.seed),ghost};
+  }else return;
+  event.preventDefault();
+});
+document.addEventListener('pointermove',event=>{
+  if(!canvasGesture)return;
+  if(canvasGesture.type==='move'){
+    const heat=canvasGesture.heat;
+    heat.x=Math.max(0,Math.round(canvasGesture.x+event.clientX-canvasGesture.startX));
+    heat.y=Math.max(0,Math.round(canvasGesture.y+event.clientY-canvasGesture.startY));
+    canvasGesture.box.style.left=`${heat.x}px`;canvasGesture.box.style.top=`${heat.y}px`;
+    drawCanvasLines();
+  }else if(canvasGesture.type==='link'){
+    const base=document.querySelector('.cb-surface').getBoundingClientRect();
+    drawCanvasLines(`<path class="cb-line pending" d="${curve(canvasGesture.from,{x:event.clientX-base.left,y:event.clientY-base.top})}"/>`);
+    document.querySelectorAll('.cb-slot.hover').forEach(node=>node.classList.remove('hover'));
+    document.elementFromPoint(event.clientX,event.clientY)?.closest('[data-slot-drop]')?.classList.add('hover');
+  }else if(canvasGesture.type==='seed'){
+    canvasGesture.ghost.style.left=`${event.clientX+8}px`;canvasGesture.ghost.style.top=`${event.clientY+8}px`;
+    document.querySelectorAll('.cb-slot.hover').forEach(node=>node.classList.remove('hover'));
+    document.elementFromPoint(event.clientX,event.clientY)?.closest('[data-slot-drop]')?.classList.add('hover');
+  }
+});
+document.addEventListener('pointerup',event=>{
+  const gesture=canvasGesture;
+  if(!gesture)return;
+  canvasGesture=null;
+  document.querySelectorAll('.cb-slot.hover,.cb-port.active').forEach(node=>node.classList.remove('hover','active'));
+  gesture.ghost?.remove();
+  const target=document.elementFromPoint(event.clientX,event.clientY)?.closest('[data-slot-drop]');
+  if(gesture.type==='move'){savePlayoffDraft();renderPlayoffBuilder();return;}
+  if(!target){drawCanvasLines();return;}
+  const source=gesture.type==='link'?`place:${gesture.place}:${gesture.key}`:`seed:${gesture.rank}`;
+  assignSlot(target.dataset.heat,Number(target.dataset.slot),source);
+});
 document.addEventListener('click',event=>{
+  const unlink=event.target.closest('[data-unlink]');
+  if(unlink){const heat=draftHeat(unlink.dataset.unlink);if(heat){heat.sources[Number(unlink.dataset.slot)]='';builderChanged();}return;}
   const element=event.target.closest('[data-builder]');
-  if(!element||!['add','remove','slots','link','slot','template','clear'].includes(element.dataset.builder))return;
+  if(!element||!['add','remove','slots','template','clear','arrange'].includes(element.dataset.builder))return;
   event.preventDefault();
   void handleBuilderAction(element).catch(showError);
 });
 document.addEventListener('change',event=>{if(event.target.dataset?.builder)handleBuilderInput(event.target);});
-document.addEventListener('keydown',event=>{if(event.key==='Escape'&&playoffLink){playoffLink=null;renderPlayoffBuilder();}});
+window.addEventListener('resize',()=>drawCanvasLines());
 function toLocalDate(date) {
   return new Date(date.getTime()-date.getTimezoneOffset()*60000).toISOString().slice(0,16);
 }
@@ -2861,7 +3036,8 @@ async function handleFormSubmit(event){
           format:'custom',heats,scheduleMode:draft.scheduleMode,replaceExisting:form.dataset.replace==='true',
           scheduledStart:requestedStart.toISOString(),intervalMinutes,finalDelayMinutes:Number(values.finalDelayMinutes),arenaNames
         })});
-        try{localStorage.removeItem(playoffDraftKey());}catch{}
+        try{localStorage.removeItem(playoffDraftKey());localStorage.setItem('tab:playoffs','bracket');}catch{}
+        tabState.playoffs='bracket';
         playoffDraft=null;dirtyForms.clear();
         await loadData();
         notify(`Custom bracket created · ${result.matchCount} heat(s) for the top ${result.teamCount} teams.`);
@@ -2876,6 +3052,8 @@ async function handleFormSubmit(event){
       dirtyForms.clear();
       await loadData();
       const moved=result.shiftedMatchIds?.length||0;
+      tabState.playoffs='bracket';try{localStorage.setItem('tab:playoffs','bracket');}catch{}
+      await render();
       notify(`${playoffFormatLabel(values.format)} playoffs scheduled · ${result.matchCount} heat(s)${moved?`; ${moved} match(es) moved to avoid conflicts`:''}.`);
     }else if(form.id==='display-form'){
       const result=await api(`/api/admin/competitions/${encodeURIComponent(slug())}/displays`,{method:'POST',body:JSON.stringify({slug:values.slug,title:values.title,type:values.type,options:displayOptionsFromForm(form)})});
